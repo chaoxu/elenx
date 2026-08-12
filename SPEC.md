@@ -313,6 +313,7 @@ kernel.blob(hash): Promise<Uint8Array>
 kernel.verdicts(candidate): Promise<readonly VerdictView[]>
 kernel.promotable(candidate): Promise<PromotionCheck>
 kernel.accepted(candidate): Promise<AcceptanceCheck>
+kernel.activity(): Promise<ReaderActivity>
 kernel.close(): Promise<void>
 
 reader.records(selector?): Promise<readonly Record[]>
@@ -320,6 +321,7 @@ reader.blob(hash): Promise<Uint8Array>
 reader.verdicts(candidate): Promise<readonly VerdictView[]>
 reader.promotable(candidate): Promise<PromotionCheck>
 reader.accepted(candidate): Promise<AcceptanceCheck>
+reader.activity(): Promise<ReaderActivity>
 reader.close(): Promise<void>
 ```
 

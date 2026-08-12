@@ -343,6 +343,7 @@ export interface Reader {
   verdicts(candidate: Hash): Promise<readonly VerdictView[]>;
   promotable(candidate: Hash): Promise<PromotionCheck>;
   accepted(candidate: Hash): Promise<AcceptanceCheck>;
+  activity(): Promise<ReaderActivity>;
   close(): Promise<void>;
 }
 
