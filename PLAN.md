@@ -86,7 +86,7 @@ The `call` start record is written before provider work. One `call-result` recor
 - two calls share no messages or continuation handle;
 - every call belongs to a dispatch;
 - the exact system text, prompt, adapter options, and tool declarations are blob-recoverable;
-- every tool invocation is recorded before execution and every settled result is recorded independently of the final adapter transcript;
+- every schema-admitted tool invocation is recorded before execution and every settled result is recorded independently of the final adapter transcript;
 - a crash after a durable tool effect leaves its preceding `tool-call` on record;
 - cancellation waits for tool settlement, and an uncooperative tool remains honestly in flight;
 - racing tool return, error, and cancellation paths append exactly one `tool-result`;

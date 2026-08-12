@@ -195,7 +195,7 @@ interface WrappedTool {
   readonly name: string;
   readonly description: string;
   readonly parameters: JsonSchema;
-  execute(args: Json): Promise<Json>;
+  execute(invocationId: string, args: Json): Promise<Json>;
 }
 
 interface AdapterResult {
@@ -232,7 +232,7 @@ A call is one fresh adapter invocation with no prior messages or continuation ha
 
 An application `Tool` has a name, description, JSON Schema Draft 2020-12 parameters, and `execute(args: Json, signal: AbortSignal): Promise<Json>`. The serializable call request records the name, description, and schema, never the executable function. Tool implementation and authority belong to the application.
 
-The kernel wraps every tool before passing it to an adapter. For each attempted invocation it commits `tool-call`, validates the application-facing JSON arguments against the recorded schema with a maintained JSON Schema library, and only then invokes application code. It appends exactly one `tool-result` when execution settles normally, throws, or acknowledges cancellation; schema refusal settles without invoking application code. Cancellation signals the tool and waits. A tool that ignores the signal keeps the tool invocation, call, and dispatch in flight rather than allowing later effects after a terminal record. A crash may leave a `tool-call` abandoned, but cannot erase the request that preceded a durable tool effect.
+The kernel wraps every tool before passing it to an adapter. An adapter must call `WrappedTool.execute` with its stable invocation id for every invocation that passes the adapter's schema parsing. On entry the wrapper commits `tool-call`, validates the application-facing JSON arguments again against the recorded schema with a maintained JSON Schema library, and only then invokes application code. It appends exactly one `tool-result` when execution settles normally, throws, or acknowledges cancellation; schema refusal settles without invoking application code. Adapter-rejected malformed arguments have no application effect and appear only in the adapter-reported transcript when the call settles. Cancellation signals the tool and waits. A tool that ignores the signal keeps the tool invocation, call, and dispatch in flight rather than allowing later effects after a terminal record. A crash may leave a `tool-call` abandoned, but cannot erase the request that preceded a durable tool effect.
 
 The kernel appends `call` before invoking the adapter and exactly one `call-result` after it settles. The result is `succeeded`, `failed`, or `cancelled`. Partial output and usage received before failure or cancellation are retained. Model messages and provider-attempt details in `call-result` are adapter-reported; adapters are trusted for their accuracy. Tool calls and results are recorded independently by the kernel wrapper.
 
