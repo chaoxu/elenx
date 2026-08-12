@@ -587,6 +587,13 @@ function assertCallResultBody(value: unknown, label: string): void {
   if (Object.hasOwn(body, "providerModel")) {
     nonemptyString(body.providerModel, `${label}.providerModel`);
   }
+  if (body.state === "succeeded") {
+    if (!Object.hasOwn(body, "output")) fail(label, "is missing output");
+    if (Object.hasOwn(body, "error"))
+      fail(label, "cannot contain error on success");
+  } else if (!Object.hasOwn(body, "error")) {
+    fail(label, "is missing error");
+  }
 }
 
 function assertCompletionBody(value: unknown, label: string): void {
@@ -676,6 +683,10 @@ function assertEventBody(value: unknown, label: string): void {
   nonemptyString(body.topic, `${label}.topic`);
   assertJson(body.data, `${label}.data`);
   hashArray(body.blobs, `${label}.blobs`, false);
+  const blobs = body.blobs as readonly Hash[];
+  if (new Set(blobs).size !== blobs.length) {
+    fail(`${label}.blobs`, "must contain unique hashes");
+  }
 }
 
 function isRecordKind(value: unknown): value is RecordKind {
