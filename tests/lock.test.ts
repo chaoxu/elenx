@@ -1,5 +1,6 @@
 import {
   existsSync,
+  linkSync,
   mkdirSync,
   mkdtempSync,
   rmSync,
@@ -128,10 +129,39 @@ describe("writer lock", () => {
     writeFileSync(databasePath, "");
     symlinkSync(databasePath, aliasPath);
 
-    const lock = acquireWriterLock(databasePath);
+    expect(() => acquireWriterLock(aliasPath)).toThrow(Refusal);
+  });
+
+  test("refuses hard-linked database aliases", () => {
+    const directory = temporaryDirectory();
+    const databasePath = join(directory, "campaign.db");
+    const aliasPath = join(directory, "campaign-alias.db");
+
+    writeFileSync(databasePath, "");
+    linkSync(databasePath, aliasPath);
+
+    expect(() => acquireWriterLock(databasePath)).toThrow(Refusal);
+    expect(() => acquireWriterLock(aliasPath)).toThrow(Refusal);
+  });
+
+  test("refuses a dangling database symlink", () => {
+    const directory = temporaryDirectory();
+    const databasePath = join(directory, "campaign.db");
+    const aliasPath = join(directory, "campaign-alias.db");
+
+    symlinkSync(databasePath, aliasPath);
 
     expect(() => acquireWriterLock(aliasPath)).toThrow(Refusal);
+  });
 
-    lock.close();
+  test("refuses a writer-lock symlink", () => {
+    const directory = temporaryDirectory();
+    const databasePath = join(directory, "campaign.db");
+    const redirectedPath = join(directory, "redirected");
+
+    writeFileSync(redirectedPath, "");
+    symlinkSync(redirectedPath, `${databasePath}.writer-lock`);
+
+    expect(() => acquireWriterLock(databasePath)).toThrow();
   });
 });

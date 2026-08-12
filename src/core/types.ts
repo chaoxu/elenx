@@ -376,3 +376,12 @@ export interface OpenCampaignOptions {
   readonly handlers: readonly Handler[];
   readonly adapters: readonly ModelAdapter[];
 }
+
+export interface ReaderActivity {
+  readonly inFlightDispatches: readonly DispatchId[];
+  readonly abandonedDispatches: readonly DispatchId[];
+  readonly inFlightCalls: readonly CallId[];
+  readonly abandonedCalls: readonly CallId[];
+  readonly inFlightTools: readonly InvocationId[];
+  readonly abandonedTools: readonly InvocationId[];
+}

@@ -828,12 +828,13 @@ export function makeLogRecord(
   safeInteger(seq, "record seq", 1);
   safeInteger(atMs, "record atMs");
   assertRecordDraft(draft);
+  const snapshot = JSON.parse(JSON.stringify(draft)) as RecordDraft;
   return parseLogRecord({
     seq,
     atMs,
-    kind: draft.kind,
-    body: draft.body,
-    ...projectRecordCorrelations(draft),
+    kind: snapshot.kind,
+    body: snapshot.body,
+    ...projectRecordCorrelations(snapshot),
   });
 }
 
@@ -854,7 +855,7 @@ export function parseLogRecord(value: unknown): LogRecord {
     safeInteger(row.seq, "record.seq", 1);
     safeInteger(row.atMs, "record.atMs");
     sameCorrelations(row, correlations, "record");
-    return value as unknown as LogRecord;
+    return JSON.parse(JSON.stringify(value)) as LogRecord;
   } catch (error) {
     if (error instanceof Defect) throw error;
     throw new Defect("CORRUPT_RECORD", "Stored record failed validation", {

@@ -1,6 +1,8 @@
 import {
   closeSync,
   constants as fsConstants,
+  fstatSync,
+  lstatSync,
   openSync,
   realpathSync,
 } from "node:fs";
@@ -76,6 +78,28 @@ function canonicalDatabasePath(databasePath: string): string {
   const absolutePath = resolve(databasePath);
 
   try {
+    const status = lstatSync(absolutePath);
+    if (status.isSymbolicLink()) {
+      throw new Refusal(
+        "INVALID_ARGUMENT",
+        `database path cannot be a symbolic link: ${absolutePath}`,
+        { operation: "open-campaign" },
+      );
+    }
+    if (!status.isFile()) {
+      throw new Refusal(
+        "INVALID_ARGUMENT",
+        `database path is not a regular file: ${absolutePath}`,
+        { operation: "open-campaign" },
+      );
+    }
+    if (status.nlink !== 1) {
+      throw new Refusal(
+        "INVALID_ARGUMENT",
+        `database path has ${status.nlink} hard links; Elenx requires exactly one: ${absolutePath}`,
+        { operation: "open-campaign" },
+      );
+    }
     return realpathSync(absolutePath);
   } catch (error) {
     if (!isErrorWithCode(error) || error.code !== "ENOENT") {
@@ -110,9 +134,22 @@ export function acquireWriterLock(databasePath: string): WriterLock {
   const lockPath = `${canonicalPath}.writer-lock`;
   const fd = openSync(
     lockPath,
-    fsConstants.O_CREAT | fsConstants.O_RDWR | O_CLOEXEC,
+    fsConstants.O_CREAT |
+      fsConstants.O_RDWR |
+      fsConstants.O_NOFOLLOW |
+      O_CLOEXEC,
     0o600,
   );
+
+  const lockStatus = fstatSync(fd);
+  if (!lockStatus.isFile()) {
+    closeSync(fd);
+    throw new Refusal(
+      "INVALID_ARGUMENT",
+      `writer lock path is not a regular file: ${lockPath}`,
+      { operation: "open-campaign" },
+    );
+  }
 
   if (native.flock(fd, LOCK_EX | LOCK_NB) !== 0) {
     const errno = lastErrno();
