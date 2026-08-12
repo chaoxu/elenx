@@ -71,7 +71,7 @@ Kernel record kinds are:
 | `campaign` | application id, application configuration blob, kernel schema version |
 | `process` | kernel version, registered handler names and kinds, registered adapter ids |
 | `candidate` | material hash, nonempty required-verifier set, internal premise hashes |
-| `dispatch` | dispatch id, handler name and kind, input hash, opaque JSON metadata |
+| `dispatch` | dispatch id, handler name and kind, input hash, opaque JSON metadata, optional kernel-set parent dispatch |
 | `call` | call id, dispatch id, label, exact serializable request blob |
 | `tool-call` | call id, invocation id, tool name, application-facing argument blob |
 | `tool-result` | invocation id, terminal state, exact result or error blob |
@@ -83,6 +83,23 @@ Kernel record kinds are:
 
 Applications never add record kinds. They append `event` records. Kernel rules ignore every `event` field.
 
+The first record is the sole `campaign` record. Every writer open then appends one `process` record before accepting work; readers append nothing. The exported closed `LogRecord` union defines each body exactly. Callers supply only semantic method arguments—the kernel validates the body and derives correlation columns as follows:
+
+| kind | `dispatch` | `name` | `candidate` |
+|---|---|---|---|
+| `campaign` | — | application id | — |
+| `process` | — | — | — |
+| `candidate` | — | — | material hash |
+| `dispatch` | dispatch id | handler name | verifier target when known |
+| `call`, `call-result` | owning dispatch | call label | — |
+| `tool-call`, `tool-result` | owning dispatch | tool name | — |
+| `completion` | owning dispatch | handler name | verifier target when present |
+| `promotion` | — | — | candidate hash |
+| `rebuttal` | — | target verifier | target candidate |
+| `event` | — | topic | — |
+
+Rows are validated against their per-kind schemas on append and again on read. A malformed row is a defect. Blob contents are hash-checked when read; a missing or mismatched referenced blob is a defect when traversed.
+
 An incomplete `dispatch`, `call`, or tool invocation has a start record and no corresponding terminal record. It is in flight in the current process and abandoned after a later `process` record. No clock or pid is used to derive this state.
 
 ## 6. Candidate contract
@@ -92,6 +109,8 @@ The application submits exact candidate material, a nonempty set of required ver
 The candidate id is the material hash. The first `candidate` record for that hash freezes its required verifier set and premises. A later submission of the same material with a different contract is refused. Applications that need a different contract must submit different material, normally an envelope containing the application-level statement, result, dependencies, and revision identity.
 
 Required verifier names are unique and sorted before recording. Premise hashes are unique and sorted before recording. A candidate cannot name itself as a premise.
+
+Every required verifier must name a currently registered verifier handler, and every internal premise must already be a candidate in the campaign. Submitting identical material with the identical normalized contract is a no-op; submitting it with a different contract is refused. Handler names are identities, so applications use a new versioned name when verifier behavior changes materially.
 
 The kernel interprets premises only as dependencies on other candidates in the same campaign. Citations, assumptions, imported theorems, and external evidence remain part of application material unless the application explicitly represents them as internal candidates.
 
@@ -150,6 +169,8 @@ Each dispatch receives its own `AbortSignal`. Cancellation is cooperative: it ab
 
 All model calls occur inside a dispatch. A model-driven coordinator is an ordinary worker handler, so every call always has a dispatch id.
 
+When `HandlerContext.dispatch` starts nested work, the kernel records the current dispatch as its parent. Top-level `Kernel.dispatch` has no parent. Opaque metadata cannot override this field.
+
 ## 8. Model adapter port
 
 The kernel depends on this port:
@@ -157,6 +178,7 @@ The kernel depends on this port:
 ```ts
 interface ModelAdapter {
   readonly id: string;
+  validateOptions(options: Json | undefined): void;
   run(request: AdapterRequest): Promise<AdapterResult>;
 }
 
@@ -204,7 +226,7 @@ interface ModelRequest {
 }
 ```
 
-`adapterOptions` is recorded and passed to the named adapter; each adapter validates its own closed option set and refuses unknown values. V1 adapters must refuse options that enable provider-native tools or other model-visible capabilities outside `tools`.
+The kernel calls `validateOptions` before appending `call` or performing provider work. `adapterOptions` is then recorded and passed to the named adapter. Each adapter owns a closed option set and refuses unknown values. V1 adapters must refuse options that enable provider-native tools or other model-visible capabilities outside `tools`.
 
 A call is one fresh adapter invocation with no prior messages or continuation handle. A tool loop may make several billed provider requests inside that invocation. Prefix caching is allowed; conversational continuation across calls is not expressible.
 
@@ -228,7 +250,7 @@ interface Usage {
 }
 ```
 
-Readers group by `meter` and never produce a cross-meter total. The adapter may record a provider-reported served model when the provider supplies one; absence means unknown. The requested model is never presented as attestation.
+Every usage row has a nonempty `meter` and a positive `requests`. An adapter aggregates compatible measurements within one meter, never merges meters, and never invents an absent field. Readers group by `meter` and never produce a cross-meter total. The adapter may record a provider-reported served model when the provider supplies one; absence means unknown. The requested model is never presented as attestation.
 
 ## 9. Agent-facing tools and authority
 
@@ -286,6 +308,8 @@ kernel.dispatch(name, input, meta?): Promise<DispatchHandle>
 kernel.rebut(failingCompletionSeq, reason): Promise<void>
 kernel.promote(candidate): Promise<void>
 kernel.appendEvent(topic, data, blobs?): Promise<void>
+kernel.records(selector?): Promise<readonly LogRecord[]>
+kernel.blob(hash): Promise<Uint8Array>
 kernel.verdicts(candidate): Promise<readonly VerdictView[]>
 kernel.promotable(candidate): Promise<PromotionCheck>
 kernel.accepted(candidate): Promise<AcceptanceCheck>
@@ -303,11 +327,15 @@ reader.close(): Promise<void>
 
 Selectors perform exact AND matching on the fixed indexed fields `kind`, `dispatch`, `name`, and `candidate`. There are no ranges, joins, text search, cursors, or application-event indexes in v1.
 
+Pre-start refusals reject with `Refusal`. Once a dispatch, call, or tool start record exists, ordinary application, provider, cancellation, and protocol outcomes resolve through a terminal record; only a storage defect may reject and leave the start abandoned. `DispatchHandle.cancel()` is idempotent and returns the same terminal completion as `settled`.
+
 Every refusal is a typed `Refusal` with an actionable human-readable message. Defects use a distinct `Defect` type. Neither requires applications to parse prose for control flow; structured fields identify the refused operation and relevant record ids.
 
 ## 12. Bundled pi adapter
 
 V1 ships one adapter for exactly pinned `@earendil-works/pi-ai` and `@earendil-works/pi-agent-core` 0.84.1. It uses the working `runAgentLoop` surface, not `AgentHarness`.
+
+For this adapter, `ModelRequest.model` is `<provider>/<model-id>`, split at the first slash. Other adapters may define another recorded model-id syntax.
 
 The adapter must:
 
