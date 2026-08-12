@@ -1,8 +1,11 @@
+import * as z from "zod";
+
 import { Defect } from "./errors";
 import { isHash } from "./hash";
 import {
   RECORD_KINDS,
   assertJson,
+  isJson,
   type CallId,
   type DispatchId,
   type HandlerKind,
@@ -283,417 +286,346 @@ export interface RecordCorrelations {
   readonly candidate?: Hash;
 }
 
-type UnknownObject = { readonly [key: string]: unknown };
-
-function fail(label: string, reason: string): never {
-  throw new TypeError(`${label} ${reason}`);
-}
-
-function objectValue(value: unknown, label: string): UnknownObject {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    return fail(label, "must be an object");
-  }
-  return value as UnknownObject;
-}
-
-function exactKeys(
-  value: UnknownObject,
-  required: readonly string[],
-  optional: readonly string[],
-  label: string,
-): void {
-  const allowed = new Set([...required, ...optional]);
-  for (const key of required) {
-    if (!Object.hasOwn(value, key)) fail(label, `is missing ${key}`);
-  }
-  for (const key of Object.keys(value)) {
-    if (!allowed.has(key)) fail(label, `has unknown field ${key}`);
-  }
-}
-
-function nonemptyString(
-  value: unknown,
-  label: string,
-): asserts value is string {
-  if (typeof value !== "string" || value.length === 0) {
-    fail(label, "must be a nonempty string");
-  }
-}
-
-function prefixedId<T extends string>(
-  value: unknown,
-  prefix: string,
-  label: string,
-): asserts value is T {
-  nonemptyString(value, label);
-  if (!value.startsWith(prefix) || value.length === prefix.length) {
-    fail(label, `must start with ${prefix}`);
-  }
-}
-
-function safeInteger(
-  value: unknown,
-  label: string,
-  minimum = 0,
-): asserts value is number {
-  if (!Number.isSafeInteger(value) || (value as number) < minimum) {
-    fail(label, `must be a safe integer greater than or equal to ${minimum}`);
-  }
-}
-
-function hashValue(value: unknown, label: string): asserts value is Hash {
-  if (!isHash(value))
-    fail(label, "must match sha256:<64 lowercase hex digits>");
-}
-
-function stringArray(
-  value: unknown,
-  label: string,
-  options: {
-    readonly nonempty?: boolean;
-    readonly sortedUnique?: boolean;
-  } = {},
-): asserts value is readonly string[] {
-  if (!Array.isArray(value)) fail(label, "must be an array");
-  if (options.nonempty === true && value.length === 0) {
-    fail(label, "must not be empty");
-  }
-  for (let index = 0; index < value.length; index += 1) {
-    nonemptyString(value[index], `${label}[${index}]`);
-  }
-  if (options.sortedUnique === true) {
-    for (let index = 1; index < value.length; index += 1) {
-      if ((value[index - 1] as string) >= (value[index] as string)) {
-        fail(label, "must be sorted and unique");
-      }
-    }
-  }
-}
-
-function hashArray(
-  value: unknown,
-  label: string,
-  sortedUnique: boolean,
-): asserts value is readonly Hash[] {
-  if (!Array.isArray(value)) fail(label, "must be an array");
-  for (let index = 0; index < value.length; index += 1) {
-    hashValue(value[index], `${label}[${index}]`);
-  }
-  if (sortedUnique) {
-    for (let index = 1; index < value.length; index += 1) {
-      if ((value[index - 1] as string) >= (value[index] as string)) {
-        fail(label, "must be sorted and unique");
-      }
-    }
-  }
-}
-
-function handlerKind(
-  value: unknown,
-  label: string,
-): asserts value is HandlerKind {
-  if (value !== "worker" && value !== "verifier") {
-    fail(label, "must be worker or verifier");
-  }
-}
-
-function terminalState(
-  value: unknown,
-  label: string,
-): asserts value is TerminalState {
-  if (value !== "succeeded" && value !== "failed" && value !== "cancelled") {
-    fail(label, "must be succeeded, failed, or cancelled");
-  }
-}
-
-function verdictValue(value: unknown, label: string): asserts value is Verdict {
-  if (value !== "PASS" && value !== "FAIL" && value !== "INCONCLUSIVE") {
-    fail(label, "must be PASS, FAIL, or INCONCLUSIVE");
-  }
-}
-
-function usageRows(
-  value: unknown,
-  label: string,
-): asserts value is readonly Usage[] {
-  if (!Array.isArray(value)) fail(label, "must be an array");
-  const meters = new Set<string>();
-  for (let index = 0; index < value.length; index += 1) {
-    const rowLabel = `${label}[${index}]`;
-    const row = objectValue(value[index], rowLabel);
-    exactKeys(
-      row,
-      ["meter", "requests"],
-      ["input", "cacheRead", "cacheWrite", "output", "reasoning"],
-      rowLabel,
-    );
-    nonemptyString(row.meter, `${rowLabel}.meter`);
-    if (meters.has(row.meter))
-      fail(label, `contains duplicate meter ${row.meter}`);
-    meters.add(row.meter);
-    safeInteger(row.requests, `${rowLabel}.requests`, 1);
-    for (const field of [
-      "input",
-      "cacheRead",
-      "cacheWrite",
-      "output",
-      "reasoning",
-    ] as const) {
-      if (Object.hasOwn(row, field)) {
-        safeInteger(row[field], `${rowLabel}.${field}`);
-      }
-    }
-  }
-}
-
-function assertCampaignBody(value: unknown, label: string): void {
-  const body = objectValue(value, label);
-  exactKeys(body, ["schemaVersion", "application", "config"], [], label);
-  if (body.schemaVersion !== 1) fail(`${label}.schemaVersion`, "must be 1");
-  nonemptyString(body.application, `${label}.application`);
-  hashValue(body.config, `${label}.config`);
-}
-
-function assertProcessBody(value: unknown, label: string): void {
-  const body = objectValue(value, label);
-  exactKeys(body, ["kernelVersion", "handlers", "adapters"], [], label);
-  nonemptyString(body.kernelVersion, `${label}.kernelVersion`);
-  if (!Array.isArray(body.handlers))
-    fail(`${label}.handlers`, "must be an array");
-  const handlerNames = new Set<string>();
-  for (let index = 0; index < body.handlers.length; index += 1) {
-    const itemLabel = `${label}.handlers[${index}]`;
-    const item = objectValue(body.handlers[index], itemLabel);
-    exactKeys(item, ["name", "kind"], [], itemLabel);
-    nonemptyString(item.name, `${itemLabel}.name`);
-    handlerKind(item.kind, `${itemLabel}.kind`);
-    if (handlerNames.has(item.name)) {
-      fail(`${label}.handlers`, `contains duplicate name ${item.name}`);
-    }
-    handlerNames.add(item.name);
-  }
-  stringArray(body.adapters, `${label}.adapters`);
-  const adapters = body.adapters as readonly string[];
-  if (new Set(adapters).size !== adapters.length) {
-    fail(`${label}.adapters`, "must contain unique ids");
-  }
-}
-
-function assertCandidateBody(value: unknown, label: string): void {
-  const body = objectValue(value, label);
-  exactKeys(body, ["material", "requiredVerifiers", "premises"], [], label);
-  hashValue(body.material, `${label}.material`);
-  stringArray(body.requiredVerifiers, `${label}.requiredVerifiers`, {
-    nonempty: true,
-    sortedUnique: true,
-  });
-  hashArray(body.premises, `${label}.premises`, true);
-  if ((body.premises as readonly Hash[]).includes(body.material)) {
-    fail(`${label}.premises`, "cannot contain the candidate itself");
-  }
-}
-
-function assertDispatchBody(value: unknown, label: string): void {
-  const body = objectValue(value, label);
-  exactKeys(
-    body,
-    ["id", "handler", "handlerKind", "input", "meta"],
-    ["parent", "target"],
-    label,
+const nonemptyStringSchema = z.string().min(1, "must be a nonempty string");
+const safeNonnegativeIntegerSchema = z
+  .number()
+  .refine(
+    (value) => Number.isSafeInteger(value) && value >= 0,
+    "must be a nonnegative safe integer",
   );
-  prefixedId<DispatchId>(body.id, "dispatch:", `${label}.id`);
-  nonemptyString(body.handler, `${label}.handler`);
-  handlerKind(body.handlerKind, `${label}.handlerKind`);
-  hashValue(body.input, `${label}.input`);
-  assertJson(body.meta, `${label}.meta`);
-  if (Object.hasOwn(body, "parent")) {
-    prefixedId<DispatchId>(body.parent, "dispatch:", `${label}.parent`);
-    if (body.parent === body.id) fail(`${label}.parent`, "cannot equal id");
-  }
-  if (Object.hasOwn(body, "target")) {
-    hashValue(body.target, `${label}.target`);
-    if (body.handlerKind !== "verifier") {
-      fail(`${label}.target`, "is allowed only for verifier dispatches");
-    }
-  }
-}
-
-function assertCallBody(value: unknown, label: string): void {
-  const body = objectValue(value, label);
-  exactKeys(body, ["id", "dispatch", "label", "request"], [], label);
-  prefixedId<CallId>(body.id, "call:", `${label}.id`);
-  prefixedId<DispatchId>(body.dispatch, "dispatch:", `${label}.dispatch`);
-  nonemptyString(body.label, `${label}.label`);
-  hashValue(body.request, `${label}.request`);
-}
-
-function assertToolCallBody(value: unknown, label: string): void {
-  const body = objectValue(value, label);
-  exactKeys(
-    body,
-    ["call", "dispatch", "invocation", "tool", "arguments"],
-    [],
-    label,
+const safePositiveIntegerSchema = z
+  .number()
+  .refine(
+    (value) => Number.isSafeInteger(value) && value >= 1,
+    "must be a positive safe integer",
   );
-  prefixedId<CallId>(body.call, "call:", `${label}.call`);
-  prefixedId<DispatchId>(body.dispatch, "dispatch:", `${label}.dispatch`);
-  prefixedId<InvocationId>(body.invocation, "tool:", `${label}.invocation`);
-  nonemptyString(body.tool, `${label}.tool`);
-  hashValue(body.arguments, `${label}.arguments`);
-}
-
-function assertToolResultBody(value: unknown, label: string): void {
-  const body = objectValue(value, label);
-  exactKeys(
-    body,
-    ["call", "dispatch", "invocation", "tool", "state"],
-    ["result", "error"],
-    label,
-  );
-  prefixedId<CallId>(body.call, "call:", `${label}.call`);
-  prefixedId<DispatchId>(body.dispatch, "dispatch:", `${label}.dispatch`);
-  prefixedId<InvocationId>(body.invocation, "tool:", `${label}.invocation`);
-  nonemptyString(body.tool, `${label}.tool`);
-  terminalState(body.state, `${label}.state`);
-  if (body.state === "succeeded") {
-    if (!Object.hasOwn(body, "result")) fail(label, "is missing result");
-    if (Object.hasOwn(body, "error"))
-      fail(label, "cannot contain error on success");
-    hashValue(body.result, `${label}.result`);
-  } else {
-    if (!Object.hasOwn(body, "error")) fail(label, "is missing error");
-    if (Object.hasOwn(body, "result"))
-      fail(label, "cannot contain result on failure");
-    hashValue(body.error, `${label}.error`);
-  }
-}
-
-function assertCallResultBody(value: unknown, label: string): void {
-  const body = objectValue(value, label);
-  exactKeys(
-    body,
-    ["call", "dispatch", "label", "state", "usage"],
-    ["output", "transcript", "providerModel", "error"],
-    label,
-  );
-  prefixedId<CallId>(body.call, "call:", `${label}.call`);
-  prefixedId<DispatchId>(body.dispatch, "dispatch:", `${label}.dispatch`);
-  nonemptyString(body.label, `${label}.label`);
-  terminalState(body.state, `${label}.state`);
-  usageRows(body.usage, `${label}.usage`);
-  for (const field of ["output", "transcript", "error"] as const) {
-    if (Object.hasOwn(body, field)) hashValue(body[field], `${label}.${field}`);
-  }
-  if (Object.hasOwn(body, "providerModel")) {
-    nonemptyString(body.providerModel, `${label}.providerModel`);
-  }
-  if (body.state === "succeeded") {
-    if (!Object.hasOwn(body, "output")) fail(label, "is missing output");
-    if (Object.hasOwn(body, "error"))
-      fail(label, "cannot contain error on success");
-  } else if (!Object.hasOwn(body, "error")) {
-    fail(label, "is missing error");
-  }
-}
-
-function assertCompletionBody(value: unknown, label: string): void {
-  const body = objectValue(value, label);
-  exactKeys(
-    body,
-    ["dispatch", "handler", "handlerKind", "state"],
-    ["output", "error", "candidate", "verdict"],
-    label,
-  );
-  prefixedId<DispatchId>(body.dispatch, "dispatch:", `${label}.dispatch`);
-  nonemptyString(body.handler, `${label}.handler`);
-  handlerKind(body.handlerKind, `${label}.handlerKind`);
-  terminalState(body.state, `${label}.state`);
-
-  if (body.state === "succeeded") {
-    if (!Object.hasOwn(body, "output")) fail(label, "is missing output");
-    if (Object.hasOwn(body, "error"))
-      fail(label, "cannot contain error on success");
-    hashValue(body.output, `${label}.output`);
-    if (body.handlerKind === "worker") {
-      if (Object.hasOwn(body, "candidate") || Object.hasOwn(body, "verdict")) {
-        fail(label, "worker success cannot contain a verdict");
-      }
-    } else {
-      if (!Object.hasOwn(body, "candidate"))
-        fail(label, "is missing candidate");
-      if (!Object.hasOwn(body, "verdict")) fail(label, "is missing verdict");
-      hashValue(body.candidate, `${label}.candidate`);
-      verdictValue(body.verdict, `${label}.verdict`);
-    }
-    return;
-  }
-
-  if (!Object.hasOwn(body, "error")) fail(label, "is missing error");
-  if (Object.hasOwn(body, "verdict")) {
-    fail(label, "failed or cancelled completion cannot contain a verdict");
-  }
-  hashValue(body.error, `${label}.error`);
-  if (Object.hasOwn(body, "output")) hashValue(body.output, `${label}.output`);
-  if (Object.hasOwn(body, "candidate")) {
-    hashValue(body.candidate, `${label}.candidate`);
-    if (body.handlerKind !== "verifier") {
-      fail(`${label}.candidate`, "is allowed only for verifier completions");
-    }
-  }
-}
-
-function assertPromotionBody(value: unknown, label: string): void {
-  const body = objectValue(value, label);
-  exactKeys(body, ["candidate", "passes"], [], label);
-  hashValue(body.candidate, `${label}.candidate`);
-  if (!Array.isArray(body.passes) || body.passes.length === 0) {
-    fail(`${label}.passes`, "must be a nonempty array");
-  }
-  const verifiers = new Set<string>();
-  for (let index = 0; index < body.passes.length; index += 1) {
-    const passLabel = `${label}.passes[${index}]`;
-    const pass = objectValue(body.passes[index], passLabel);
-    exactKeys(pass, ["verifier", "completionSeq"], [], passLabel);
-    nonemptyString(pass.verifier, `${passLabel}.verifier`);
-    safeInteger(pass.completionSeq, `${passLabel}.completionSeq`, 1);
-    if (verifiers.has(pass.verifier)) {
-      fail(`${label}.passes`, `contains duplicate verifier ${pass.verifier}`);
-    }
-    verifiers.add(pass.verifier);
-  }
-}
-
-function assertRebuttalBody(value: unknown, label: string): void {
-  const body = objectValue(value, label);
-  exactKeys(
-    body,
-    ["failingCompletionSeq", "reason", "verifier", "candidate"],
-    [],
-    label,
-  );
-  safeInteger(body.failingCompletionSeq, `${label}.failingCompletionSeq`, 1);
-  hashValue(body.reason, `${label}.reason`);
-  nonemptyString(body.verifier, `${label}.verifier`);
-  hashValue(body.candidate, `${label}.candidate`);
-}
-
-function assertEventBody(value: unknown, label: string): void {
-  const body = objectValue(value, label);
-  exactKeys(body, ["topic", "data", "blobs"], [], label);
-  nonemptyString(body.topic, `${label}.topic`);
-  assertJson(body.data, `${label}.data`);
-  hashArray(body.blobs, `${label}.blobs`, false);
-  const blobs = body.blobs as readonly Hash[];
-  if (new Set(blobs).size !== blobs.length) {
-    fail(`${label}.blobs`, "must contain unique hashes");
-  }
-}
-
-function isRecordKind(value: unknown): value is RecordKind {
-  return (
+const hashSchema = z.custom<Hash>(
+  isHash,
+  "must match sha256:<64 lowercase hex digits>",
+);
+const dispatchIdSchema = z.custom<DispatchId>(
+  (value) =>
     typeof value === "string" &&
-    (RECORD_KINDS as readonly string[]).includes(value)
+    value.startsWith("dispatch:") &&
+    value.length > "dispatch:".length,
+  "must be a nonempty dispatch: id",
+);
+const callIdSchema = z.custom<CallId>(
+  (value) =>
+    typeof value === "string" &&
+    value.startsWith("call:") &&
+    value.length > "call:".length,
+  "must be a nonempty call: id",
+);
+const invocationIdSchema = z.custom<InvocationId>(
+  (value) =>
+    typeof value === "string" &&
+    value.startsWith("tool:") &&
+    value.length > "tool:".length,
+  "must be a nonempty tool: id",
+);
+const jsonSchema = z.custom<Json>(isJson, "must be JSON");
+const handlerKindSchema = z.enum(["worker", "verifier"]);
+const verdictSchema = z.enum(["PASS", "FAIL", "INCONCLUSIVE"]);
+const failureStateSchema = z.enum(["failed", "cancelled"]);
+
+function addUniqueIssue<T>(
+  values: readonly string[],
+  context: z.core.$RefinementCtx<T>,
+  noun: string,
+): void {
+  const seen = new Set<string>();
+  for (let index = 0; index < values.length; index += 1) {
+    const value = values[index] as string;
+    if (seen.has(value)) {
+      context.addIssue({
+        code: "custom",
+        path: [index],
+        message: `contains duplicate ${noun} ${value}`,
+      });
+    }
+    seen.add(value);
+  }
+}
+
+function addSortedUniqueIssue<T>(
+  values: readonly string[],
+  context: z.core.$RefinementCtx<T>,
+): void {
+  for (let index = 1; index < values.length; index += 1) {
+    if ((values[index - 1] as string) >= (values[index] as string)) {
+      context.addIssue({
+        code: "custom",
+        path: [index],
+        message: "must be sorted and unique",
+      });
+    }
+  }
+}
+
+const uniqueStringArraySchema = z
+  .array(nonemptyStringSchema)
+  .superRefine((values, context) => addUniqueIssue(values, context, "id"));
+const sortedUniqueStringArraySchema = z
+  .array(nonemptyStringSchema)
+  .superRefine(addSortedUniqueIssue);
+const sortedUniqueHashArraySchema = z
+  .array(hashSchema)
+  .superRefine(addSortedUniqueIssue);
+const uniqueHashArraySchema = z
+  .array(hashSchema)
+  .superRefine((values, context) => addUniqueIssue(values, context, "hash"));
+
+const usageSchema = z.strictObject({
+  meter: nonemptyStringSchema,
+  requests: safePositiveIntegerSchema,
+  input: safeNonnegativeIntegerSchema.optional(),
+  cacheRead: safeNonnegativeIntegerSchema.optional(),
+  cacheWrite: safeNonnegativeIntegerSchema.optional(),
+  output: safeNonnegativeIntegerSchema.optional(),
+  reasoning: safeNonnegativeIntegerSchema.optional(),
+});
+
+const usageRowsSchema = z.array(usageSchema).superRefine((rows, context) => {
+  const meters = rows.map((row) => row.meter);
+  addUniqueIssue(meters, context, "meter");
+});
+
+const campaignBodySchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  application: nonemptyStringSchema,
+  config: hashSchema,
+});
+
+const processBodySchema = z.strictObject({
+  kernelVersion: nonemptyStringSchema,
+  handlers: z
+    .array(
+      z.strictObject({
+        name: nonemptyStringSchema,
+        kind: handlerKindSchema,
+      }),
+    )
+    .superRefine((handlers, context) => {
+      addUniqueIssue(
+        handlers.map((handler) => handler.name),
+        context,
+        "name",
+      );
+    }),
+  adapters: uniqueStringArraySchema,
+});
+
+const candidateBodySchema = z
+  .strictObject({
+    material: hashSchema,
+    requiredVerifiers: sortedUniqueStringArraySchema.min(1),
+    premises: sortedUniqueHashArraySchema,
+  })
+  .superRefine((body, context) => {
+    if (body.premises.includes(body.material)) {
+      context.addIssue({
+        code: "custom",
+        path: ["premises"],
+        message: "cannot contain the candidate itself",
+      });
+    }
+  });
+
+const dispatchBaseShape = {
+  id: dispatchIdSchema,
+  handler: nonemptyStringSchema,
+  input: hashSchema,
+  meta: jsonSchema,
+  parent: dispatchIdSchema.optional(),
+};
+const dispatchBodySchema = z.union([
+  z
+    .strictObject({
+      ...dispatchBaseShape,
+      handlerKind: z.literal("worker"),
+    })
+    .refine((body) => body.parent !== body.id, {
+      path: ["parent"],
+      message: "cannot equal id",
+    }),
+  z
+    .strictObject({
+      ...dispatchBaseShape,
+      handlerKind: z.literal("verifier"),
+      target: hashSchema.optional(),
+    })
+    .refine((body) => body.parent !== body.id, {
+      path: ["parent"],
+      message: "cannot equal id",
+    }),
+]);
+
+const callBodySchema = z.strictObject({
+  id: callIdSchema,
+  dispatch: dispatchIdSchema,
+  label: nonemptyStringSchema,
+  request: hashSchema,
+});
+
+const toolCorrelationShape = {
+  call: callIdSchema,
+  dispatch: dispatchIdSchema,
+  invocation: invocationIdSchema,
+  tool: nonemptyStringSchema,
+};
+const toolCallBodySchema = z.strictObject({
+  ...toolCorrelationShape,
+  arguments: hashSchema,
+});
+const toolResultBodySchema = z.union([
+  z.strictObject({
+    ...toolCorrelationShape,
+    state: z.literal("succeeded"),
+    result: hashSchema,
+  }),
+  z.strictObject({
+    ...toolCorrelationShape,
+    state: failureStateSchema,
+    error: hashSchema,
+  }),
+]);
+
+const callResultBaseShape = {
+  call: callIdSchema,
+  dispatch: dispatchIdSchema,
+  label: nonemptyStringSchema,
+  transcript: hashSchema.optional(),
+  usage: usageRowsSchema,
+  providerModel: nonemptyStringSchema.optional(),
+};
+const callResultBodySchema = z.union([
+  z.strictObject({
+    ...callResultBaseShape,
+    state: z.literal("succeeded"),
+    output: hashSchema,
+  }),
+  z.strictObject({
+    ...callResultBaseShape,
+    state: failureStateSchema,
+    output: hashSchema.optional(),
+    error: hashSchema,
+  }),
+]);
+
+const completionBaseShape = {
+  dispatch: dispatchIdSchema,
+  handler: nonemptyStringSchema,
+};
+const completionBodySchema = z.union([
+  z.strictObject({
+    ...completionBaseShape,
+    handlerKind: z.literal("worker"),
+    state: z.literal("succeeded"),
+    output: hashSchema,
+  }),
+  z.strictObject({
+    ...completionBaseShape,
+    handlerKind: z.literal("verifier"),
+    state: z.literal("succeeded"),
+    output: hashSchema,
+    candidate: hashSchema,
+    verdict: verdictSchema,
+  }),
+  z.strictObject({
+    ...completionBaseShape,
+    handlerKind: z.literal("worker"),
+    state: failureStateSchema,
+    output: hashSchema.optional(),
+    error: hashSchema,
+  }),
+  z.strictObject({
+    ...completionBaseShape,
+    handlerKind: z.literal("verifier"),
+    state: failureStateSchema,
+    output: hashSchema.optional(),
+    error: hashSchema,
+    candidate: hashSchema.optional(),
+  }),
+]);
+
+const promotionBodySchema = z.strictObject({
+  candidate: hashSchema,
+  passes: z
+    .array(
+      z.strictObject({
+        verifier: nonemptyStringSchema,
+        completionSeq: safePositiveIntegerSchema,
+      }),
+    )
+    .min(1)
+    .superRefine((passes, context) => {
+      addUniqueIssue(
+        passes.map((pass) => pass.verifier),
+        context,
+        "verifier",
+      );
+    }),
+});
+
+const rebuttalBodySchema = z.strictObject({
+  failingCompletionSeq: safePositiveIntegerSchema,
+  reason: hashSchema,
+  verifier: nonemptyStringSchema,
+  candidate: hashSchema,
+});
+
+const eventBodySchema = z.strictObject({
+  topic: nonemptyStringSchema,
+  data: jsonSchema,
+  blobs: uniqueHashArraySchema,
+});
+
+const recordBodySchemas: Record<RecordKind, z.ZodType> = {
+  campaign: campaignBodySchema,
+  process: processBodySchema,
+  candidate: candidateBodySchema,
+  dispatch: dispatchBodySchema,
+  call: callBodySchema,
+  "tool-call": toolCallBodySchema,
+  "tool-result": toolResultBodySchema,
+  "call-result": callResultBodySchema,
+  completion: completionBodySchema,
+  promotion: promotionBodySchema,
+  rebuttal: rebuttalBodySchema,
+  event: eventBodySchema,
+};
+
+const recordKindSchema = z.enum(RECORD_KINDS);
+const recordDraftEnvelopeSchema = z.strictObject({
+  kind: recordKindSchema,
+  body: z.unknown(),
+});
+const recordEnvelopeSchema = z.strictObject({
+  seq: safePositiveIntegerSchema,
+  atMs: safeNonnegativeIntegerSchema,
+  kind: recordKindSchema,
+  body: z.unknown(),
+  dispatch: dispatchIdSchema.optional(),
+  name: nonemptyStringSchema.optional(),
+  candidate: hashSchema.optional(),
+});
+
+function parseSchema<T>(
+  schema: z.ZodType<T>,
+  value: unknown,
+  label: string,
+): T {
+  const result = schema.safeParse(value);
+  if (result.success) return result.data;
+  const issue = result.error.issues[0];
+  throw new TypeError(
+    `${label}${issue?.path.length ? `.${issue.path.join(".")}` : ""} ${issue?.message ?? "is invalid"}`,
   );
+}
+
+function assertSchema(schema: z.ZodType, value: unknown, label: string): void {
+  parseSchema(schema, value, label);
 }
 
 export function assertRecordBody<K extends RecordKind>(
@@ -701,54 +633,14 @@ export function assertRecordBody<K extends RecordKind>(
   body: unknown,
 ): asserts body is RecordBodyByKind[K] {
   assertJson(body, `${kind} body`);
-  switch (kind) {
-    case "campaign":
-      assertCampaignBody(body, "campaign body");
-      break;
-    case "process":
-      assertProcessBody(body, "process body");
-      break;
-    case "candidate":
-      assertCandidateBody(body, "candidate body");
-      break;
-    case "dispatch":
-      assertDispatchBody(body, "dispatch body");
-      break;
-    case "call":
-      assertCallBody(body, "call body");
-      break;
-    case "tool-call":
-      assertToolCallBody(body, "tool-call body");
-      break;
-    case "tool-result":
-      assertToolResultBody(body, "tool-result body");
-      break;
-    case "call-result":
-      assertCallResultBody(body, "call-result body");
-      break;
-    case "completion":
-      assertCompletionBody(body, "completion body");
-      break;
-    case "promotion":
-      assertPromotionBody(body, "promotion body");
-      break;
-    case "rebuttal":
-      assertRebuttalBody(body, "rebuttal body");
-      break;
-    case "event":
-      assertEventBody(body, "event body");
-      break;
-  }
+  assertSchema(recordBodySchemas[kind], body, `${kind} body`);
 }
 
 export function assertRecordDraft(
   value: unknown,
 ): asserts value is RecordDraft {
   assertJson(value, "record draft");
-  const draft = objectValue(value, "record draft");
-  exactKeys(draft, ["kind", "body"], [], "record draft");
-  if (!isRecordKind(draft.kind))
-    fail("record draft.kind", "is not a record kind");
+  const draft = parseSchema(recordDraftEnvelopeSchema, value, "record draft");
   assertRecordBody(draft.kind, draft.body);
 }
 
@@ -803,30 +695,13 @@ export function projectRecordCorrelations(
   }
 }
 
-function sameCorrelations(
-  row: UnknownObject,
-  expected: RecordCorrelations,
-  label: string,
-): void {
-  for (const key of ["dispatch", "name", "candidate"] as const) {
-    const present = Object.hasOwn(row, key);
-    const wanted = Object.hasOwn(expected, key);
-    if (present !== wanted) {
-      fail(label, wanted ? `is missing ${key}` : `has unexpected ${key}`);
-    }
-    if (wanted && row[key] !== expected[key]) {
-      fail(label, `${key} does not match its record body`);
-    }
-  }
-}
-
 export function makeLogRecord(
   seq: number,
   atMs: number,
   draft: RecordDraft,
 ): LogRecord {
-  safeInteger(seq, "record seq", 1);
-  safeInteger(atMs, "record atMs");
+  assertSchema(safePositiveIntegerSchema, seq, "record seq");
+  assertSchema(safeNonnegativeIntegerSchema, atMs, "record atMs");
   assertRecordDraft(draft);
   const snapshot = JSON.parse(JSON.stringify(draft)) as RecordDraft;
   return parseLogRecord({
@@ -841,20 +716,32 @@ export function makeLogRecord(
 export function parseLogRecord(value: unknown): LogRecord {
   try {
     assertJson(value, "record");
-    const row = objectValue(value, "record");
-    if (!isRecordKind(row.kind)) fail("record.kind", "is not a record kind");
+    const row = parseSchema(recordEnvelopeSchema, value, "record");
     assertRecordBody(row.kind, row.body);
     const draft = { kind: row.kind, body: row.body } as RecordDraft;
     const correlations = projectRecordCorrelations(draft);
-    exactKeys(
-      row,
-      ["seq", "atMs", "kind", "body", ...Object.keys(correlations)],
-      [],
+    const correlationShape = {
+      ...(correlations.dispatch === undefined
+        ? {}
+        : { dispatch: z.literal(correlations.dispatch) }),
+      ...(correlations.name === undefined
+        ? {}
+        : { name: z.literal(correlations.name) }),
+      ...(correlations.candidate === undefined
+        ? {}
+        : { candidate: z.literal(correlations.candidate) }),
+    };
+    assertSchema(
+      z.strictObject({
+        seq: safePositiveIntegerSchema,
+        atMs: safeNonnegativeIntegerSchema,
+        kind: z.literal(row.kind),
+        body: recordBodySchemas[row.kind],
+        ...correlationShape,
+      }),
+      value,
       "record",
     );
-    safeInteger(row.seq, "record.seq", 1);
-    safeInteger(row.atMs, "record.atMs");
-    sameCorrelations(row, correlations, "record");
     return JSON.parse(JSON.stringify(value)) as LogRecord;
   } catch (error) {
     if (error instanceof Defect) throw error;

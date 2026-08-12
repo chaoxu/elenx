@@ -3,11 +3,14 @@ import { describe, expect, test } from "bun:test";
 import { Defect } from "../src/core/errors";
 import { hashBytes } from "../src/core/hash";
 import {
+  assertRecordDraft,
   makeLogRecord,
   parseLogRecord,
   projectRecordCorrelations,
+  recordBlobReferences,
   type CandidateBody,
   type DispatchBody,
+  type RecordDraft,
 } from "../src/core/records";
 import { assertJson } from "../src/core/types";
 
@@ -41,6 +44,87 @@ describe("record boundaries", () => {
     expect(() => makeLogRecord(1, 0, { kind: "candidate", body })).toThrow(
       TypeError,
     );
+  });
+
+  test("keeps bodies closed and terminal variants state-dependent", () => {
+    const invalidDrafts: readonly unknown[] = [
+      {
+        kind: "candidate",
+        body: {
+          material: hash,
+          requiredVerifiers: ["audit/v1"],
+          premises: [],
+          extra: true,
+        },
+      },
+      {
+        kind: "dispatch",
+        body: {
+          id: "dispatch:one",
+          handler: "worker/v1",
+          handlerKind: "worker",
+          input: hash,
+          meta: null,
+          target: hash,
+        },
+      },
+      {
+        kind: "tool-result",
+        body: {
+          call: "call:one",
+          dispatch: "dispatch:one",
+          invocation: "tool:one",
+          tool: "inspect",
+          state: "succeeded",
+          result: hash,
+          error: hash,
+        },
+      },
+      {
+        kind: "call-result",
+        body: {
+          call: "call:one",
+          dispatch: "dispatch:one",
+          label: "draft",
+          state: "failed",
+          usage: [],
+        },
+      },
+      {
+        kind: "completion",
+        body: {
+          dispatch: "dispatch:one",
+          handler: "worker/v1",
+          handlerKind: "worker",
+          state: "succeeded",
+          output: hash,
+          candidate: hash,
+          verdict: "PASS",
+        },
+      },
+    ];
+
+    for (const draft of invalidDrafts) {
+      expect(() => assertRecordDraft(draft)).toThrow(TypeError);
+    }
+  });
+
+  test("preserves the exact blob reference projection", () => {
+    const draft: RecordDraft = {
+      kind: "call-result",
+      body: {
+        call: "call:one",
+        dispatch: "dispatch:one",
+        label: "draft",
+        state: "failed",
+        output: hash,
+        transcript: hash,
+        usage: [],
+        error: hash,
+      },
+    };
+
+    expect(recordBlobReferences(draft)).toEqual([hash, hash, hash]);
   });
 
   test("rejects a stored row whose indexed columns disagree", () => {

@@ -62,15 +62,27 @@ function connectionOf(store: SqliteReader | SqliteWriter): Database {
   return connection;
 }
 
-function expectDefect(error: unknown, code: Defect["code"]): boolean {
+function expectDefect(
+  error: unknown,
+  code: Defect["code"],
+  operation?: string,
+): boolean {
   expect(error).toBeInstanceOf(Defect);
   expect((error as Defect).code).toBe(code);
+  if (operation !== undefined)
+    expect((error as Defect).operation).toBe(operation);
   return true;
 }
 
-function expectRefusal(error: unknown, code: Refusal["code"]): boolean {
+function expectRefusal(
+  error: unknown,
+  code: Refusal["code"],
+  operation?: string,
+): boolean {
   expect(error).toBeInstanceOf(Refusal);
   expect((error as Refusal).code).toBe(code);
+  if (operation !== undefined)
+    expect((error as Refusal).operation).toBe(operation);
   return true;
 }
 
@@ -197,6 +209,44 @@ describe("SQLite store", () => {
     );
   });
 
+  test("hash-checks every referenced blob before append and selector filtering", () => {
+    const path = temporaryDatabase();
+    const writer = track(createSqliteWriter(path));
+    const damaged = writer.putBlob(bytes("damaged later"));
+    writer.append({
+      kind: "event",
+      body: { topic: "damaged", data: null, blobs: [damaged] },
+    });
+    writer.append({
+      kind: "event",
+      body: { topic: "selected", data: null, blobs: [] },
+    });
+    const raw = rawWriter(path);
+
+    raw.run("DROP TRIGGER blobs_no_update");
+    raw.run("UPDATE blobs SET bytes = ? WHERE hash = ?", [
+      bytes("different bytes"),
+      damaged,
+    ]);
+
+    const readError = thrown(() => writer.records({ name: "selected" }));
+    expectDefect(readError, "HASH_MISMATCH", "read-records");
+    expect((readError as Defect).refs).toEqual([{ seq: 1 }]);
+
+    const appendError = thrown(() =>
+      writer.append({
+        kind: "event",
+        body: { topic: "new-reference", data: null, blobs: [damaged] },
+      }),
+    );
+    expectDefect(appendError, "HASH_MISMATCH", "append-record");
+    expect(
+      connectionOf(writer)
+        .query<{ count: bigint }, []>("SELECT count(*) AS count FROM records")
+        .get(),
+    ).toEqual({ count: 2n });
+  });
+
   test("validates record bodies, derives correlations, and requires blobs", () => {
     const path = temporaryDatabase();
     const writer = track(createSqliteWriter(path));
@@ -267,9 +317,51 @@ describe("SQLite store", () => {
     );
 
     expectDefect(
-      thrown(() => writer.records()),
+      thrown(() => writer.records({ name: "different" })),
       "CORRUPT_RECORD",
     );
+  });
+
+  test("maps duplicate start and terminal records to typed defects", () => {
+    const path = temporaryDatabase();
+    const writer = track(createSqliteWriter(path));
+    const input = writer.putBlob(bytes("input"));
+    const output = writer.putBlob(bytes("output"));
+    const dispatch = {
+      kind: "dispatch",
+      body: {
+        id: "dispatch:duplicate",
+        handler: "worker",
+        handlerKind: "worker",
+        input,
+        meta: null,
+      },
+    } as const;
+    writer.append(dispatch);
+
+    const duplicateStart = thrown(() => writer.append(dispatch));
+    expectDefect(duplicateStart, "DUPLICATE_START", "append-record");
+    expect((duplicateStart as Defect).refs).toEqual([
+      { dispatch: "dispatch:duplicate", name: "worker" },
+    ]);
+
+    const completion = {
+      kind: "completion",
+      body: {
+        dispatch: "dispatch:duplicate",
+        handler: "worker",
+        handlerKind: "worker",
+        state: "succeeded",
+        output,
+      },
+    } as const;
+    writer.append(completion);
+
+    const duplicateTerminal = thrown(() => writer.append(completion));
+    expectDefect(duplicateTerminal, "DUPLICATE_TERMINAL", "append-record");
+    expect((duplicateTerminal as Defect).refs).toEqual([
+      { dispatch: "dispatch:duplicate", name: "worker" },
+    ]);
   });
 
   test("exact selectors combine with AND and preserve append order", () => {
@@ -364,10 +456,12 @@ describe("SQLite store", () => {
     expectRefusal(
       thrown(() => createSqliteWriter(path)),
       "WRITER_LOCKED",
+      "create-campaign",
     );
     expectRefusal(
       thrown(() => openSqliteWriter(path)),
       "WRITER_LOCKED",
+      "open-campaign",
     );
 
     close(first);
@@ -416,10 +510,37 @@ describe("SQLite store", () => {
     expectRefusal(
       thrown(() => createSqliteWriter(path)),
       "CAMPAIGN_EXISTS",
+      "create-campaign",
     );
     expectRefusal(
       thrown(() => createSqliteWriter(path)),
       "CAMPAIGN_EXISTS",
+    );
+  });
+
+  test("types and relabels invalid paths at each factory boundary", () => {
+    const path = temporaryDatabase();
+    const directory = join(path, "..");
+
+    expectRefusal(
+      thrown(() => createSqliteWriter("")),
+      "INVALID_ARGUMENT",
+      "create-campaign",
+    );
+    expectRefusal(
+      thrown(() => createSqliteWriter(directory)),
+      "INVALID_ARGUMENT",
+      "create-campaign",
+    );
+    expectRefusal(
+      thrown(() => openSqliteWriter(directory)),
+      "INVALID_ARGUMENT",
+      "open-campaign",
+    );
+    expectDefect(
+      thrown(() => openSqliteReader(directory)),
+      "DATABASE",
+      "open-reader",
     );
   });
 });

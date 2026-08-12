@@ -1,8 +1,8 @@
 import { existsSync } from "node:fs";
 
-import { Database, type SQLQueryBindings } from "bun:sqlite";
+import { Database, SQLiteError } from "bun:sqlite";
 
-import { Defect, Refusal } from "./errors";
+import { Defect, Refusal, type ErrorRef } from "./errors";
 import { assertHash, hashBytes, hashMatches } from "./hash";
 import { acquireWriterLock } from "./lock";
 import {
@@ -19,6 +19,7 @@ import { RECORD_KINDS, type Hash, type RecordSelector } from "./types";
 export const DATABASE_SCHEMA_VERSION = 1;
 
 type WriterLock = ReturnType<typeof acquireWriterLock>;
+type WriterOperation = Parameters<typeof acquireWriterLock>[1];
 
 const HASH_SQL = `
   length(hash) = 71
@@ -142,11 +143,11 @@ function databaseDefect(operation: string, cause: unknown): Defect {
   );
 }
 
-function unsupportedSchema(found: unknown): Defect {
+function unsupportedSchema(found: unknown, operation: string): Defect {
   return new Defect(
     "UNSUPPORTED_SCHEMA",
     `Campaign schema version ${String(found)} is unsupported; expected ${DATABASE_SCHEMA_VERSION}`,
-    { operation: "open-campaign" },
+    { operation },
   );
 }
 
@@ -162,12 +163,16 @@ function missingCampaign(path: string, operation: string): Refusal {
   });
 }
 
-function assertDatabasePath(path: string): void {
-  if (path.length === 0) {
-    throw new TypeError("database path must be nonempty");
+function assertDatabasePath(path: string, operation: string): void {
+  if (typeof path !== "string" || path.length === 0) {
+    throw new Refusal("INVALID_ARGUMENT", "Database path must be nonempty", {
+      operation,
+    });
   }
   if (path.includes("\0")) {
-    throw new TypeError("database path contains NUL");
+    throw new Refusal("INVALID_ARGUMENT", "Database path contains NUL", {
+      operation,
+    });
   }
 }
 
@@ -205,7 +210,7 @@ function configureWriter(database: Database): void {
   database.run("PRAGMA recursive_triggers = ON");
 }
 
-function checkSchemaVersion(database: Database): void {
+function checkSchemaVersion(database: Database, operation: string): void {
   let row: SchemaVersionRow | null;
   try {
     row = database.query<SchemaVersionRow, []>("PRAGMA user_version").get();
@@ -214,18 +219,32 @@ function checkSchemaVersion(database: Database): void {
   }
   const found = row?.user_version;
   if (found !== BigInt(DATABASE_SCHEMA_VERSION)) {
-    throw unsupportedSchema(found);
+    throw unsupportedSchema(found, operation);
   }
 }
 
-function acquireCampaignLock(path: string, operation: string): WriterLock {
+function acquireCampaignLock(
+  path: string,
+  operation: WriterOperation,
+): WriterLock {
   try {
-    return acquireWriterLock(path);
+    return acquireWriterLock(path, operation);
   } catch (error) {
-    if (error instanceof Refusal && error.code === "WRITER_LOCKED") {
-      throw new Refusal("WRITER_LOCKED", error.message, { operation });
+    if (error instanceof Refusal) {
+      throw new Refusal(error.code, error.message, {
+        operation,
+        refs: error.refs,
+        cause: error,
+      });
     }
-    throw error;
+    if (error instanceof TypeError) {
+      throw new Refusal("INVALID_ARGUMENT", error.message, {
+        operation,
+        cause: error,
+      });
+    }
+    if (error instanceof Defect) throw error;
+    throw databaseDefect(operation, error);
   }
 }
 
@@ -303,6 +322,125 @@ function validateSelector(selector: RecordSelector | undefined): void {
   }
 }
 
+function recordMatchesSelector(
+  record: LogRecord,
+  selector: RecordSelector | undefined,
+): boolean {
+  if (selector === undefined) return true;
+  if (selector.kind !== undefined && record.kind !== selector.kind)
+    return false;
+  for (const key of ["dispatch", "name", "candidate"] as const) {
+    const expected = selector[key];
+    if (
+      expected !== undefined &&
+      (!(key in record) || record[key] !== expected)
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function duplicateRefs(draft: RecordDraft): readonly ErrorRef[] {
+  switch (draft.kind) {
+    case "campaign":
+      return [{ name: draft.body.application }];
+    case "process":
+    case "event":
+      return [];
+    case "candidate":
+      return [{ candidate: draft.body.material }];
+    case "dispatch":
+      return [
+        draft.body.target === undefined
+          ? { dispatch: draft.body.id, name: draft.body.handler }
+          : {
+              dispatch: draft.body.id,
+              name: draft.body.handler,
+              candidate: draft.body.target,
+            },
+      ];
+    case "call":
+      return [
+        {
+          call: draft.body.id,
+          dispatch: draft.body.dispatch,
+          name: draft.body.label,
+        },
+      ];
+    case "tool-call":
+    case "tool-result":
+      return [
+        {
+          call: draft.body.call,
+          dispatch: draft.body.dispatch,
+          invocation: draft.body.invocation,
+          name: draft.body.tool,
+        },
+      ];
+    case "call-result":
+      return [
+        {
+          call: draft.body.call,
+          dispatch: draft.body.dispatch,
+          name: draft.body.label,
+        },
+      ];
+    case "completion":
+      return [
+        "candidate" in draft.body && draft.body.candidate !== undefined
+          ? {
+              dispatch: draft.body.dispatch,
+              name: draft.body.handler,
+              candidate: draft.body.candidate,
+            }
+          : { dispatch: draft.body.dispatch, name: draft.body.handler },
+      ];
+    case "promotion":
+      return [{ candidate: draft.body.candidate }];
+    case "rebuttal":
+      return [{ candidate: draft.body.candidate, name: draft.body.verifier }];
+  }
+}
+
+function duplicateRecordDefect(
+  error: unknown,
+  draft: RecordDraft,
+): Defect | undefined {
+  if (
+    !(error instanceof SQLiteError) ||
+    error.code !== "SQLITE_CONSTRAINT_UNIQUE"
+  ) {
+    return undefined;
+  }
+
+  const starts = new Set<RecordDraft["kind"]>([
+    "campaign",
+    "candidate",
+    "dispatch",
+    "call",
+    "tool-call",
+  ]);
+  const terminals = new Set<RecordDraft["kind"]>([
+    "completion",
+    "call-result",
+    "tool-result",
+    "promotion",
+  ]);
+  const code = starts.has(draft.kind)
+    ? "DUPLICATE_START"
+    : terminals.has(draft.kind)
+      ? "DUPLICATE_TERMINAL"
+      : undefined;
+  if (code === undefined) return undefined;
+
+  return new Defect(code, `Duplicate ${draft.kind} record`, {
+    operation: "append-record",
+    refs: duplicateRefs(draft),
+    cause: error,
+  });
+}
+
 export class SqliteReader {
   protected readonly database: Database;
   private isClosed = false;
@@ -315,68 +453,52 @@ export class SqliteReader {
     if (this.isClosed) throw closed(operation);
   }
 
-  protected hasBlob(hash: Hash): boolean {
-    try {
-      return (
-        this.database
-          .query<
-            { readonly present: number },
-            [Hash]
-          >("SELECT 1 AS present FROM blobs WHERE hash = ?")
-          .get(hash) !== null
-      );
-    } catch (error) {
-      throw databaseDefect("check a blob reference", error);
-    }
-  }
-
-  blob(hash: Hash): Uint8Array {
-    this.assertOpen("read-blob");
-    assertHash(hash);
+  protected checkedBlob(
+    hash: Hash,
+    operation: string,
+    refs: readonly ErrorRef[] = [],
+  ): Uint8Array {
     let row: StoredBlobRow | null;
     try {
       row = this.database
         .query<StoredBlobRow, [Hash]>("SELECT bytes FROM blobs WHERE hash = ?")
         .get(hash);
     } catch (error) {
-      throw databaseDefect("read a blob", error);
+      throw databaseDefect(operation, error);
     }
     if (row === null) {
       throw new Defect("MISSING_BLOB", `Blob is missing: ${hash}`, {
-        operation: "read-blob",
+        operation,
+        refs,
       });
     }
     if (!(row.bytes instanceof Uint8Array) || !hashMatches(hash, row.bytes)) {
       throw new Defect("HASH_MISMATCH", `Blob bytes do not match ${hash}`, {
-        operation: "read-blob",
+        operation,
+        refs,
       });
     }
-    return Uint8Array.from(row.bytes);
+    return row.bytes;
+  }
+
+  blob(hash: Hash): Uint8Array {
+    this.assertOpen("read-blob");
+    assertHash(hash);
+    return Uint8Array.from(this.checkedBlob(hash, "read-blob"));
   }
 
   records(selector?: RecordSelector): readonly LogRecord[] {
     this.assertOpen("read-records");
     validateSelector(selector);
 
-    const clauses: string[] = [];
-    const bindings: SQLQueryBindings[] = [];
-    for (const key of ["kind", "dispatch", "name", "candidate"] as const) {
-      const value = selector?.[key];
-      if (value !== undefined) {
-        clauses.push(`${key} = ?`);
-        bindings.push(value);
-      }
-    }
-    const where = clauses.length === 0 ? "" : ` WHERE ${clauses.join(" AND ")}`;
-
     let rows: readonly StoredRecordRow[];
     try {
       rows = this.database
         .query<
           StoredRecordRow,
-          SQLQueryBindings[]
-        >(`SELECT seq, at_ms AS atMs, kind, dispatch, name, candidate, body FROM records${where} ORDER BY seq`)
-        .all(...bindings);
+          []
+        >("SELECT seq, at_ms AS atMs, kind, dispatch, name, candidate, body FROM records ORDER BY seq")
+        .all();
     } catch (error) {
       throw databaseDefect("read records", error);
     }
@@ -384,16 +506,10 @@ export class SqliteReader {
     const records = rows.map(parseStoredRecord);
     for (const record of records) {
       for (const hash of recordBlobReferences(record)) {
-        if (!this.hasBlob(hash)) {
-          throw new Defect(
-            "MISSING_BLOB",
-            `Record ${record.seq} refers to missing blob ${hash}`,
-            { operation: "read-records", refs: [{ seq: record.seq }] },
-          );
-        }
+        this.checkedBlob(hash, "read-records", [{ seq: record.seq }]);
       }
     }
-    return records;
+    return records.filter((record) => recordMatchesSelector(record, selector));
   }
 
   close(): void {
@@ -466,13 +582,7 @@ export class SqliteWriter extends SqliteReader {
       return this.database
         .transaction(() => {
           for (const hash of recordBlobReferences(snapshot)) {
-            if (!this.hasBlob(hash)) {
-              throw new Defect(
-                "MISSING_BLOB",
-                `Cannot append ${snapshot.kind}: blob ${hash} is missing`,
-                { operation: "append-record" },
-              );
-            }
+            this.checkedBlob(hash, "append-record", duplicateRefs(snapshot));
           }
 
           const result = this.database.run(
@@ -493,6 +603,8 @@ export class SqliteWriter extends SqliteReader {
         .immediate();
     } catch (error) {
       if (error instanceof Defect || error instanceof TypeError) throw error;
+      const duplicate = duplicateRecordDefect(error, snapshot);
+      if (duplicate !== undefined) throw duplicate;
       throw databaseDefect("append a record", error);
     }
   }
@@ -504,8 +616,8 @@ export class SqliteWriter extends SqliteReader {
 }
 
 export function createSqliteWriter(path: string): SqliteWriter {
-  assertDatabasePath(path);
   const operation = "create-campaign";
+  assertDatabasePath(path, operation);
   const lock = acquireCampaignLock(path, operation);
   let database: Database | undefined;
   try {
@@ -522,7 +634,7 @@ export function createSqliteWriter(path: string): SqliteWriter {
     });
     configureWriter(database);
     database.run(SCHEMA_SQL);
-    checkSchemaVersion(database);
+    checkSchemaVersion(database, operation);
     return new SqliteWriter(database, lock);
   } catch (error) {
     closeAfterFailure(database, lock);
@@ -532,8 +644,8 @@ export function createSqliteWriter(path: string): SqliteWriter {
 }
 
 export function openSqliteWriter(path: string): SqliteWriter {
-  assertDatabasePath(path);
   const operation = "open-campaign";
+  assertDatabasePath(path, operation);
   if (!existsSync(path)) throw missingCampaign(path, operation);
   const lock = acquireCampaignLock(path, operation);
   let database: Database | undefined;
@@ -545,7 +657,7 @@ export function openSqliteWriter(path: string): SqliteWriter {
       safeIntegers: true,
       strict: true,
     });
-    checkSchemaVersion(database);
+    checkSchemaVersion(database, operation);
     configureWriter(database);
     return new SqliteWriter(database, lock);
   } catch (error) {
@@ -556,8 +668,8 @@ export function openSqliteWriter(path: string): SqliteWriter {
 }
 
 export function openSqliteReader(path: string): SqliteReader {
-  assertDatabasePath(path);
   const operation = "open-reader";
+  assertDatabasePath(path, operation);
   if (!existsSync(path)) throw missingCampaign(path, operation);
   let database: Database | undefined;
   try {
@@ -567,7 +679,7 @@ export function openSqliteReader(path: string): SqliteReader {
       safeIntegers: true,
       strict: true,
     });
-    checkSchemaVersion(database);
+    checkSchemaVersion(database, operation);
     return new SqliteReader(database);
   } catch (error) {
     closeAfterFailure(database, undefined);

@@ -27,6 +27,21 @@ function temporaryDirectory(): string {
   return directory;
 }
 
+function expectRefusal(
+  action: () => unknown,
+  code: Refusal["code"],
+  operation: string,
+): void {
+  try {
+    action();
+  } catch (error) {
+    expect(error).toBeInstanceOf(Refusal);
+    expect(error).toMatchObject({ code, operation });
+    return;
+  }
+  throw new Error("expected action to refuse");
+}
+
 afterEach(() => {
   for (const directory of temporaryDirectories.splice(0)) {
     rmSync(directory, { recursive: true, force: true });
@@ -43,11 +58,14 @@ describe("writer lock", () => {
     mkdirSync(realDirectory);
     symlinkSync(realDirectory, aliasDirectory);
 
-    const lock = acquireWriterLock(databasePath);
+    const lock = acquireWriterLock(databasePath, "create-campaign");
 
-    expect(() =>
-      acquireWriterLock(join(aliasDirectory, "campaign.db")),
-    ).toThrow(Refusal);
+    expectRefusal(
+      () =>
+        acquireWriterLock(join(aliasDirectory, "campaign.db"), "open-campaign"),
+      "WRITER_LOCKED",
+      "open-campaign",
+    );
     expect(existsSync(`${databasePath}.writer-lock`)).toBe(true);
 
     lock.close();
@@ -57,17 +75,31 @@ describe("writer lock", () => {
     const directory = temporaryDirectory();
     const databasePath = join(directory, "campaign.db");
     const sidecarPath = `${databasePath}.writer-lock`;
-    const first = acquireWriterLock(databasePath);
+    const first = acquireWriterLock(databasePath, "create-campaign");
 
     first.close();
     first.close();
 
     expect(existsSync(sidecarPath)).toBe(true);
 
-    const second = acquireWriterLock(databasePath);
+    const second = acquireWriterLock(databasePath, "open-campaign");
     second.close();
 
     expect(existsSync(sidecarPath)).toBe(true);
+  });
+
+  test("carries the caller operation on writer contention", () => {
+    const directory = temporaryDirectory();
+    const databasePath = join(directory, "campaign.db");
+    const first = acquireWriterLock(databasePath, "open-campaign");
+
+    expectRefusal(
+      () => acquireWriterLock(databasePath, "create-campaign"),
+      "WRITER_LOCKED",
+      "create-campaign",
+    );
+
+    first.close();
   });
 
   test("refuses a second process and releases after SIGKILL", async () => {
@@ -79,7 +111,7 @@ describe("writer lock", () => {
         "-e",
         `
             import { acquireWriterLock } from ${JSON.stringify(lockModuleUrl)};
-            acquireWriterLock(${JSON.stringify(databasePath)});
+            acquireWriterLock(${JSON.stringify(databasePath)}, "create-campaign");
             process.stdout.write("locked\\n");
             await Bun.sleep(60_000);
           `,
@@ -98,7 +130,7 @@ describe("writer lock", () => {
             import { acquireWriterLock } from ${JSON.stringify(lockModuleUrl)};
             import { Refusal } from ${JSON.stringify(pathToFileURL(join(import.meta.dir, "../src/core/errors.ts")).href)};
             try {
-              acquireWriterLock(${JSON.stringify(databasePath)});
+              acquireWriterLock(${JSON.stringify(databasePath)}, "open-campaign");
               process.exit(0);
             } catch (error) {
               process.exit(error instanceof Refusal && error.code === "WRITER_LOCKED" ? 23 : 24);
@@ -111,7 +143,7 @@ describe("writer lock", () => {
       holder.kill(9);
       await holder.exited;
 
-      const afterKill = acquireWriterLock(databasePath);
+      const afterKill = acquireWriterLock(databasePath, "open-campaign");
       afterKill.close();
     } finally {
       if (holder.exitCode === null) {
@@ -129,7 +161,11 @@ describe("writer lock", () => {
     writeFileSync(databasePath, "");
     symlinkSync(databasePath, aliasPath);
 
-    expect(() => acquireWriterLock(aliasPath)).toThrow(Refusal);
+    expectRefusal(
+      () => acquireWriterLock(aliasPath, "open-campaign"),
+      "INVALID_ARGUMENT",
+      "open-campaign",
+    );
   });
 
   test("refuses hard-linked database aliases", () => {
@@ -140,8 +176,16 @@ describe("writer lock", () => {
     writeFileSync(databasePath, "");
     linkSync(databasePath, aliasPath);
 
-    expect(() => acquireWriterLock(databasePath)).toThrow(Refusal);
-    expect(() => acquireWriterLock(aliasPath)).toThrow(Refusal);
+    expectRefusal(
+      () => acquireWriterLock(databasePath, "open-campaign"),
+      "INVALID_ARGUMENT",
+      "open-campaign",
+    );
+    expectRefusal(
+      () => acquireWriterLock(aliasPath, "open-campaign"),
+      "INVALID_ARGUMENT",
+      "open-campaign",
+    );
   });
 
   test("refuses a dangling database symlink", () => {
@@ -151,7 +195,11 @@ describe("writer lock", () => {
 
     symlinkSync(databasePath, aliasPath);
 
-    expect(() => acquireWriterLock(aliasPath)).toThrow(Refusal);
+    expectRefusal(
+      () => acquireWriterLock(aliasPath, "open-campaign"),
+      "INVALID_ARGUMENT",
+      "open-campaign",
+    );
   });
 
   test("refuses a writer-lock symlink", () => {
@@ -162,6 +210,50 @@ describe("writer lock", () => {
     writeFileSync(redirectedPath, "");
     symlinkSync(redirectedPath, `${databasePath}.writer-lock`);
 
-    expect(() => acquireWriterLock(databasePath)).toThrow();
+    expectRefusal(
+      () => acquireWriterLock(databasePath, "create-campaign"),
+      "INVALID_ARGUMENT",
+      "create-campaign",
+    );
+  });
+
+  test("refuses malformed and unusable database paths with caller operation", () => {
+    const directory = temporaryDirectory();
+
+    expectRefusal(
+      () => acquireWriterLock("", "create-campaign"),
+      "INVALID_ARGUMENT",
+      "create-campaign",
+    );
+    expectRefusal(
+      () => acquireWriterLock("bad\0path", "open-campaign"),
+      "INVALID_ARGUMENT",
+      "open-campaign",
+    );
+    expectRefusal(
+      () =>
+        acquireWriterLock(
+          join(directory, "missing", "campaign.db"),
+          "create-campaign",
+        ),
+      "INVALID_ARGUMENT",
+      "create-campaign",
+    );
+  });
+
+  test("refuses a hard-linked writer-lock sidecar", () => {
+    const directory = temporaryDirectory();
+    const databasePath = join(directory, "campaign.db");
+    const lockPath = `${databasePath}.writer-lock`;
+    const aliasPath = join(directory, "lock-alias");
+
+    writeFileSync(lockPath, "");
+    linkSync(lockPath, aliasPath);
+
+    expectRefusal(
+      () => acquireWriterLock(databasePath, "create-campaign"),
+      "INVALID_ARGUMENT",
+      "create-campaign",
+    );
   });
 });
