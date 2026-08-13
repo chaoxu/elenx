@@ -9,7 +9,7 @@ Elenx deliberately excludes orchestration. Routes, context gathering, blind reco
 Elenx v1 requires Bun 1.3.14 or newer. Applications define tool schemas with Zod, so install both packages:
 
 ```sh
-bun add git+https://gitea.lab/chaoxu/elenx.git#main zod@4.4.3
+bun add git+https://gitea.lab/chaoxu/elenx.git#v0.1.0 zod@4.4.3
 ```
 
 Contributors run `bun install --frozen-lockfile` and `bun run check`. The check includes formatting, strict TypeScript, a clean-consumer compile, a 1,500-nonblank-source-line ceiling, and the complete test suite.
