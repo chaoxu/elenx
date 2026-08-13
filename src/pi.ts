@@ -6,27 +6,21 @@ import {
 } from "@earendil-works/pi-agent-core";
 import {
   contentText,
-  InMemoryCredentialStore,
   type Api,
   type AssistantMessage,
-  type CreateModelsOptions,
   type Model,
   type Models,
   type TSchema,
 } from "@earendil-works/pi-ai";
-import { builtinModels } from "@earendil-works/pi-ai/providers/all";
 import { z } from "zod";
 
 import { copyJson, hash } from "./schemas";
 import type { AuditedTool, CallId, Campaign, Hash, Json, Tool } from "./types";
 
-export type PiModels = Pick<Models, "streamSimple">;
-export type PiRegistry = Pick<Models, "getModel" | "streamSimple">;
-export { InMemoryCredentialStore };
+export { InMemoryCredentialStore } from "@earendil-works/pi-ai";
+export { builtinModels as builtinPi } from "@earendil-works/pi-ai/providers/all";
 
-export function builtinPi(options?: CreateModelsOptions): PiRegistry {
-  return builtinModels(options);
-}
+type PiModels = Pick<Models, "streamSimple">;
 
 export interface PiRunOptions {
   readonly models: PiModels;

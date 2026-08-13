@@ -9,10 +9,13 @@ import {
   type Api,
   type AssistantMessage,
   type Model,
+  type Models,
 } from "@earendil-works/pi-ai";
 
 import { createCampaign, defineTool } from "../../src";
-import { runPi, type PiModels } from "../../src/pi";
+import { runPi } from "../../src/pi";
+
+type PiModels = Pick<Models, "streamSimple">;
 
 const model: Model<Api> = {
   id: "test-v1",

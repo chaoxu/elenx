@@ -15,7 +15,7 @@ Elenx is not an agent framework. Applications own coordination, routes, context 
 
 ## Runtime and dependencies
 
-V1 targets Bun 1.3.14 or newer. It uses Bun SQLite for persistence, Zod 4.4.3 for input validation and JSON Schema generation, Pi 0.84.1 for the bundled model loop, and platform SHA-256 and UUID primitives. The implementation contains no custom SQL parser, JSON Schema validator, model loop, provider client, or native lock binding.
+V1 targets Bun 1.3.14 or newer. It uses Bun SQLite for persistence, Zod 4.4.3 for input validation and JSON Schema generation, Pi 0.84.1 for the bundled model loop, and platform SHA-256 and UUID primitives. Elenx exposes Pi's types directly instead of maintaining local copies. The implementation contains no custom SQL parser, JSON Schema validator, model loop, provider client, or native lock binding.
 
 ## Campaign artifact
 
