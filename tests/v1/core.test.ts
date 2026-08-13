@@ -4,12 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { z } from "zod";
 
-import {
-  createCampaign,
-  defineTool,
-  openCampaign,
-  openReader,
-} from "../../src";
+import { createCampaign, defineTool, openReader } from "../../src";
 
 const directories: string[] = [];
 
@@ -331,28 +326,5 @@ describe("small kernel", () => {
       ["tool-result", "threw"],
       ["call-result", "threw"],
     ]);
-  });
-
-  test("supports multiple short-lived writers", () => {
-    const path = database();
-    const first = createCampaign(path, "test", null);
-    const second = openCampaign(path);
-    const firstCandidate = first.submitCandidate(
-      new TextEncoder().encode("first"),
-      ["audit/v1"],
-    );
-    const secondCandidate = second.submitCandidate(
-      new TextEncoder().encode("second"),
-      ["audit/v1"],
-    );
-    expect(secondCandidate).not.toBe(firstCandidate);
-    expect(
-      first.records().filter((entry) => entry.kind === "candidate"),
-    ).toHaveLength(2);
-    expect(new TextDecoder().decode(first.material(secondCandidate))).toBe(
-      "second",
-    );
-    first.close();
-    second.close();
   });
 });

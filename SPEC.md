@@ -97,7 +97,6 @@ A candidate is verified when each required verifier has at least one PASS and no
 
 ```ts
 createCampaign(path, application, config): Campaign
-openCampaign(path): Campaign
 openReader(path): Reader
 deriveCandidateStatus(records, candidate): CandidateStatus
 

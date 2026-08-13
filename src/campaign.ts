@@ -271,10 +271,6 @@ export function createCampaign(
   );
 }
 
-export function openCampaign(path: string): Campaign {
-  return new CampaignWriter(Journal.open(path));
-}
-
 export function openReader(path: string): Reader {
   return new CampaignReader(Journal.open(path, true));
 }
