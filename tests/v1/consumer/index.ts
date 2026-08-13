@@ -4,9 +4,7 @@ import {
   type CallReceipt,
   type Campaign,
 } from "elenx";
-import { builtinPi, runPi } from "elenx/pi";
-import { InMemoryCredentialStore } from "@earendil-works/pi-ai";
-import { builtinModels } from "@earendil-works/pi-ai/providers/all";
+import { builtinPi, InMemoryCredentialStore, runPi } from "elenx/pi";
 import { z } from "zod";
 
 declare const campaign: Campaign;
@@ -36,20 +34,7 @@ const result =
         tools: [tool],
       });
 
-const configuredModels = builtinModels();
-const configuredModel = configuredModels.getModel("provider", "model");
-const configuredResult =
-  configuredModel === undefined
-    ? undefined
-    : runPi(campaign, {
-        models: configuredModels,
-        model: configuredModel,
-        label: "audit/v1",
-        prompt: "audit",
-      });
-
 void createCampaign;
 void (undefined as unknown as CallReceipt);
 void result;
-void configuredResult;
 void credentialModels;

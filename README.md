@@ -6,10 +6,10 @@ The package includes a thin Pi runner. Pi owns model execution, credentials, and
 
 Elenx deliberately excludes orchestration. Routes, context gathering, blind reconstruction, source search, retries, budgets, campaign UI, and human-readable files belong to applications. A Coverify replacement can build those independently around this kernel.
 
-Elenx v1 requires Bun 1.3.14 or newer. Install the current Gitea revision with:
+Elenx v1 requires Bun 1.3.14 or newer. Applications define tool schemas with Zod, so install both packages:
 
 ```sh
-bun add git+https://gitea.lab/chaoxu/elenx.git#main
+bun add git+https://gitea.lab/chaoxu/elenx.git#main zod@4.4.3
 ```
 
 Contributors run `bun install --frozen-lockfile` and `bun run check`. The check includes formatting, strict TypeScript, a clean-consumer compile, a 1,500-nonblank-source-line ceiling, and the complete test suite.

@@ -16,7 +16,10 @@
   ],
   "exports": {
     ".": "./src/index.ts",
-    "./pi": "./src/pi.ts"
+    "./pi": {
+      "types": "./src/pi-public.d.ts",
+      "default": "./src/pi.ts"
+    }
   },
   "scripts": {
     "format": "prettier --write . --ignore-path .prettierignore",

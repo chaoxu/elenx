@@ -6,6 +6,7 @@ import {
 } from "@earendil-works/pi-agent-core";
 import {
   contentText,
+  InMemoryCredentialStore,
   type Api,
   type AssistantMessage,
   type CreateModelsOptions,
@@ -21,6 +22,7 @@ import type { AuditedTool, CallId, Campaign, Hash, Json, Tool } from "./types";
 
 export type PiModels = Pick<Models, "streamSimple">;
 export type PiRegistry = Pick<Models, "getModel" | "streamSimple">;
+export { InMemoryCredentialStore };
 
 export function builtinPi(options?: CreateModelsOptions): PiRegistry {
   return builtinModels(options);

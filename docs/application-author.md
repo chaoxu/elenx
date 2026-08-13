@@ -3,7 +3,7 @@
 Install Elenx from Gitea:
 
 ```sh
-bun add git+https://gitea.lab/chaoxu/elenx.git#main
+bun add git+https://gitea.lab/chaoxu/elenx.git#main zod@4.4.3
 ```
 
 ## Create and promote a candidate
@@ -43,7 +43,7 @@ if (campaign.status(candidate).promotable) campaign.promote(candidate);
 campaign.close();
 ```
 
-`builtinPi()` uses Pi's normal environment and ambient provider authentication. An application that already owns an OAuth or API-key credential store can pass it as `builtinPi({ credentials })`, or pass any configured Pi `Models` registry directly to `runPi`. Elenx does not read, copy, or persist provider credentials.
+`builtinPi()` uses Pi's normal environment and ambient provider authentication. An application that owns OAuth or API-key credentials can import `InMemoryCredentialStore` from `elenx/pi` and pass it as `builtinPi({ credentials })`; the class is Pi's maintained store re-exported through Elenx's strict type boundary. Elenx does not read, copy, or persist provider credentials.
 
 The candidate envelope is application-owned. Include every fact that must change its identity: statement revision, answer or proof, cited sources, imported assumptions, and dependency versions.
 
