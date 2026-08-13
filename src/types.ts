@@ -1,21 +1,12 @@
 import { z } from "zod";
 
-import type {
-  CallId,
-  CandidateId,
-  Entry,
-  Json,
-  ToolDeclaration,
-  Verdict,
-} from "./schemas";
+import type { Entry, EntryId, Json, ToolDeclaration, Verdict } from "./schemas";
 
 export type {
-  CallId,
-  CandidateId,
   Entry,
   EntryDraft,
+  EntryId,
   Json,
-  ToolCallId,
   ToolDeclaration,
   Verdict,
 } from "./schemas";
@@ -32,22 +23,22 @@ export interface AuditedTool extends ToolDeclaration {
 }
 
 export interface CandidateStatus {
-  readonly candidate: CandidateId;
   readonly verified: boolean;
   readonly missing: readonly string[];
   readonly failed: readonly string[];
-  readonly passes: readonly number[];
+  readonly passes: readonly EntryId[];
 }
 
 export interface Reader {
   records(): readonly Entry[];
-  material(candidate: CandidateId): Uint8Array;
-  status(candidate: CandidateId): CandidateStatus;
+  material(candidate: EntryId): Uint8Array;
+  status(candidate: EntryId): CandidateStatus;
   close(): void;
 }
 
 export interface CallOptions {
   readonly label: string;
+  readonly candidate?: EntryId;
   readonly request: Json;
   readonly tools?: readonly Tool[];
   readonly signal?: AbortSignal;
@@ -60,7 +51,7 @@ export interface CallContext {
 }
 
 export interface CallReceipt {
-  readonly id: CallId;
+  readonly call: EntryId;
   readonly output: Json;
 }
 
@@ -68,14 +59,8 @@ export interface Campaign extends Reader {
   submitCandidate(
     material: Uint8Array,
     requiredVerifiers: readonly string[],
-  ): CandidateId;
-  recordVerdict(
-    candidate: CandidateId,
-    verifier: string,
-    call: CallId,
-    verdict: Verdict,
-    evidence: Json,
-  ): Entry;
+  ): EntryId;
+  recordVerdict(call: EntryId, verdict: Verdict, evidence: Json): EntryId;
   call(
     options: CallOptions,
     runner: (context: CallContext) => Promise<unknown>,

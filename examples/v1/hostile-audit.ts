@@ -1,17 +1,12 @@
 import { z } from "zod";
 
-import {
-  createCampaign,
-  openReader,
-  type CandidateId,
-  type Verdict,
-} from "elenx";
+import { createCampaign, openReader, type EntryId, type Verdict } from "elenx";
 
 const verifier = "hostile-audit/v1";
 const verdict = z.enum(["PASS", "FAIL", "INCONCLUSIVE"]);
 
 export interface AuditReport {
-  readonly candidate: CandidateId;
+  readonly candidate: EntryId;
   readonly verdict: Verdict;
   readonly verified: boolean;
 }
@@ -31,9 +26,9 @@ export async function runHostileAudit(path: string): Promise<AuditReport> {
   const audit = await campaign.call(
     {
       label: verifier,
+      candidate,
       request: {
         prompt: "Audit the candidate and return PASS, FAIL, or INCONCLUSIVE.",
-        candidate,
       },
     },
     async () => ({
@@ -45,7 +40,7 @@ export async function runHostileAudit(path: string): Promise<AuditReport> {
     .strictObject({ state: z.literal("succeeded"), text: z.string() })
     .parse(audit.output).text;
   const result = parseVerdict(text);
-  campaign.recordVerdict(candidate, verifier, audit.id, result, { text });
+  campaign.recordVerdict(audit.call, result, { text });
   campaign.close();
 
   const reader = openReader(path);

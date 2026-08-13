@@ -8,18 +8,13 @@ export type Json =
   | readonly Json[]
   | { readonly [key: string]: Json };
 
-export type CallId = `call:${string}`;
-export type ToolCallId = `tool:${string}`;
-
-export const candidateId = z.templateLiteral(["candidate:", z.uuidv4()]);
-export type CandidateId = z.output<typeof candidateId>;
-const callId = z.string().startsWith("call:") as z.ZodType<CallId>;
-const toolCallId = z.string().startsWith("tool:") as z.ZodType<ToolCallId>;
+export const entryId = z.number().int().positive();
+export type EntryId = z.output<typeof entryId>;
 export const json = z.json() as z.ZodType<Json>;
 export const verdict = z.enum(["PASS", "FAIL", "INCONCLUSIVE"]);
 
 const base = {
-  seq: z.number().int().positive(),
+  seq: entryId,
   atMs: z.number().int().nonnegative(),
 };
 const tool = z.strictObject({
@@ -38,60 +33,56 @@ export const entry = z.union([
   z.strictObject({
     ...base,
     kind: z.literal("candidate"),
-    candidate: candidateId,
     requiredVerifiers: z.array(z.string().min(1)).min(1).readonly(),
   }),
   z.strictObject({
     ...base,
     kind: z.literal("verdict"),
-    candidate: candidateId,
-    verifier: z.string().min(1),
-    call: callId,
+    call: entryId,
     verdict,
     evidence: json,
   }),
   z.strictObject({
     ...base,
     kind: z.literal("call"),
-    id: callId,
     label: z.string().min(1),
+    candidate: entryId.optional(),
     request: json,
     tools: z.array(tool).readonly(),
   }),
   z.strictObject({
     ...base,
     kind: z.literal("tool-call"),
-    id: toolCallId,
-    call: callId,
+    call: entryId,
     tool: z.string().min(1),
     source: z.string().min(1).optional(),
     input: json,
   }),
   z.strictObject({
     ...base,
-    kind: z.literal("tool-result"),
-    id: toolCallId,
+    kind: z.literal("call-result"),
+    parent: entryId,
     state: z.literal("returned"),
     output: json,
   }),
   z.strictObject({
     ...base,
-    kind: z.literal("tool-result"),
-    id: toolCallId,
+    kind: z.literal("call-result"),
+    parent: entryId,
     state: z.literal("threw"),
     error: z.string(),
   }),
   z.strictObject({
     ...base,
-    kind: z.literal("call-result"),
-    call: callId,
+    kind: z.literal("tool-result"),
+    parent: entryId,
     state: z.literal("returned"),
     output: json,
   }),
   z.strictObject({
     ...base,
-    kind: z.literal("call-result"),
-    call: callId,
+    kind: z.literal("tool-result"),
+    parent: entryId,
     state: z.literal("threw"),
     error: z.string(),
   }),
@@ -108,8 +99,4 @@ export type Verdict = z.output<typeof verdict>;
 
 export function copyJson(value: unknown): Json {
   return json.parse(value);
-}
-
-export function parseCandidateId(value: unknown): CandidateId {
-  return candidateId.parse(value);
 }

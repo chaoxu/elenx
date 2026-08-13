@@ -2,24 +2,20 @@ import { Database } from "bun:sqlite";
 import { closeSync, constants, existsSync, openSync, rmSync } from "node:fs";
 import { basename } from "node:path";
 
-import { entry as entrySchema, parseCandidateId } from "./schemas";
-import type { CandidateId, Entry, EntryDraft, Json } from "./types";
+import { entry as entrySchema, entryId } from "./schemas";
+import type { Entry, EntryDraft, EntryId, Json } from "./types";
 
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 const SCHEMA = `
   CREATE TABLE entries (
-    seq INTEGER PRIMARY KEY AUTOINCREMENT,
+    seq INTEGER PRIMARY KEY,
     at_ms INTEGER NOT NULL,
-    kind TEXT NOT NULL CHECK(kind IN ('campaign', 'candidate', 'call', 'tool-call', 'tool-result', 'call-result', 'verdict')),
+    kind TEXT NOT NULL CHECK(kind IN ('campaign', 'candidate', 'call', 'call-result', 'tool-call', 'tool-result', 'verdict')),
     body TEXT NOT NULL CHECK(json_valid(body) AND json_type(body) = 'object'),
     material BLOB CHECK((kind = 'candidate') = (material IS NOT NULL))
   ) STRICT;
   CREATE UNIQUE INDEX one_campaign ON entries(kind) WHERE kind = 'campaign';
-  CREATE UNIQUE INDEX one_candidate ON entries(json_extract(body, '$.candidate')) WHERE kind = 'candidate';
-  CREATE UNIQUE INDEX one_call ON entries(json_extract(body, '$.id')) WHERE kind = 'call';
-  CREATE UNIQUE INDEX one_call_result ON entries(json_extract(body, '$.call')) WHERE kind = 'call-result';
-  CREATE UNIQUE INDEX one_tool_call ON entries(json_extract(body, '$.id')) WHERE kind = 'tool-call';
-  CREATE UNIQUE INDEX one_tool_result ON entries(json_extract(body, '$.id')) WHERE kind = 'tool-result';
+  CREATE UNIQUE INDEX one_result ON entries(json_extract(body, '$.parent')) WHERE kind IN ('call-result', 'tool-result');
   CREATE UNIQUE INDEX one_verdict_call ON entries(json_extract(body, '$.call')) WHERE kind = 'verdict';
   CREATE TRIGGER entries_no_update BEFORE UPDATE ON entries BEGIN SELECT RAISE(ABORT, 'entries are append-only'); END;
   CREATE TRIGGER entries_no_delete BEFORE DELETE ON entries BEGIN SELECT RAISE(ABORT, 'entries are append-only'); END;
@@ -27,8 +23,8 @@ const SCHEMA = `
 `;
 
 interface EntryRow {
-  readonly seq: number;
-  readonly atMs: number;
+  readonly seq: number | bigint;
+  readonly atMs: number | bigint;
   readonly kind: string;
   readonly body: string;
 }
@@ -183,11 +179,11 @@ export class Journal {
       );
   }
 
-  material(value: CandidateId): Uint8Array {
-    const candidate = parseCandidateId(value);
+  material(value: EntryId): Uint8Array {
+    const candidate = entryId.parse(value);
     const row = this.#database
-      .query<MaterialRow, [CandidateId]>(
-        "SELECT material FROM entries WHERE kind = 'candidate' AND json_extract(body, '$.candidate') = ?",
+      .query<MaterialRow, [EntryId]>(
+        "SELECT material FROM entries WHERE kind = 'candidate' AND seq = ?",
       )
       .get(candidate);
     if (row === null) throw new Error(`candidate not found: ${candidate}`);
@@ -196,10 +192,5 @@ export class Journal {
 
   close(): void {
     this.#database.close(true);
-  }
-
-  transaction<T>(action: () => T): T {
-    if (this.#readonly) throw new Error("campaign is read-only");
-    return this.#database.transaction(action).immediate();
   }
 }

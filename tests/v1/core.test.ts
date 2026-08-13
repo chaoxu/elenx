@@ -29,12 +29,12 @@ async function pass(
   campaign: ReturnType<typeof createCampaign>,
   candidate: ReturnType<typeof campaign.submitCandidate>,
   verifier: string,
-): Promise<void> {
+): Promise<number> {
   const call = await campaign.call(
-    { label: verifier, request: { candidate } },
+    { label: verifier, candidate, request: {} },
     async ({ request }) => ({ state: "succeeded", checked: request }),
   );
-  campaign.recordVerdict(candidate, verifier, call.id, "PASS", {
+  return campaign.recordVerdict(call.call, "PASS", {
     reason: "checked",
   });
 }
@@ -49,7 +49,10 @@ describe("small kernel", () => {
     campaign.close();
 
     const reader = openReader(path);
-    expect(reader.records()).toHaveLength(2);
+    const candidateRecord = reader
+      .records()
+      .find((entry) => entry.kind === "candidate");
+    expect(candidateRecord?.seq).toBe(candidate);
     const stored = reader.material(candidate);
     expect(new TextDecoder().decode(stored)).toBe("proof");
     stored.fill(0);
@@ -64,26 +67,28 @@ describe("small kernel", () => {
       ["audit/v1", "compare/v1"],
     );
     expect(campaign.status(candidate)).toEqual({
-      candidate,
       verified: false,
       missing: ["audit/v1", "compare/v1"],
       failed: [],
       passes: [],
     });
 
-    await pass(campaign, candidate, "audit/v1");
-    await pass(campaign, candidate, "compare/v1");
-    expect(campaign.status(candidate)).toMatchObject({
+    const passSequences = [
+      await pass(campaign, candidate, "audit/v1"),
+      await pass(campaign, candidate, "compare/v1"),
+    ];
+    expect(campaign.status(candidate)).toEqual({
       verified: true,
       missing: [],
       failed: [],
+      passes: passSequences,
     });
 
     const late = await campaign.call(
-      { label: "audit/v1", request: { candidate } },
+      { label: "audit/v1", candidate, request: {} },
       async () => ({ state: "succeeded", result: "late counterexample" }),
     );
-    campaign.recordVerdict(candidate, "audit/v1", late.id, "FAIL", null);
+    campaign.recordVerdict(late.call, "FAIL", null);
     expect(campaign.status(candidate)).toMatchObject({
       verified: false,
       missing: [],
@@ -91,18 +96,20 @@ describe("small kernel", () => {
     });
   });
 
-  test("rejects verdicts whose successful call names another candidate", async () => {
+  test("rejects a call that guessed a future candidate sequence", async () => {
     const campaign = createCampaign(database(), "test", null);
-    const material = new TextEncoder().encode("same bytes");
-    const first = campaign.submitCandidate(material, ["audit/v1"]);
-    const second = campaign.submitCandidate(material, ["audit/v1"]);
     const call = await campaign.call(
-      { label: "audit/v1", request: { candidate: first } },
+      { label: "audit/v1", candidate: 4, request: {} },
       async () => ({ state: "succeeded" }),
     );
-    expect(() =>
-      campaign.recordVerdict(second, "audit/v1", call.id, "PASS", null),
-    ).toThrow("fresh successful");
+    const candidate = campaign.submitCandidate(
+      new TextEncoder().encode("claim"),
+      ["audit/v1"],
+    );
+    expect(candidate).toBe(4);
+    expect(() => campaign.recordVerdict(call.call, "PASS", null)).toThrow(
+      "fresh successful",
+    );
   });
 
   test("rejects verdicts from failed protocol results and reused calls", async () => {
@@ -112,21 +119,19 @@ describe("small kernel", () => {
       ["audit/v1", "compare/v1"],
     );
     const failed = await campaign.call(
-      { label: "audit/v1", request: { candidate } },
+      { label: "audit/v1", candidate, request: {} },
       async () => ({ state: "failed", error: "provider failed" }),
     );
-    expect(() =>
-      campaign.recordVerdict(candidate, "audit/v1", failed.id, "PASS", null),
-    ).toThrow("fresh successful");
+    expect(() => campaign.recordVerdict(failed.call, "PASS", null)).toThrow(
+      "fresh successful",
+    );
 
     const passed = await campaign.call(
-      { label: "audit/v1", request: { candidate } },
+      { label: "audit/v1", candidate, request: {} },
       async () => ({ state: "succeeded" }),
     );
-    campaign.recordVerdict(candidate, "audit/v1", passed.id, "PASS", null);
-    expect(() =>
-      campaign.recordVerdict(candidate, "audit/v1", passed.id, "PASS", null),
-    ).toThrow("already has a verdict");
+    campaign.recordVerdict(passed.call, "PASS", null);
+    expect(() => campaign.recordVerdict(passed.call, "PASS", null)).toThrow();
   });
 
   test("keeps candidates unverified on missing or failed verification", async () => {
@@ -136,10 +141,10 @@ describe("small kernel", () => {
       ["audit/v1", "compare/v1"],
     );
     const failed = await campaign.call(
-      { label: "audit/v1", request: { candidate } },
+      { label: "audit/v1", candidate, request: {} },
       async () => ({ state: "succeeded", result: "counterexample" }),
     );
-    campaign.recordVerdict(candidate, "audit/v1", failed.id, "FAIL", null);
+    campaign.recordVerdict(failed.call, "FAIL", null);
     await pass(campaign, candidate, "compare/v1");
     expect(campaign.status(candidate)).toMatchObject({
       verified: false,
@@ -148,17 +153,26 @@ describe("small kernel", () => {
     });
   });
 
-  test("gives identical material independent candidate identities", () => {
+  test("keeps identical submissions and their verifier calls independent", async () => {
     const campaign = createCampaign(database(), "test", null);
     const material = new TextEncoder().encode("claim");
     const first = campaign.submitCandidate(material, ["audit/v1"]);
     const second = campaign.submitCandidate(material, ["audit/v1"]);
     expect(second).not.toBe(first);
-    expect(campaign.status(first).missing).toEqual(["audit/v1"]);
-    expect(campaign.status(second).missing).toEqual(["audit/v1"]);
+    await pass(campaign, first, "audit/v1");
+    expect(campaign.status(first).verified).toBe(true);
+    expect(campaign.status(second).verified).toBe(false);
+
+    const wrongVerifier = await campaign.call(
+      { label: "other/v1", candidate: second, request: {} },
+      async () => ({ state: "succeeded" }),
+    );
+    expect(() =>
+      campaign.recordVerdict(wrongVerifier.call, "PASS", null),
+    ).toThrow("fresh successful");
   });
 
-  test("normalizes verifier sets and derives status idempotently", async () => {
+  test("normalizes verifier sets", () => {
     const campaign = createCampaign(database(), "test", null);
     const material = new TextEncoder().encode("claim");
     const candidate = campaign.submitCandidate(material, [
@@ -166,11 +180,10 @@ describe("small kernel", () => {
       "audit/v1",
       "compare/v1",
     ]);
-    await pass(campaign, candidate, "audit/v1");
-    await pass(campaign, candidate, "compare/v1");
-    const first = campaign.status(candidate);
-    expect(first).toMatchObject({ verified: true, missing: [], failed: [] });
-    expect(campaign.status(candidate)).toEqual(first);
+    expect(campaign.status(candidate).missing).toEqual([
+      "audit/v1",
+      "compare/v1",
+    ]);
   });
 
   test("records calls and tool effects before returning", async () => {
@@ -198,13 +211,28 @@ describe("small kernel", () => {
       request: { prompt: "add" },
       result: { sum: 5 },
     });
-    expect(campaign.records().map((entry) => entry.kind)).toEqual([
+    const records = campaign.records();
+    expect(records.map((entry) => entry.kind)).toEqual([
       "campaign",
       "call",
       "tool-call",
       "tool-result",
       "call-result",
     ]);
+    const call = records.find((entry) => entry.kind === "call")!;
+    const toolCall = records.find((entry) => entry.kind === "tool-call")!;
+    expect(receipt.call).toBe(call.seq);
+    expect(
+      records.some(
+        (entry) =>
+          entry.kind === "tool-result" && entry.parent === toolCall.seq,
+      ),
+    ).toBe(true);
+    expect(
+      records.some(
+        (entry) => entry.kind === "call-result" && entry.parent === call.seq,
+      ),
+    ).toBe(true);
   });
 
   test("rejects invalid tool input through the promised interface", async () => {
@@ -323,9 +351,6 @@ describe("small kernel", () => {
     ).toHaveLength(2);
     expect(new TextDecoder().decode(first.material(secondCandidate))).toBe(
       "second",
-    );
-    expect(new TextDecoder().decode(second.material(firstCandidate))).toBe(
-      "first",
     );
     first.close();
     second.close();

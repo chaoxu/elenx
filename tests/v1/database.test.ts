@@ -73,9 +73,9 @@ describe("campaign database", () => {
   test("refuses an unsupported schema", () => {
     const path = temporaryPath();
     const database = new Database(path, { create: true });
-    database.run("PRAGMA user_version = 2");
+    database.run("PRAGMA user_version = 3");
     database.close(true);
-    expect(() => openReader(path)).toThrow("unsupported campaign schema: 2");
+    expect(() => openReader(path)).toThrow("unsupported campaign schema: 3");
   });
 
   test("refuses an artifact without its campaign identity", () => {

@@ -103,10 +103,15 @@ function models(replies: readonly AssistantMessage[]): PiModels {
 describe("thin Pi runner", () => {
   test("runs a fresh Pi loop and stores its native transcript", async () => {
     const store = campaign();
+    const candidate = store.submitCandidate(
+      new TextEncoder().encode("answer"),
+      ["answer/v1"],
+    );
     const result = await runPi(store, {
       models: models([assistant([{ type: "text", text: "answer" }], "stop")]),
       model,
       label: "answer/v1",
+      candidate,
       system: "Answer exactly.",
       prompt: "Question",
     });
@@ -115,9 +120,14 @@ describe("thin Pi runner", () => {
     const records = store.records();
     expect(records.map((entry) => entry.kind)).toEqual([
       "campaign",
+      "candidate",
       "call",
       "call-result",
     ]);
+    expect(records.find((entry) => entry.kind === "call")).toMatchObject({
+      seq: result.call,
+      candidate,
+    });
     const terminal = records.at(-1);
     expect(terminal?.kind).toBe("call-result");
     if (terminal?.kind !== "call-result" || terminal.state !== "returned") {

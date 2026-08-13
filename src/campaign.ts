@@ -1,26 +1,20 @@
 import { z } from "zod";
 
 import { Journal } from "./db";
-import {
-  copyJson,
-  parseCandidateId,
-  verdict as verdictSchema,
-} from "./schemas";
+import { copyJson, entryId, verdict as verdictSchema } from "./schemas";
 import { status as deriveStatus } from "./verification";
 import type {
   AuditedTool,
   CallContext,
-  CallId,
   CallOptions,
   CallReceipt,
   Campaign,
-  CandidateId,
   CandidateStatus,
   Entry,
+  EntryId,
   Json,
   Reader,
   Tool,
-  ToolCallId,
   Verdict,
 } from "./types";
 
@@ -50,12 +44,12 @@ class CampaignReader implements Reader {
     return this.journal.records();
   }
 
-  material(candidate: CandidateId): Uint8Array {
+  material(candidate: EntryId): Uint8Array {
     return this.journal.material(candidate);
   }
 
-  status(candidate: CandidateId): CandidateStatus {
-    return deriveStatus(this.records(), parseCandidateId(candidate));
+  status(candidate: EntryId): CandidateStatus {
+    return deriveStatus(this.records(), entryId.parse(candidate));
   }
 
   close(): void {
@@ -69,75 +63,55 @@ class CampaignWriter extends CampaignReader implements Campaign {
   submitCandidate(
     material: Uint8Array,
     requiredVerifiers: readonly string[],
-  ): CandidateId {
-    const candidate = `candidate:${crypto.randomUUID()}` as CandidateId;
+  ): EntryId {
     const required = names(requiredVerifiers);
-    this.journal.append(
+    return this.journal.append(
       {
         kind: "candidate",
-        candidate,
         requiredVerifiers: required,
       },
       material,
-    );
-    return candidate;
+    ).seq;
   }
 
   recordVerdict(
-    candidateValue: CandidateId,
-    verifierValue: string,
-    call: CallId,
+    callValue: EntryId,
     verdictValue: Verdict,
     evidenceValue: Json,
-  ): Entry {
-    const candidate = parseCandidateId(candidateValue);
-    const verifier = z.string().min(1).parse(verifierValue);
+  ): EntryId {
+    const call = entryId.parse(callValue);
     const verdict = verdictSchema.parse(verdictValue);
     const evidence = copyJson(evidenceValue);
-    return this.journal.transaction(() => {
-      const records = this.records();
-      const declaration = records.find(
-        (entry) => entry.kind === "candidate" && entry.candidate === candidate,
-      );
-      if (declaration?.kind !== "candidate") {
-        throw new Error(`candidate not found: ${candidate}`);
-      }
-      if (!declaration.requiredVerifiers.includes(verifier)) {
-        throw new Error(`verifier is not required by candidate: ${verifier}`);
-      }
-      const start = records.find(
-        (entry) => entry.kind === "call" && entry.id === call,
-      );
-      const result = records.find(
-        (entry) => entry.kind === "call-result" && entry.call === call,
-      );
-      if (
-        start?.kind !== "call" ||
-        start.label !== verifier ||
-        start.seq <= declaration.seq ||
-        result?.kind !== "call-result" ||
-        result.state !== "returned" ||
-        !isObject(start.request) ||
-        start.request.candidate !== candidate ||
-        !isObject(result.output) ||
-        result.output.state !== "succeeded"
-      ) {
-        throw new Error(`verdict requires a fresh successful ${verifier} call`);
-      }
-      if (
-        records.some((entry) => entry.kind === "verdict" && entry.call === call)
-      ) {
-        throw new Error(`call already has a verdict: ${call}`);
-      }
-      return this.journal.append({
-        kind: "verdict",
-        candidate,
-        verifier,
-        call,
-        verdict,
-        evidence,
-      });
-    });
+    const records = this.records();
+    const start = records.find(
+      (entry) => entry.kind === "call" && entry.seq === call,
+    );
+    const candidate = start?.kind === "call" ? start.candidate : undefined;
+    const declaration = records.find(
+      (entry) => entry.kind === "candidate" && entry.seq === candidate,
+    );
+    const result = records.find(
+      (entry) => entry.kind === "call-result" && entry.parent === call,
+    );
+    if (
+      start?.kind !== "call" ||
+      candidate === undefined ||
+      declaration?.kind !== "candidate" ||
+      start.seq <= declaration.seq ||
+      !declaration.requiredVerifiers.includes(start.label) ||
+      result?.kind !== "call-result" ||
+      result.state !== "returned" ||
+      !isObject(result.output) ||
+      result.output.state !== "succeeded"
+    ) {
+      throw new Error("verdict requires a fresh successful verifier call");
+    }
+    return this.journal.append({
+      kind: "verdict",
+      call,
+      verdict,
+      evidence,
+    }).seq;
   }
 
   async call(
@@ -145,25 +119,25 @@ class CampaignWriter extends CampaignReader implements Campaign {
     runner: (context: CallContext) => Promise<unknown>,
   ): Promise<CallReceipt> {
     const label = z.string().min(1).parse(options.label);
+    const candidate =
+      options.candidate === undefined
+        ? undefined
+        : entryId.parse(options.candidate);
     const request = copyJson(options.request);
     const signal = options.signal ?? new AbortController().signal;
-    const call = `call:${crypto.randomUUID()}` as CallId;
     const prepared = this.prepareTools(options.tools ?? []);
     const state: CallState = { pending: new Set(), accepting: true };
+    const start = this.journal.append({
+      kind: "call",
+      label,
+      ...(candidate === undefined ? {} : { candidate }),
+      request,
+      tools: prepared.map(({ declaration }) => declaration),
+    });
+    const call = start.seq;
     const tools = prepared.map((tool) =>
       this.wrapTool(call, tool, signal, state),
     );
-    this.journal.append({
-      kind: "call",
-      id: call,
-      label,
-      request,
-      tools: tools.map(({ name, description, inputSchema }) => ({
-        name,
-        description,
-        inputSchema,
-      })),
-    });
     this.#activeCalls += 1;
     let output: Json | undefined;
     let failure: unknown;
@@ -179,7 +153,7 @@ class CampaignWriter extends CampaignReader implements Campaign {
       if (failure !== undefined || output === undefined) {
         this.journal.append({
           kind: "call-result",
-          call,
+          parent: call,
           state: "threw",
           error: errorText(failure),
         });
@@ -187,11 +161,11 @@ class CampaignWriter extends CampaignReader implements Campaign {
       }
       this.journal.append({
         kind: "call-result",
-        call,
+        parent: call,
         state: "returned",
         output,
       });
-      return { id: call, output };
+      return { call, output };
     } finally {
       this.#activeCalls -= 1;
     }
@@ -215,7 +189,7 @@ class CampaignWriter extends CampaignReader implements Campaign {
   }
 
   private wrapTool(
-    call: CallId,
+    call: EntryId,
     tool: PreparedTool,
     signal: AbortSignal,
     state: CallState,
@@ -236,15 +210,13 @@ class CampaignWriter extends CampaignReader implements Campaign {
           sourceValue === undefined
             ? undefined
             : z.string().min(1).parse(sourceValue);
-        const id = `tool:${crypto.randomUUID()}` as ToolCallId;
-        this.journal.append({
+        const toolCall = this.journal.append({
           kind: "tool-call",
-          id,
           call,
           tool: name,
           ...(source === undefined ? {} : { source }),
           input,
-        });
+        }).seq;
         const execution = (async () => {
           let output: Json;
           try {
@@ -252,7 +224,7 @@ class CampaignWriter extends CampaignReader implements Campaign {
           } catch (error) {
             this.journal.append({
               kind: "tool-result",
-              id,
+              parent: toolCall,
               state: "threw",
               error: errorText(error),
             });
@@ -260,7 +232,7 @@ class CampaignWriter extends CampaignReader implements Campaign {
           }
           this.journal.append({
             kind: "tool-result",
-            id,
+            parent: toolCall,
             state: "returned",
             output,
           });

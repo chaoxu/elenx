@@ -1,6 +1,6 @@
 # Elenx
 
-Elenx is a small durable kernel for verified agent work. It stores exact candidate bytes under opaque IDs, records every model call and admitted tool effect, binds verdicts to fresh calls carrying the candidate ID, and derives verified status from the complete verdict log.
+Elenx is a small durable kernel for verified agent work. It stores exact candidate bytes on append-only log rows, records every model call and admitted tool effect, binds verdicts to fresh calls carrying the candidate row sequence, and derives verified status from the complete log.
 
 The package includes a thin Pi runner. Pi owns model execution, credentials, and provider behavior; Elenx records the call and supplies only the Zod-defined tools selected for it. The Pi registry is application-supplied and trusted. Elenx never supplies a database handle, SQL, campaign path, generic append operation, or unrestricted candidate reader to a model.
 
@@ -14,7 +14,7 @@ bun add git+https://gitea.lab/chaoxu/elenx.git#main zod@4.4.3
 
 Elenx exposes Pi's types directly. Keep TypeScript's `skipLibCheck` enabled while Pi 0.84.1's provider SDK declarations require it.
 
-Elenx is an experimental harness. Its API and campaign schema may change directly; there are no migrations or compatibility aliases. The current tree uses schema 3. Delete and rerun stale campaigns.
+Elenx is an experimental harness. Its API and campaign schema may change directly; there are no migrations or compatibility aliases. The current tree uses schema 4. Delete and rerun stale campaigns.
 
 Contributors run `bun install --frozen-lockfile` and `bun run check`. The check includes formatting, strict TypeScript, a clean-consumer compile, a 1,500-nonblank-source-line ceiling, and the complete test suite.
 

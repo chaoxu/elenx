@@ -34,10 +34,12 @@ try {
   });
   if (audit.state !== "succeeded") throw new Error(audit.error);
   const verdict = parseVerdict(audit.text);
-  campaign.recordVerdict(candidate, verifier, audit.call, verdict, {
+  campaign.recordVerdict(audit.call, verdict, {
     text: audit.text,
   });
-  console.log(JSON.stringify(campaign.status(candidate), null, 2));
+  console.log(
+    JSON.stringify({ candidate, ...campaign.status(candidate) }, null, 2),
+  );
 } finally {
   campaign.close();
 }

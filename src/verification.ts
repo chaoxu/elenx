@@ -1,43 +1,43 @@
-import type { CandidateId, CandidateStatus, Entry } from "./types";
+import type { CandidateStatus, Entry, EntryId } from "./types";
 
 export function status(
   records: readonly Entry[],
-  candidate: CandidateId,
+  candidate: EntryId,
 ): CandidateStatus {
   const declaration = records.find(
-    (entry) => entry.kind === "candidate" && entry.candidate === candidate,
+    (entry) => entry.kind === "candidate" && entry.seq === candidate,
   );
   if (declaration?.kind !== "candidate") {
     throw new Error(`candidate not found: ${candidate}`);
   }
-  const verdicts = records.filter(
-    (entry) => entry.kind === "verdict" && entry.candidate === candidate,
+  const calls = new Map(
+    records
+      .filter((entry) => entry.kind === "call")
+      .map((entry) => [entry.seq, entry]),
   );
+  const verdicts = records.flatMap((entry) => {
+    if (entry.kind !== "verdict") return [];
+    const call = calls.get(entry.call);
+    return call?.kind === "call" && call.candidate === candidate
+      ? [{ entry, verifier: call.label }]
+      : [];
+  });
   const missing: string[] = [];
   const failed: string[] = [];
-  const passes: number[] = [];
+  const passes: EntryId[] = [];
   for (const verifier of declaration.requiredVerifiers) {
-    const values = verdicts.filter(
-      (entry) => entry.kind === "verdict" && entry.verifier === verifier,
-    );
-    const pass = values.find(
-      (entry) => entry.kind === "verdict" && entry.verdict === "PASS",
-    );
-    if (pass?.kind !== "verdict") {
+    const values = verdicts.filter((value) => value.verifier === verifier);
+    const pass = values.find((value) => value.entry.verdict === "PASS");
+    if (pass === undefined) {
       missing.push(verifier);
     } else {
-      passes.push(pass.seq);
+      passes.push(pass.entry.seq);
     }
-    if (
-      values.some(
-        (entry) => entry.kind === "verdict" && entry.verdict === "FAIL",
-      )
-    ) {
+    if (values.some((value) => value.entry.verdict === "FAIL")) {
       failed.push(verifier);
     }
   }
   return {
-    candidate,
     verified: missing.length === 0 && failed.length === 0,
     missing,
     failed,

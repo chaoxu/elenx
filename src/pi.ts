@@ -14,15 +14,8 @@ import {
 } from "@earendil-works/pi-ai";
 import { z } from "zod";
 
-import { candidateId, copyJson } from "./schemas";
-import type {
-  AuditedTool,
-  CallId,
-  Campaign,
-  CandidateId,
-  Json,
-  Tool,
-} from "./types";
+import { copyJson } from "./schemas";
+import type { AuditedTool, Campaign, EntryId, Json, Tool } from "./types";
 
 export { InMemoryCredentialStore } from "@earendil-works/pi-ai";
 export { builtinModels as builtinPi } from "@earendil-works/pi-ai/providers/all";
@@ -35,7 +28,7 @@ export interface PiRunOptions {
   readonly label: string;
   readonly system?: string;
   readonly prompt: string;
-  readonly candidate?: CandidateId;
+  readonly candidate?: EntryId;
   readonly tools?: readonly Tool[];
   readonly signal?: AbortSignal;
 }
@@ -51,7 +44,7 @@ type PiResultBody = {
     }
 );
 
-export type PiResult = PiResultBody & { readonly call: CallId };
+export type PiResult = PiResultBody & { readonly call: EntryId };
 
 const requestSchema = z.strictObject({
   model: z.strictObject({
@@ -61,7 +54,6 @@ const requestSchema = z.strictObject({
   }),
   system: z.string().optional(),
   prompt: z.string(),
-  candidate: candidateId.optional(),
 });
 
 function piTool(tool: AuditedTool): AgentTool<TSchema, Json> {
@@ -131,19 +123,14 @@ export async function runPi(
     },
     ...(options.system === undefined ? {} : { system: options.system }),
     prompt: options.prompt,
-    ...(options.candidate === undefined
-      ? {}
-      : { candidate: options.candidate }),
   });
-  const request: Json = {
-    model: parsed.model,
-    prompt: parsed.prompt,
-    ...(parsed.system === undefined ? {} : { system: parsed.system }),
-    ...(parsed.candidate === undefined ? {} : { candidate: parsed.candidate }),
-  };
+  const request = copyJson(parsed);
   const receipt = await campaign.call(
     {
       label: options.label,
+      ...(options.candidate === undefined
+        ? {}
+        : { candidate: options.candidate }),
       request,
       ...(options.tools === undefined ? {} : { tools: options.tools }),
       ...(options.signal === undefined ? {} : { signal: options.signal }),
@@ -170,5 +157,5 @@ export async function runPi(
       return result(messages);
     },
   );
-  return { call: receipt.id, ...(receipt.output as PiResultBody) };
+  return { call: receipt.call, ...(receipt.output as PiResultBody) };
 }

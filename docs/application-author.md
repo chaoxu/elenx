@@ -37,7 +37,7 @@ const audit = await runPi(campaign, {
 if (audit.state !== "succeeded") throw new Error(audit.error);
 
 const verdict = parseAndValidateVerdict(audit.text);
-campaign.recordVerdict(candidate, verifier, audit.call, verdict, {
+campaign.recordVerdict(audit.call, verdict, {
   response: audit.text,
 });
 if (!campaign.status(candidate).verified) throw new Error("not verified");
