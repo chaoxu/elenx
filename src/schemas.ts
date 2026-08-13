@@ -8,13 +8,11 @@ export type Json =
   | readonly Json[]
   | { readonly [key: string]: Json };
 
-export type Hash = `sha256:${string}`;
 export type CallId = `call:${string}`;
 export type ToolCallId = `tool:${string}`;
 
-export const hash = z
-  .string()
-  .regex(/^sha256:[0-9a-f]{64}$/) as z.ZodType<Hash>;
+export const candidateId = z.templateLiteral(["candidate:", z.uuidv4()]);
+export type CandidateId = z.output<typeof candidateId>;
 const callId = z.string().startsWith("call:") as z.ZodType<CallId>;
 const toolCallId = z.string().startsWith("tool:") as z.ZodType<ToolCallId>;
 export const json = z.json() as z.ZodType<Json>;
@@ -40,13 +38,13 @@ export const entry = z.union([
   z.strictObject({
     ...base,
     kind: z.literal("candidate"),
-    candidate: hash,
+    candidate: candidateId,
     requiredVerifiers: z.array(z.string().min(1)).min(1).readonly(),
   }),
   z.strictObject({
     ...base,
     kind: z.literal("verdict"),
-    candidate: hash,
+    candidate: candidateId,
     verifier: z.string().min(1),
     call: callId,
     verdict,
@@ -112,6 +110,6 @@ export function copyJson(value: unknown): Json {
   return json.parse(value);
 }
 
-export function parseHash(value: unknown): Hash {
-  return hash.parse(value);
+export function parseCandidateId(value: unknown): CandidateId {
+  return candidateId.parse(value);
 }

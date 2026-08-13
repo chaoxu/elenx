@@ -1,8 +1,8 @@
-import type { CandidateStatus, Entry, Hash } from "./types";
+import type { CandidateId, CandidateStatus, Entry } from "./types";
 
 export function status(
   records: readonly Entry[],
-  candidate: Hash,
+  candidate: CandidateId,
 ): CandidateStatus {
   const declaration = records.find(
     (entry) => entry.kind === "candidate" && entry.candidate === candidate,

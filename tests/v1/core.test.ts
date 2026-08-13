@@ -40,16 +40,20 @@ async function pass(
 }
 
 describe("small kernel", () => {
-  test("persists candidates and content-addressed blobs for a fresh reader", () => {
+  test("persists exact candidate material for a fresh reader", () => {
     const path = database();
     const campaign = createCampaign(path, "test", { version: 1 });
     const material = new TextEncoder().encode("proof");
     const candidate = campaign.submitCandidate(material, ["audit/v1"]);
+    material.fill(0);
     campaign.close();
 
     const reader = openReader(path);
     expect(reader.records()).toHaveLength(2);
-    expect(new TextDecoder().decode(reader.blob(candidate))).toBe("proof");
+    const stored = reader.material(candidate);
+    expect(new TextDecoder().decode(stored)).toBe("proof");
+    stored.fill(0);
+    expect(new TextDecoder().decode(reader.material(candidate))).toBe("proof");
     reader.close();
   });
 
@@ -89,13 +93,9 @@ describe("small kernel", () => {
 
   test("rejects verdicts whose successful call names another candidate", async () => {
     const campaign = createCampaign(database(), "test", null);
-    const first = campaign.submitCandidate(new TextEncoder().encode("first"), [
-      "audit/v1",
-    ]);
-    const second = campaign.submitCandidate(
-      new TextEncoder().encode("second"),
-      ["audit/v1"],
-    );
+    const material = new TextEncoder().encode("same bytes");
+    const first = campaign.submitCandidate(material, ["audit/v1"]);
+    const second = campaign.submitCandidate(material, ["audit/v1"]);
     const call = await campaign.call(
       { label: "audit/v1", request: { candidate: first } },
       async () => ({ state: "succeeded" }),
@@ -148,16 +148,17 @@ describe("small kernel", () => {
     });
   });
 
-  test("freezes candidate verifier contracts exactly", () => {
+  test("gives identical material independent candidate identities", () => {
     const campaign = createCampaign(database(), "test", null);
     const material = new TextEncoder().encode("claim");
-    campaign.submitCandidate(material, ["audit/v1"]);
-    expect(() =>
-      campaign.submitCandidate(material, ["audit/v1", "compare/v1"]),
-    ).toThrow("contract conflict");
+    const first = campaign.submitCandidate(material, ["audit/v1"]);
+    const second = campaign.submitCandidate(material, ["audit/v1"]);
+    expect(second).not.toBe(first);
+    expect(campaign.status(first).missing).toEqual(["audit/v1"]);
+    expect(campaign.status(second).missing).toEqual(["audit/v1"]);
   });
 
-  test("treats normalized verifier sets and derived status idempotently", async () => {
+  test("normalizes verifier sets and derives status idempotently", async () => {
     const campaign = createCampaign(database(), "test", null);
     const material = new TextEncoder().encode("claim");
     const candidate = campaign.submitCandidate(material, [
@@ -165,9 +166,6 @@ describe("small kernel", () => {
       "audit/v1",
       "compare/v1",
     ]);
-    expect(campaign.submitCandidate(material, ["audit/v1", "compare/v1"])).toBe(
-      candidate,
-    );
     await pass(campaign, candidate, "audit/v1");
     await pass(campaign, candidate, "compare/v1");
     const first = campaign.status(candidate);
@@ -307,16 +305,28 @@ describe("small kernel", () => {
     ]);
   });
 
-  test("supports concurrent short-lived writers through SQLite transactions", () => {
+  test("supports multiple short-lived writers", () => {
     const path = database();
     const first = createCampaign(path, "test", null);
     const second = openCampaign(path);
-    const material = new TextEncoder().encode("same");
-    const candidate = first.submitCandidate(material, ["audit/v1"]);
-    expect(second.submitCandidate(material, ["audit/v1"])).toBe(candidate);
+    const firstCandidate = first.submitCandidate(
+      new TextEncoder().encode("first"),
+      ["audit/v1"],
+    );
+    const secondCandidate = second.submitCandidate(
+      new TextEncoder().encode("second"),
+      ["audit/v1"],
+    );
+    expect(secondCandidate).not.toBe(firstCandidate);
     expect(
       first.records().filter((entry) => entry.kind === "candidate"),
-    ).toHaveLength(1);
+    ).toHaveLength(2);
+    expect(new TextDecoder().decode(first.material(secondCandidate))).toBe(
+      "second",
+    );
+    expect(new TextDecoder().decode(second.material(firstCandidate))).toBe(
+      "first",
+    );
     first.close();
     second.close();
   });

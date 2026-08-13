@@ -1,22 +1,18 @@
 import { Database } from "bun:sqlite";
 import { closeSync, constants, existsSync, openSync, rmSync } from "node:fs";
-import { createHash } from "node:crypto";
 import { basename } from "node:path";
 
-import { entry as entrySchema, parseHash } from "./schemas";
-import type { Entry, EntryDraft, Hash, Json } from "./types";
+import { entry as entrySchema, parseCandidateId } from "./schemas";
+import type { CandidateId, Entry, EntryDraft, Json } from "./types";
 
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 const SCHEMA = `
-  CREATE TABLE blobs (
-    hash TEXT PRIMARY KEY,
-    bytes BLOB NOT NULL
-  ) STRICT, WITHOUT ROWID;
   CREATE TABLE entries (
     seq INTEGER PRIMARY KEY AUTOINCREMENT,
     at_ms INTEGER NOT NULL,
     kind TEXT NOT NULL CHECK(kind IN ('campaign', 'candidate', 'call', 'tool-call', 'tool-result', 'call-result', 'verdict')),
-    body TEXT NOT NULL CHECK(json_valid(body) AND json_type(body) = 'object')
+    body TEXT NOT NULL CHECK(json_valid(body) AND json_type(body) = 'object'),
+    material BLOB CHECK((kind = 'candidate') = (material IS NOT NULL))
   ) STRICT;
   CREATE UNIQUE INDEX one_campaign ON entries(kind) WHERE kind = 'campaign';
   CREATE UNIQUE INDEX one_candidate ON entries(json_extract(body, '$.candidate')) WHERE kind = 'candidate';
@@ -27,8 +23,6 @@ const SCHEMA = `
   CREATE UNIQUE INDEX one_verdict_call ON entries(json_extract(body, '$.call')) WHERE kind = 'verdict';
   CREATE TRIGGER entries_no_update BEFORE UPDATE ON entries BEGIN SELECT RAISE(ABORT, 'entries are append-only'); END;
   CREATE TRIGGER entries_no_delete BEFORE DELETE ON entries BEGIN SELECT RAISE(ABORT, 'entries are append-only'); END;
-  CREATE TRIGGER blobs_no_update BEFORE UPDATE ON blobs BEGIN SELECT RAISE(ABORT, 'blobs are immutable'); END;
-  CREATE TRIGGER blobs_no_delete BEFORE DELETE ON blobs BEGIN SELECT RAISE(ABORT, 'blobs are immutable'); END;
   PRAGMA user_version = ${SCHEMA_VERSION};
 `;
 
@@ -38,15 +32,11 @@ interface EntryRow {
   readonly kind: string;
   readonly body: string;
 }
-interface BlobRow {
-  readonly bytes: Uint8Array;
+interface MaterialRow {
+  readonly material: Uint8Array;
 }
 interface VersionRow {
   readonly user_version: number | bigint;
-}
-
-function hashBytes(bytes: Uint8Array): Hash {
-  return `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
 }
 
 function configure(database: Database): void {
@@ -150,7 +140,7 @@ export class Journal {
     return new Journal(open(path, false, readonly), readonly);
   }
 
-  append(draft: EntryDraft): Entry {
+  append(draft: EntryDraft, material?: Uint8Array): Entry {
     if (this.#readonly) throw new Error("campaign is read-only");
     const atMs = Date.now();
     const checked = entrySchema.parse({ ...draft, seq: 1, atMs });
@@ -158,9 +148,17 @@ export class Journal {
     delete body.kind;
     delete body.seq;
     delete body.atMs;
+    if (checked.kind === "candidate" && material === undefined) {
+      throw new Error("candidate material is required");
+    }
+    if (checked.kind !== "candidate" && material !== undefined) {
+      throw new Error("material belongs only to a candidate");
+    }
+    const storedMaterial =
+      material === undefined ? null : Uint8Array.from(material);
     const result = this.#database.run(
-      "INSERT INTO entries(at_ms, kind, body) VALUES (?, ?, ?)",
-      [atMs, checked.kind, JSON.stringify(body)],
+      "INSERT INTO entries(at_ms, kind, body, material) VALUES (?, ?, ?, ?)",
+      [atMs, checked.kind, JSON.stringify(body), storedMaterial],
     );
     return entrySchema.parse({
       ...checked,
@@ -185,34 +183,15 @@ export class Journal {
       );
   }
 
-  put(bytes: Uint8Array): Hash {
-    if (this.#readonly) throw new Error("campaign is read-only");
-    const copy = Uint8Array.from(bytes);
-    const hash = hashBytes(copy);
-    this.#database.run(
-      "INSERT OR IGNORE INTO blobs(hash, bytes) VALUES (?, ?)",
-      [hash, copy],
-    );
-    const stored = this.blob(hash);
-    if (
-      copy.length !== stored.length ||
-      !copy.every((value, index) => value === stored[index])
-    ) {
-      throw new Error(`hash collision: ${hash}`);
-    }
-    return hash;
-  }
-
-  blob(value: Hash): Uint8Array {
-    const hash = parseHash(value);
+  material(value: CandidateId): Uint8Array {
+    const candidate = parseCandidateId(value);
     const row = this.#database
-      .query<BlobRow, [Hash]>("SELECT bytes FROM blobs WHERE hash = ?")
-      .get(hash);
-    if (row === null) throw new Error(`blob not found: ${hash}`);
-    const bytes = Uint8Array.from(row.bytes);
-    if (hashBytes(bytes) !== hash)
-      throw new Error(`blob hash mismatch: ${hash}`);
-    return bytes;
+      .query<MaterialRow, [CandidateId]>(
+        "SELECT material FROM entries WHERE kind = 'candidate' AND json_extract(body, '$.candidate') = ?",
+      )
+      .get(candidate);
+    if (row === null) throw new Error(`candidate not found: ${candidate}`);
+    return Uint8Array.from(row.material);
   }
 
   close(): void {

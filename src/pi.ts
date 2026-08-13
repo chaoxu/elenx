@@ -14,8 +14,15 @@ import {
 } from "@earendil-works/pi-ai";
 import { z } from "zod";
 
-import { copyJson, hash } from "./schemas";
-import type { AuditedTool, CallId, Campaign, Hash, Json, Tool } from "./types";
+import { candidateId, copyJson } from "./schemas";
+import type {
+  AuditedTool,
+  CallId,
+  Campaign,
+  CandidateId,
+  Json,
+  Tool,
+} from "./types";
 
 export { InMemoryCredentialStore } from "@earendil-works/pi-ai";
 export { builtinModels as builtinPi } from "@earendil-works/pi-ai/providers/all";
@@ -28,7 +35,7 @@ export interface PiRunOptions {
   readonly label: string;
   readonly system?: string;
   readonly prompt: string;
-  readonly candidate?: Hash;
+  readonly candidate?: CandidateId;
   readonly tools?: readonly Tool[];
   readonly signal?: AbortSignal;
 }
@@ -54,7 +61,7 @@ const requestSchema = z.strictObject({
   }),
   system: z.string().optional(),
   prompt: z.string(),
-  candidate: hash.optional(),
+  candidate: candidateId.optional(),
 });
 
 function piTool(tool: AuditedTool): AgentTool<TSchema, Json> {

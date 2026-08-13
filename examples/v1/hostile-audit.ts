@@ -1,12 +1,17 @@
 import { z } from "zod";
 
-import { createCampaign, openReader, type Verdict } from "elenx";
+import {
+  createCampaign,
+  openReader,
+  type CandidateId,
+  type Verdict,
+} from "elenx";
 
 const verifier = "hostile-audit/v1";
 const verdict = z.enum(["PASS", "FAIL", "INCONCLUSIVE"]);
 
 export interface AuditReport {
-  readonly candidate: string;
+  readonly candidate: CandidateId;
   readonly verdict: Verdict;
   readonly verified: boolean;
 }

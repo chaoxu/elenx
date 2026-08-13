@@ -2,8 +2,8 @@ import { z } from "zod";
 
 import type {
   CallId,
+  CandidateId,
   Entry,
-  Hash,
   Json,
   ToolDeclaration,
   Verdict,
@@ -11,9 +11,9 @@ import type {
 
 export type {
   CallId,
+  CandidateId,
   Entry,
   EntryDraft,
-  Hash,
   Json,
   ToolCallId,
   ToolDeclaration,
@@ -32,7 +32,7 @@ export interface AuditedTool extends ToolDeclaration {
 }
 
 export interface CandidateStatus {
-  readonly candidate: Hash;
+  readonly candidate: CandidateId;
   readonly verified: boolean;
   readonly missing: readonly string[];
   readonly failed: readonly string[];
@@ -41,8 +41,8 @@ export interface CandidateStatus {
 
 export interface Reader {
   records(): readonly Entry[];
-  blob(hash: Hash): Uint8Array;
-  status(candidate: Hash): CandidateStatus;
+  material(candidate: CandidateId): Uint8Array;
+  status(candidate: CandidateId): CandidateStatus;
   close(): void;
 }
 
@@ -68,9 +68,9 @@ export interface Campaign extends Reader {
   submitCandidate(
     material: Uint8Array,
     requiredVerifiers: readonly string[],
-  ): Hash;
+  ): CandidateId;
   recordVerdict(
-    candidate: Hash,
+    candidate: CandidateId,
     verifier: string,
     call: CallId,
     verdict: Verdict,

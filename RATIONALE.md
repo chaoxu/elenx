@@ -1,12 +1,12 @@
 # Elenx v1 rationale
 
-The kernel retains only facts that an application must not be able to skip accidentally: the exact candidate bytes and hash, which verifiers were required, what each fresh call received, which tools Elenx supplied and audited, what returned, and which verdict records determine verification.
+The kernel retains only facts that an application must not be able to skip accidentally: the exact candidate bytes and opaque ID, which verifiers were required, what each fresh call received, which tools Elenx supplied and audited, what returned, and which verdict records determine verification.
 
 Pi remains bundled because v1 must run without every application rebuilding a model loop. The integration is a leaf: Pi owns credentials, providers, messages, retries, usage fields, and tool-loop behavior; Elenx supplies durable wrappers and stores the native result. This keeps the default useful without turning the kernel into another agent framework.
 
-Zod is the single authority for public JSON and tool inputs. The same tool schema produces application types, runtime parsing, and the JSON Schema Pi sees. Bun SQLite supplies locking and transaction serialization. Platform crypto supplies hashes and ids. Elenx code implements only the campaign record model and verification rule.
+Zod is the single authority for public JSON and tool inputs. The same tool schema produces application types, runtime parsing, and the JSON Schema Pi sees. Bun SQLite supplies locking and transaction serialization. Platform UUIDs supply opaque IDs. Elenx code implements only the campaign record model and verification rule.
 
-Candidates contain the application-level statement, proof or answer, sources, dependencies, and revision identity. Premise graphs, rebuttal workflows, routes, blind reconstruction, search, compute, and publication remain application data and policy. Changed material gets a new hash; a failed candidate is never rehabilitated by hidden mutation.
+Candidates contain the application-level statement, proof or answer, sources, and dependencies. Premise graphs, rebuttal workflows, routes, blind reconstruction, search, compute, repeat prevention, and publication remain application data and policy. Every submission gets a new ID, even when its bytes match an earlier submission; failure remains attached to that submission.
 
 Verification is a view over immutable candidate and verdict records, not another stored event. Later verdicts update the view without rewriting history. Publishing, adopting, or retracting a result remains application policy and state.
 

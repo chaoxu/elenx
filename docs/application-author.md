@@ -3,7 +3,7 @@
 Install Elenx from Gitea:
 
 ```sh
-bun add git+https://gitea.lab/chaoxu/elenx.git#v0.2.0 zod@4.4.3
+bun add git+https://gitea.lab/chaoxu/elenx.git#main zod@4.4.3
 ```
 
 ## Create and verify a candidate
@@ -24,6 +24,7 @@ const material = new TextEncoder().encode(
   JSON.stringify({ statement, proof, sources, revision }),
 );
 const candidate = campaign.submitCandidate(material, [verifier]);
+const stored = new TextDecoder().decode(campaign.material(candidate));
 
 const audit = await runPi(campaign, {
   models,
@@ -31,7 +32,7 @@ const audit = await runPi(campaign, {
   label: verifier,
   candidate,
   system: "Audit the candidate adversarially.",
-  prompt: `Return PASS, FAIL, or INCONCLUSIVE, then explain.\n\n${new TextDecoder().decode(material)}`,
+  prompt: `Return PASS, FAIL, or INCONCLUSIVE, then explain.\n\n${stored}`,
 });
 if (audit.state !== "succeeded") throw new Error(audit.error);
 
@@ -45,7 +46,7 @@ campaign.close();
 
 `builtinPi()` uses Pi's normal environment and ambient provider authentication. An application that owns OAuth or API-key credentials can import `InMemoryCredentialStore` from `elenx/pi` and pass it as `builtinPi({ credentials })`; Elenx re-exports both implementations and their types directly from Pi. Elenx does not read, copy, or persist provider credentials.
 
-The candidate envelope is application-owned. Include every fact that must change its identity: statement revision, answer or proof, cited sources, imported assumptions, and dependency versions. `status(candidate).verified` is derived from the complete verdict log; Elenx stores no promotion event. Publishing or adopting a verified candidate belongs to the application.
+The candidate envelope is application-owned. Include every fact that must be audited together: statement revision, answer or proof, cited sources, imported assumptions, and dependency versions. `status(candidate).verified` is derived from the complete verdict log; Elenx stores no promotion event. Publishing or adopting a verified candidate belongs to the application.
 
 ## Give a model one narrow tool
 
@@ -77,7 +78,7 @@ const audit = await runPi(campaign, {
 
 Zod validates the model's input before `run` executes and generates the JSON Schema Pi receives. Tool inputs are Zod object schemas; their refinements and transforms must be pure admission logic. Elenx records the declaration, validated input, provider tool-call id, result, and containing Pi transcript.
 
-Tools should express one bounded application action. Suitable proof-search tools read a named attached source, inspect a bounded frontier view, launch one application-approved computation, or submit one structured observation. Do not expose SQL, the campaign path, a database client, arbitrary record append, unrestricted blob enumeration, the whole `Campaign`, or a general filesystem shell.
+Tools should express one bounded application action. Suitable proof-search tools read a named attached source, inspect a bounded frontier view, launch one application-approved computation, or submit one structured observation. Do not expose SQL, the campaign path, a database client, arbitrary record append, unrestricted candidate access, the whole `Campaign`, or a general filesystem shell.
 
 ## Keep orchestration outside the kernel
 

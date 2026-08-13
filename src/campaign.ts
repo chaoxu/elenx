@@ -1,7 +1,11 @@
 import { z } from "zod";
 
 import { Journal } from "./db";
-import { copyJson, parseHash, verdict as verdictSchema } from "./schemas";
+import {
+  copyJson,
+  parseCandidateId,
+  verdict as verdictSchema,
+} from "./schemas";
 import { status as deriveStatus } from "./verification";
 import type {
   AuditedTool,
@@ -10,9 +14,9 @@ import type {
   CallOptions,
   CallReceipt,
   Campaign,
+  CandidateId,
   CandidateStatus,
   Entry,
-  Hash,
   Json,
   Reader,
   Tool,
@@ -46,12 +50,12 @@ class CampaignReader implements Reader {
     return this.journal.records();
   }
 
-  blob(hash: Hash): Uint8Array {
-    return this.journal.blob(hash);
+  material(candidate: CandidateId): Uint8Array {
+    return this.journal.material(candidate);
   }
 
-  status(candidate: Hash): CandidateStatus {
-    return deriveStatus(this.records(), parseHash(candidate));
+  status(candidate: CandidateId): CandidateStatus {
+    return deriveStatus(this.records(), parseCandidateId(candidate));
   }
 
   close(): void {
@@ -65,41 +69,28 @@ class CampaignWriter extends CampaignReader implements Campaign {
   submitCandidate(
     material: Uint8Array,
     requiredVerifiers: readonly string[],
-  ): Hash {
-    const candidate = this.journal.put(Uint8Array.from(material));
+  ): CandidateId {
+    const candidate = `candidate:${crypto.randomUUID()}` as CandidateId;
     const required = names(requiredVerifiers);
-    return this.journal.transaction(() => {
-      const existing = this.records().find(
-        (entry) => entry.kind === "candidate" && entry.candidate === candidate,
-      );
-      if (existing?.kind === "candidate") {
-        if (
-          existing.requiredVerifiers.length !== required.length ||
-          existing.requiredVerifiers.some(
-            (verifier, index) => verifier !== required[index],
-          )
-        ) {
-          throw new Error(`candidate contract conflict: ${candidate}`);
-        }
-        return candidate;
-      }
-      this.journal.append({
+    this.journal.append(
+      {
         kind: "candidate",
         candidate,
         requiredVerifiers: required,
-      });
-      return candidate;
-    });
+      },
+      material,
+    );
+    return candidate;
   }
 
   recordVerdict(
-    candidateValue: Hash,
+    candidateValue: CandidateId,
     verifierValue: string,
     call: CallId,
     verdictValue: Verdict,
     evidenceValue: Json,
   ): Entry {
-    const candidate = parseHash(candidateValue);
+    const candidate = parseCandidateId(candidateValue);
     const verifier = z.string().min(1).parse(verifierValue);
     const verdict = verdictSchema.parse(verdictValue);
     const evidence = copyJson(evidenceValue);

@@ -55,46 +55,27 @@ describe("campaign database", () => {
     }
   });
 
-  test("database triggers reject record and blob mutation", () => {
+  test("database triggers reject record and material mutation", () => {
     const path = temporaryPath();
     const campaign = createCampaign(path, "test", null);
     campaign.submitCandidate(new TextEncoder().encode("claim"), ["audit/v1"]);
     campaign.close();
     const database = new Database(path, { create: false, readwrite: true });
-    expect(() => database.run("UPDATE entries SET kind = 'campaign'")).toThrow(
+    expect(() =>
+      database.run("UPDATE entries SET material = material"),
+    ).toThrow("entries are append-only");
+    expect(() => database.run("DELETE FROM entries")).toThrow(
       "entries are append-only",
     );
-    expect(() => database.run("DELETE FROM blobs")).toThrow(
-      "blobs are immutable",
-    );
     database.close(true);
-  });
-
-  test("reader detects blob tampering by hash", () => {
-    const path = temporaryPath();
-    const campaign = createCampaign(path, "test", null);
-    const candidate = campaign.submitCandidate(
-      new TextEncoder().encode("claim"),
-      ["audit/v1"],
-    );
-    campaign.close();
-    const database = new Database(path, { create: false, readwrite: true });
-    database.run("DROP TRIGGER blobs_no_update");
-    database.run("UPDATE blobs SET bytes = ? WHERE hash = ?", [
-      new TextEncoder().encode("forged"),
-      candidate,
-    ]);
-    database.close(true);
-    const reader = openReader(path);
-    expect(() => reader.blob(candidate)).toThrow("hash mismatch");
   });
 
   test("refuses an unsupported schema", () => {
     const path = temporaryPath();
     const database = new Database(path, { create: true });
-    database.run("PRAGMA user_version = 1");
+    database.run("PRAGMA user_version = 2");
     database.close(true);
-    expect(() => openReader(path)).toThrow("unsupported campaign schema: 1");
+    expect(() => openReader(path)).toThrow("unsupported campaign schema: 2");
   });
 
   test("refuses an artifact without its campaign identity", () => {

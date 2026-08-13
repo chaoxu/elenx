@@ -21,6 +21,7 @@ const material = new TextEncoder().encode(
 const campaign = createCampaign(path, "pi-hostile-audit", { revision: 1 });
 try {
   const candidate = campaign.submitCandidate(material, [verifier]);
+  const stored = new TextDecoder().decode(campaign.material(candidate));
   const audit = await runPi(campaign, {
     models,
     model,
@@ -28,7 +29,7 @@ try {
     system: "Audit the supplied claim adversarially.",
     prompt:
       "Return PASS, FAIL, or INCONCLUSIVE on the first line, then explain briefly.\n\n" +
-      new TextDecoder().decode(material),
+      stored,
     candidate,
   });
   if (audit.state !== "succeeded") throw new Error(audit.error);
