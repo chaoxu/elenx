@@ -36,23 +36,9 @@ export function status(
       failed.push(verifier);
     }
   }
-  const promotable = missing.length === 0 && failed.length === 0;
-  const promotion = records.find(
-    (entry) => entry.kind === "promotion" && entry.candidate === candidate,
-  );
-  if (promotion?.kind === "promotion") {
-    if (
-      !promotable ||
-      promotion.verdicts.length !== passes.length ||
-      promotion.verdicts.some((seq, index) => seq !== passes[index])
-    ) {
-      throw new Error(`invalid promotion witness: ${candidate}`);
-    }
-  }
   return {
     candidate,
-    promotable,
-    promoted: promotion !== undefined,
+    verified: missing.length === 0 && failed.length === 0,
     missing,
     failed,
     passes,

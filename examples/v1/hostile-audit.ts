@@ -8,7 +8,7 @@ const verdict = z.enum(["PASS", "FAIL", "INCONCLUSIVE"]);
 export interface AuditReport {
   readonly candidate: string;
   readonly verdict: Verdict;
-  readonly promoted: boolean;
+  readonly verified: boolean;
 }
 
 export function parseVerdict(text: string): Verdict {
@@ -41,7 +41,6 @@ export async function runHostileAudit(path: string): Promise<AuditReport> {
     .parse(audit.output).text;
   const result = parseVerdict(text);
   campaign.recordVerdict(candidate, verifier, audit.id, result, { text });
-  if (campaign.status(candidate).promotable) campaign.promote(candidate);
   campaign.close();
 
   const reader = openReader(path);
@@ -49,7 +48,7 @@ export async function runHostileAudit(path: string): Promise<AuditReport> {
     return {
       candidate,
       verdict: result,
-      promoted: reader.status(candidate).promoted,
+      verified: reader.status(candidate).verified,
     };
   } finally {
     reader.close();

@@ -12,8 +12,8 @@ afterEach(() => {
   directory = undefined;
 });
 
-test("Coverify-shaped reference slice promotes one audited candidate", async () => {
+test("Coverify-shaped reference slice verifies one candidate", async () => {
   directory = mkdtempSync(join(tmpdir(), "elenx-reference-"));
   const report = await runHostileAudit(join(directory, "campaign.db"));
-  expect(report).toMatchObject({ verdict: "PASS", promoted: true });
+  expect(report).toMatchObject({ verdict: "PASS", verified: true });
 });

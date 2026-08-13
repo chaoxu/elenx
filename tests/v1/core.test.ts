@@ -53,7 +53,7 @@ describe("small kernel", () => {
     reader.close();
   });
 
-  test("binds verdicts to fresh successful calls and explicit promotion", async () => {
+  test("derives verification from fresh successful verdicts", async () => {
     const campaign = createCampaign(database(), "test", null);
     const candidate = campaign.submitCandidate(
       new TextEncoder().encode("claim"),
@@ -61,8 +61,7 @@ describe("small kernel", () => {
     );
     expect(campaign.status(candidate)).toEqual({
       candidate,
-      promotable: false,
-      promoted: false,
+      verified: false,
       missing: ["audit/v1", "compare/v1"],
       failed: [],
       passes: [],
@@ -71,23 +70,21 @@ describe("small kernel", () => {
     await pass(campaign, candidate, "audit/v1");
     await pass(campaign, candidate, "compare/v1");
     expect(campaign.status(candidate)).toMatchObject({
-      promotable: true,
-      promoted: false,
-    });
-    const promotion = campaign.promote(candidate);
-    expect(promotion.kind).toBe("promotion");
-    expect(campaign.status(candidate)).toMatchObject({
-      promotable: true,
-      promoted: true,
+      verified: true,
+      missing: [],
+      failed: [],
     });
 
     const late = await campaign.call(
-      { label: "audit/v1", request: null },
-      async () => ({ result: "late" }),
+      { label: "audit/v1", request: { candidate } },
+      async () => ({ state: "succeeded", result: "late counterexample" }),
     );
-    expect(() =>
-      campaign.recordVerdict(candidate, "audit/v1", late.id, "FAIL", null),
-    ).toThrow("already promoted");
+    campaign.recordVerdict(candidate, "audit/v1", late.id, "FAIL", null);
+    expect(campaign.status(candidate)).toMatchObject({
+      verified: false,
+      missing: [],
+      failed: ["audit/v1"],
+    });
   });
 
   test("rejects verdicts whose successful call names another candidate", async () => {
@@ -132,7 +129,7 @@ describe("small kernel", () => {
     ).toThrow("already has a verdict");
   });
 
-  test("blocks promotion on missing or failed required verification", async () => {
+  test("keeps candidates unverified on missing or failed verification", async () => {
     const campaign = createCampaign(database(), "test", null);
     const candidate = campaign.submitCandidate(
       new TextEncoder().encode("claim"),
@@ -145,11 +142,10 @@ describe("small kernel", () => {
     campaign.recordVerdict(candidate, "audit/v1", failed.id, "FAIL", null);
     await pass(campaign, candidate, "compare/v1");
     expect(campaign.status(candidate)).toMatchObject({
-      promotable: false,
+      verified: false,
       missing: ["audit/v1"],
       failed: ["audit/v1"],
     });
-    expect(() => campaign.promote(candidate)).toThrow("not promotable");
   });
 
   test("freezes candidate verifier contracts exactly", () => {
@@ -161,7 +157,7 @@ describe("small kernel", () => {
     ).toThrow("contract conflict");
   });
 
-  test("treats normalized verifier sets and promotion idempotently", async () => {
+  test("treats normalized verifier sets and derived status idempotently", async () => {
     const campaign = createCampaign(database(), "test", null);
     const material = new TextEncoder().encode("claim");
     const candidate = campaign.submitCandidate(material, [
@@ -174,12 +170,9 @@ describe("small kernel", () => {
     );
     await pass(campaign, candidate, "audit/v1");
     await pass(campaign, candidate, "compare/v1");
-    const first = campaign.promote(candidate);
-    const second = campaign.promote(candidate);
-    expect(second.seq).toBe(first.seq);
-    expect(
-      campaign.records().filter((entry) => entry.kind === "promotion"),
-    ).toHaveLength(1);
+    const first = campaign.status(candidate);
+    expect(first).toMatchObject({ verified: true, missing: [], failed: [] });
+    expect(campaign.status(candidate)).toEqual(first);
   });
 
   test("records calls and tool effects before returning", async () => {

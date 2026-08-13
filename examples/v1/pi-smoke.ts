@@ -36,7 +36,6 @@ try {
   campaign.recordVerdict(candidate, verifier, audit.call, verdict, {
     text: audit.text,
   });
-  if (campaign.status(candidate).promotable) campaign.promote(candidate);
   console.log(JSON.stringify(campaign.status(candidate), null, 2));
 } finally {
   campaign.close();

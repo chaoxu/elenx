@@ -33,8 +33,7 @@ export interface AuditedTool extends ToolDeclaration {
 
 export interface CandidateStatus {
   readonly candidate: Hash;
-  readonly promotable: boolean;
-  readonly promoted: boolean;
+  readonly verified: boolean;
   readonly missing: readonly string[];
   readonly failed: readonly string[];
   readonly passes: readonly number[];
@@ -77,7 +76,6 @@ export interface Campaign extends Reader {
     verdict: Verdict,
     evidence: Json,
   ): Entry;
-  promote(candidate: Hash): Entry;
   call(
     options: CallOptions,
     runner: (context: CallContext) => Promise<unknown>,

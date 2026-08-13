@@ -54,12 +54,6 @@ export const entry = z.union([
   }),
   z.strictObject({
     ...base,
-    kind: z.literal("promotion"),
-    candidate: hash,
-    verdicts: z.array(z.number().int().positive()).min(1).readonly(),
-  }),
-  z.strictObject({
-    ...base,
     kind: z.literal("call"),
     id: callId,
     label: z.string().min(1),

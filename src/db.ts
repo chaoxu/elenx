@@ -6,7 +6,7 @@ import { basename } from "node:path";
 import { entry as entrySchema, parseHash } from "./schemas";
 import type { Entry, EntryDraft, Hash, Json } from "./types";
 
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 const SCHEMA = `
   CREATE TABLE blobs (
     hash TEXT PRIMARY KEY,
@@ -15,7 +15,7 @@ const SCHEMA = `
   CREATE TABLE entries (
     seq INTEGER PRIMARY KEY AUTOINCREMENT,
     at_ms INTEGER NOT NULL,
-    kind TEXT NOT NULL CHECK(kind IN ('campaign', 'candidate', 'call', 'tool-call', 'tool-result', 'call-result', 'verdict', 'promotion')),
+    kind TEXT NOT NULL CHECK(kind IN ('campaign', 'candidate', 'call', 'tool-call', 'tool-result', 'call-result', 'verdict')),
     body TEXT NOT NULL CHECK(json_valid(body) AND json_type(body) = 'object')
   ) STRICT;
   CREATE UNIQUE INDEX one_campaign ON entries(kind) WHERE kind = 'campaign';
@@ -25,7 +25,6 @@ const SCHEMA = `
   CREATE UNIQUE INDEX one_tool_call ON entries(json_extract(body, '$.id')) WHERE kind = 'tool-call';
   CREATE UNIQUE INDEX one_tool_result ON entries(json_extract(body, '$.id')) WHERE kind = 'tool-result';
   CREATE UNIQUE INDEX one_verdict_call ON entries(json_extract(body, '$.call')) WHERE kind = 'verdict';
-  CREATE UNIQUE INDEX one_promotion ON entries(json_extract(body, '$.candidate')) WHERE kind = 'promotion';
   CREATE TRIGGER entries_no_update BEFORE UPDATE ON entries BEGIN SELECT RAISE(ABORT, 'entries are append-only'); END;
   CREATE TRIGGER entries_no_delete BEFORE DELETE ON entries BEGIN SELECT RAISE(ABORT, 'entries are append-only'); END;
   CREATE TRIGGER blobs_no_update BEFORE UPDATE ON blobs BEGIN SELECT RAISE(ABORT, 'blobs are immutable'); END;

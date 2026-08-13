@@ -3,10 +3,10 @@
 Install Elenx from Gitea:
 
 ```sh
-bun add git+https://gitea.lab/chaoxu/elenx.git#v0.1.1 zod@4.4.3
+bun add git+https://gitea.lab/chaoxu/elenx.git#v0.2.0 zod@4.4.3
 ```
 
-## Create and promote a candidate
+## Create and verify a candidate
 
 ```ts
 import { createCampaign } from "elenx";
@@ -39,13 +39,13 @@ const verdict = parseAndValidateVerdict(audit.text);
 campaign.recordVerdict(candidate, verifier, audit.call, verdict, {
   response: audit.text,
 });
-if (campaign.status(candidate).promotable) campaign.promote(candidate);
+if (!campaign.status(candidate).verified) throw new Error("not verified");
 campaign.close();
 ```
 
 `builtinPi()` uses Pi's normal environment and ambient provider authentication. An application that owns OAuth or API-key credentials can import `InMemoryCredentialStore` from `elenx/pi` and pass it as `builtinPi({ credentials })`; Elenx re-exports both implementations and their types directly from Pi. Elenx does not read, copy, or persist provider credentials.
 
-The candidate envelope is application-owned. Include every fact that must change its identity: statement revision, answer or proof, cited sources, imported assumptions, and dependency versions.
+The candidate envelope is application-owned. Include every fact that must change its identity: statement revision, answer or proof, cited sources, imported assumptions, and dependency versions. `status(candidate).verified` is derived from the complete verdict log; Elenx stores no promotion event. Publishing or adopting a verified candidate belongs to the application.
 
 ## Give a model one narrow tool
 
@@ -88,6 +88,6 @@ An application can maintain routes, task queues, source bundles, blind-review vi
 3. run each verifier through `runPi` or `campaign.call` with only its selected tools;
 4. parse and validate the verifier response in application code;
 5. record the verdict against that call; and
-6. promote only when `status(candidate).promotable` is true.
+6. publish or adopt the candidate in application code only when `status(candidate).verified` is true.
 
 [`../examples/v1/hostile-audit.ts`](../examples/v1/hostile-audit.ts) shows the scripted path. [`../examples/v1/pi-smoke.ts`](../examples/v1/pi-smoke.ts) uses a real Pi model.

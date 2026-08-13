@@ -9,17 +9,17 @@ Elenx provides four guarantees:
 1. one append-only SQLite campaign artifact with content-addressed blobs;
 2. an exact record of each call, its selected tool declarations, admitted tool inputs and results, and final call result;
 3. verdicts bound to fresh successful calls carrying the hash of exact stored candidate bytes; and
-4. explicit, witnessed, monotone promotion after every required verifier passes and none fails.
+4. a derived, witnessed verification status requiring every declared verifier to pass and none to fail.
 
 Elenx is not an agent framework. Applications own coordination, routes, context assembly, source search, computation, retries, budgets, filesystem policy, publication, and user interfaces.
 
 ## Runtime and dependencies
 
-V1 targets Bun 1.3.14 or newer. It uses Bun SQLite for persistence, Zod 4.4.3 for input validation and JSON Schema generation, Pi 0.84.1 for the bundled model loop, and platform SHA-256 and UUID primitives. Elenx exposes Pi's types directly instead of maintaining local copies. The implementation contains no custom SQL parser, JSON Schema validator, model loop, provider client, or native lock binding.
+V1 targets Bun 1.3.14 or newer and campaign schema 2. It uses Bun SQLite for persistence, Zod 4.4.3 for input validation and JSON Schema generation, Pi 0.84.1 for the bundled model loop, and platform SHA-256 and UUID primitives. Elenx exposes Pi's types directly instead of maintaining local copies. The implementation contains no custom SQL parser, JSON Schema validator, model loop, provider client, or native lock binding.
 
 ## Campaign artifact
 
-A campaign is one SQLite database. The database uses WAL, `synchronous=FULL`, a five-second busy timeout, strict tables, and append-only triggers. Short `BEGIN IMMEDIATE` transactions serialize candidate, verdict, and promotion decisions across campaign handles. There is no process-lifetime writer lock.
+A campaign is one SQLite database. The database uses WAL, `synchronous=FULL`, a five-second busy timeout, strict tables, and append-only triggers. Short `BEGIN IMMEDIATE` transactions serialize candidate and verdict decisions across campaign handles. There is no process-lifetime writer lock.
 
 Creation uses an exclusive private file create and never overwrites an existing path. The schema and campaign identity commit together. A crash before that commit may leave an invalid file, which readers reject and an operator must remove before retry. The artifact is not tamper-resistant against an operator with raw filesystem or SQL access.
 
@@ -38,9 +38,8 @@ Every record has a positive `seq`, an informational nonnegative `atMs`, and one 
 | `tool-result` | matching tool id and either returned JSON or thrown error text |
 | `call-result` | matching call id and either returned JSON or thrown error text |
 | `verdict` | candidate, required verifier, successful call id, verdict, and JSON evidence |
-| `promotion` | candidate and exact PASS-verdict sequence numbers |
 
-Rows and public values are validated with closed Zod schemas. SQLite uniqueness constraints permit one campaign, one candidate contract per hash, one result per call or tool id, one verdict per call, and one promotion per candidate.
+Rows and public values are validated with closed Zod schemas. SQLite uniqueness constraints permit one campaign, one candidate contract per hash, one result per call or tool id, and one verdict per call.
 
 ## Calls and tools
 
@@ -75,23 +74,22 @@ Elenx supplies Pi only the audited wrappers selected for that run. Pi validates 
 
 The recorded Pi request contains the provider, model id, API id, prompt, optional system prompt, optional candidate hash, and selected tool declarations. Provider credentials, registry configuration, and the provider wire request remain Pi/application concerns and are not persisted by Elenx.
 
-## Candidates, verdicts, and promotion
+## Candidates, verdicts, and verification
 
 `submitCandidate(material, requiredVerifiers)` hashes exact bytes and freezes a sorted, unique, nonempty verifier set. Resubmitting the same bytes with the identical normalized set is idempotent. Any different set is a conflict.
 
 `recordVerdict(candidate, verifier, call, verdict, evidence)` accepts `PASS`, `FAIL`, or `INCONCLUSIVE` only when:
 
 - the candidate exists and names that verifier;
-- the candidate has not been promoted;
 - the call starts after candidate submission;
 - the call label equals the verifier name;
 - the recorded call request contains that exact candidate hash;
 - the call returned JSON whose `state` is `"succeeded"`; and
 - no verdict already cites that call.
 
-A candidate is promotable when each required verifier has at least one PASS and no required verifier has any FAIL. INCONCLUSIVE neither passes nor fails. A later PASS does not erase a FAIL; applications submit revised candidate bytes for another attempt.
+A candidate is verified when each required verifier has at least one PASS and no required verifier has any FAIL. INCONCLUSIVE neither passes nor fails. A later PASS does not erase a FAIL; applications submit revised candidate bytes for another attempt.
 
-`promote(candidate)` atomically rechecks promotability and appends one promotion citing the first PASS for each required verifier. Repeated promotion is idempotent. No later verdict may target a promoted candidate, so promotion is monotone. `status(candidate)` returns the candidate hash, `promotable`, `promoted`, missing verifier names, failed verifier names, and selected PASS sequence numbers. Writers and readers use the same derivation.
+`status(candidate)` derives the candidate hash, `verified`, missing verifier names, failed verifier names, and the first PASS sequence number for each satisfied verifier. It stores no status row. Later verdicts remain appendable, so the view always reflects the complete log. Writers and readers use the same derivation. Publishing, adopting, or otherwise promoting a verified candidate is an application action.
 
 ## Public API
 
@@ -103,7 +101,6 @@ openReader(path): Reader
 campaign.submitCandidate(material, requiredVerifiers): Hash
 campaign.call(options, runner): Promise<CallReceipt>
 campaign.recordVerdict(candidate, verifier, call, verdict, evidence): Entry
-campaign.promote(candidate): Entry
 campaign.records(): readonly Entry[]
 campaign.blob(hash): Uint8Array
 campaign.status(candidate): CandidateStatus
@@ -122,4 +119,4 @@ All database methods are synchronous because Bun SQLite is synchronous. Only ext
 
 ## Completion criteria
 
-V1 is complete when the full check passes on macOS and Linux, a fresh reader reconstructs a promoted candidate from the artifact alone, the scripted hostile-audit slice passes, one explicitly requested real-provider Pi smoke passes, package contents and consumer types are verified, and nonblank source remains at or below 1,500 lines.
+V1 is complete when the full check passes on macOS and Linux, a fresh reader reconstructs a verified candidate from the artifact alone, the scripted hostile-audit slice passes, one explicitly requested real-provider Pi smoke passes, package contents and consumer types are verified, and nonblank source remains at or below 1,500 lines.

@@ -114,14 +114,6 @@ class CampaignWriter extends CampaignReader implements Campaign {
       if (!declaration.requiredVerifiers.includes(verifier)) {
         throw new Error(`verifier is not required by candidate: ${verifier}`);
       }
-      if (
-        records.some(
-          (entry) =>
-            entry.kind === "promotion" && entry.candidate === candidate,
-        )
-      ) {
-        throw new Error(`candidate is already promoted: ${candidate}`);
-      }
       const start = records.find(
         (entry) => entry.kind === "call" && entry.id === call,
       );
@@ -153,26 +145,6 @@ class CampaignWriter extends CampaignReader implements Campaign {
         call,
         verdict,
         evidence,
-      });
-    });
-  }
-
-  promote(candidateValue: Hash): Entry {
-    const candidate = parseHash(candidateValue);
-    return this.journal.transaction(() => {
-      const records = this.records();
-      const existing = records.find(
-        (entry) => entry.kind === "promotion" && entry.candidate === candidate,
-      );
-      if (existing?.kind === "promotion") return existing;
-      const check = deriveStatus(records, candidate);
-      if (!check.promotable) {
-        throw new Error(`candidate is not promotable: ${candidate}`);
-      }
-      return this.journal.append({
-        kind: "promotion",
-        candidate,
-        verdicts: check.passes,
       });
     });
   }
