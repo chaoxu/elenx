@@ -19,7 +19,7 @@ V1 targets Bun 1.3.14 or newer and campaign schema 4. It uses Bun SQLite for per
 
 ## Campaign artifact
 
-A campaign is one SQLite database. The database uses SQLite's `journal_mode=DELETE` rollback journal, `synchronous=FULL`, a five-second busy timeout, a strict table, and append-only triggers. Each durable fact is one atomic row insertion. A campaign has one creating writer and may have read-only inspectors; v1 does not reopen a campaign for writing.
+A campaign is one SQLite database. The database uses SQLite's `journal_mode=DELETE` rollback journal, `synchronous=FULL`, a five-second busy timeout, a strict table, and append-only triggers. Each durable fact is one atomic row insertion. `createCampaign` returns the artifact's only public writer; an existing artifact can only be reopened through the read-only `openReader`. Elenx has no writable reopen or resume API.
 
 Creation uses an exclusive private file create and never overwrites an existing path. The schema and campaign identity commit together. A crash before that commit may leave an invalid file, which readers reject and an operator must remove before retry. The artifact is not tamper-resistant against an operator with raw filesystem or SQL access.
 

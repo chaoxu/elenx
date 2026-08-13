@@ -132,8 +132,8 @@ export class Journal {
     }
   }
 
-  static open(path: string, readonly = false): Journal {
-    return new Journal(open(path, false, readonly), readonly);
+  static open(path: string): Journal {
+    return new Journal(open(path, false, true), true);
   }
 
   append(draft: EntryDraft, material?: Uint8Array): Entry {

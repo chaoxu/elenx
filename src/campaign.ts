@@ -272,5 +272,5 @@ export function createCampaign(
 }
 
 export function openReader(path: string): Reader {
-  return new CampaignReader(Journal.open(path, true));
+  return new CampaignReader(Journal.open(path));
 }

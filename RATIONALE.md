@@ -10,4 +10,4 @@ Candidates contain the application-level statement, proof or answer, sources, an
 
 Verification is a view over immutable candidate and verdict records, not another stored event. Later verdicts update the view without rewriting history. Publishing, adopting, or retracting a result remains application policy and state.
 
-The creating writer appends atomic rows, and unique indexes reject conflicting verdicts. A call start without a result honestly means interrupted work. V1 leaves that campaign immutable after the writer closes; an application may inspect it and start a new campaign instead of resuming hidden process state.
+Each campaign has one application-owned writer handle, while SQLite constraints reject duplicate results and verdicts. A call start without a result honestly means interrupted work. V1 preserves such artifacts for inspection but does not reopen them for writing; applications retry in a fresh campaign.
