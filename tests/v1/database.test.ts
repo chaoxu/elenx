@@ -1,7 +1,13 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
-import { existsSync, mkdtempSync, rmSync, statSync } from "node:fs";
-import { join, resolve } from "node:path";
+import {
+  copyFileSync,
+  existsSync,
+  mkdtempSync,
+  rmSync,
+  statSync,
+} from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 
 import { createCampaign, openReader } from "../../src";
@@ -32,6 +38,16 @@ describe("campaign database", () => {
       kind: "campaign",
       application: "first",
     });
+  });
+
+  test("opens a copied closed campaign as one file", () => {
+    const path = temporaryPath("source.db");
+    const copy = join(dirname(path), "copy.db");
+    createCampaign(path, "test", null).close();
+    copyFileSync(path, copy);
+    const reader = openReader(copy);
+    expect(reader.records()).toHaveLength(1);
+    reader.close();
   });
 
   test("removes an artifact when initial validation fails", () => {

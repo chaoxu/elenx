@@ -19,9 +19,11 @@ V1 targets Bun 1.3.14 or newer and campaign schema 4. It uses Bun SQLite for per
 
 ## Campaign artifact
 
-A campaign is one SQLite database. The database uses WAL, `synchronous=FULL`, a five-second busy timeout, a strict table, and append-only triggers. Each durable fact is one atomic row insertion. SQLite serializes writes across campaign handles. There is no process-lifetime writer lock.
+A campaign is one SQLite database. The database uses SQLite's `journal_mode=DELETE` rollback journal, `synchronous=FULL`, a five-second busy timeout, a strict table, and append-only triggers. Each durable fact is one atomic row insertion. SQLite serializes writes across campaign handles. There is no process-lifetime writer lock.
 
 Creation uses an exclusive private file create and never overwrites an existing path. The schema and campaign identity commit together. A crash before that commit may leave an invalid file, which readers reject and an operator must remove before retry. The artifact is not tamper-resistant against an operator with raw filesystem or SQL access.
+
+Copy a campaign only after its handles close. Copying the file while a writer is active is not a supported live snapshot; that requires SQLite's backup facilities.
 
 The positive `entries.seq` of a candidate, call, or tool call is its campaign-scoped identifier. It is not portable between campaign databases. Every submission creates a distinct candidate row, including submissions with identical bytes.
 

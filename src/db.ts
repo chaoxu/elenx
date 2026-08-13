@@ -36,9 +36,8 @@ interface VersionRow {
 }
 
 function configure(database: Database): void {
-  database.run("PRAGMA busy_timeout = 5000");
   database.run("PRAGMA synchronous = FULL");
-  database.run("PRAGMA journal_mode = WAL");
+  database.run("PRAGMA journal_mode = DELETE");
 }
 
 function validatePath(path: string): void {
@@ -68,6 +67,7 @@ function open(path: string, create: boolean, readonly = false): Database {
     strict: true,
     safeIntegers: true,
   });
+  database.run("PRAGMA busy_timeout = 5000");
   if (!readonly) configure(database);
   const rawVersion = database
     .query<VersionRow, []>("PRAGMA user_version")
@@ -125,7 +125,7 @@ export class Journal {
       return journal;
     } catch (error) {
       database?.close(true);
-      for (const owned of [path, `${path}-wal`, `${path}-shm`]) {
+      for (const owned of [path, `${path}-journal`]) {
         rmSync(owned, { force: true });
       }
       throw error;
