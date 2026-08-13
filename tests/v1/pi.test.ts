@@ -250,6 +250,42 @@ describe("thin Pi runner", () => {
     ).toMatchObject({ request: { stopAfterToolResult: true } });
   });
 
+  test("does not accept a terminal tool result after cancellation", async () => {
+    const controller = new AbortController();
+    const submit = defineTool({
+      name: "submit",
+      description: "Submit one answer",
+      input: z.strictObject({ answer: z.number().int() }),
+      async run(input) {
+        controller.abort();
+        return input;
+      },
+    });
+    const result = await runPi(campaign(), {
+      models: models([
+        assistant(
+          [
+            {
+              type: "toolCall",
+              id: "submit-1",
+              name: "submit",
+              arguments: { answer: 7 },
+            },
+          ],
+          "toolUse",
+        ),
+      ]),
+      model,
+      label: "structured/v1",
+      prompt: "Submit 7",
+      tools: [submit],
+      stopAfterToolResult: true,
+      signal: controller.signal,
+    });
+
+    expect(result).toMatchObject({ state: "cancelled" });
+  });
+
   test("does not accept incomplete Pi completions as successful", async () => {
     for (const stopReason of ["length", "deferred", "toolUse"] as const) {
       const store = campaign();

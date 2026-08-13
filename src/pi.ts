@@ -87,6 +87,7 @@ function transcript(messages: readonly AgentMessage[]): readonly Json[] {
 function result(
   messages: readonly AgentMessage[],
   stopAfterToolResult: boolean,
+  signal: AbortSignal | undefined,
 ): PiResultBody {
   const stored = transcript(messages);
   const final = [...messages]
@@ -95,12 +96,12 @@ function result(
       (message): message is AssistantMessage => message.role === "assistant",
     );
   const text = final === undefined ? "" : contentText(final.content);
-  if (final?.stopReason === "aborted") {
+  if (signal?.aborted || final?.stopReason === "aborted") {
     return {
       state: "cancelled",
       text,
       transcript: stored,
-      error: final.errorMessage ?? "Pi call was cancelled",
+      error: final?.errorMessage ?? "Pi call was cancelled",
     };
   }
   const last = messages.at(-1);
@@ -182,7 +183,7 @@ export async function runPi(
         (model, context, streamOptions) =>
           options.models.streamSimple(model, context, streamOptions),
       );
-      return result(messages, exact.stopAfterToolResult === true);
+      return result(messages, exact.stopAfterToolResult === true, signal);
     },
   );
   return { call: receipt.call, ...(receipt.output as PiResultBody) };
