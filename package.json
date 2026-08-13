@@ -2,38 +2,39 @@
   "name": "elenx",
   "version": "0.1.0",
   "type": "module",
+  "packageManager": "bun@1.3.14",
+  "engines": {
+    "bun": ">=1.3.14"
+  },
+  "files": [
+    "src",
+    "README.md",
+    "SPEC.md",
+    "RATIONALE.md",
+    "docs",
+    "examples/v1"
+  ],
   "exports": {
     ".": "./src/index.ts",
-    "./pi": "./src/adapters/pi.ts"
+    "./pi": "./src/pi.ts"
   },
   "scripts": {
     "format": "prettier --write . --ignore-path .prettierignore",
     "format:check": "prettier --check . --ignore-path .prettierignore",
     "typecheck": "tsc --noEmit",
-    "test": "bun test --pass-with-no-tests",
-    "check": "bun run format:check && bun run typecheck && bun run test"
+    "typecheck:consumer": "tsc --noEmit -p tests/v1/consumer/tsconfig.json",
+    "check:size": "bun scripts/check-size.ts",
+    "test": "bun test",
+    "check": "bun run format:check && bun run typecheck && bun run typecheck:consumer && bun run check:size && bun run test"
   },
   "dependencies": {
-    "ajv": "8.17.1",
-    "zod": "4.4.3"
-  },
-  "peerDependencies": {
-    "@earendil-works/pi-agent-core": "0.84.1",
-    "@earendil-works/pi-ai": "0.84.1"
-  },
-  "peerDependenciesMeta": {
-    "@earendil-works/pi-agent-core": {
-      "optional": true
-    },
-    "@earendil-works/pi-ai": {
-      "optional": true
-    }
-  },
-  "devDependencies": {
     "@earendil-works/pi-agent-core": "0.84.1",
     "@earendil-works/pi-ai": "0.84.1",
-    "@types/bun": "1.3.0",
-    "prettier": "3.6.2",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@types/bun": "1.3.14",
+    "prettier": "3.9.6",
     "typescript": "5.9.2"
   }
 }

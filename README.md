@@ -1,13 +1,20 @@
 # Elenx
 
-Elenx is a small kernel for auditable agent workflows. It records immutable campaign state, runs application-defined workers and verifiers, makes fresh model calls, accounts for their usage, and enforces content-bound promotion rules.
+Elenx is a small durable kernel for verified agent work. It stores exact candidate bytes, records every model call and admitted tool effect, binds verdicts to fresh calls carrying that candidate hash, and permits promotion only after every required verifier passes.
 
-The kernel does not implement proof search. Routes, idea gates, blind reconstruction, literature search, computation, steering, and user-facing campaign files belong to applications built on it.
+The package includes a thin Pi runner. Pi owns model execution, credentials, and provider behavior; Elenx records the call and supplies only the Zod-defined tools selected for it. The Pi registry is application-supplied and trusted. Elenx never supplies a database handle, SQL, campaign path, generic append operation, or unrestricted blob reader to a model.
 
-Models never receive database access. Each call receives only the narrow application tools required for its role; those tools validate semantic operations before invoking the kernel.
+Elenx deliberately excludes orchestration. Routes, context gathering, blind reconstruction, source search, retries, budgets, campaign UI, and human-readable files belong to applications. A Coverify replacement can build those independently around this kernel.
 
-- [`SPEC.md`](SPEC.md) is the sole normative contract.
-- [`PLAN.md`](PLAN.md) is the implementation and verification order.
-- [`RATIONALE.md`](RATIONALE.md) explains the retained design choices.
+Elenx v1 requires Bun 1.3.14 or newer. Install the current Gitea revision with:
 
-The first implementation includes a hostile-audit example only as an end-to-end kernel test. A Coverify-replacement proof-search application is a later, independent package.
+```sh
+bun add git+https://gitea.lab/chaoxu/elenx.git#main
+```
+
+Contributors run `bun install --frozen-lockfile` and `bun run check`. The check includes formatting, strict TypeScript, a clean-consumer compile, a 1,500-nonblank-source-line ceiling, and the complete test suite.
+
+- [`SPEC.md`](SPEC.md) is the normative v1 contract.
+- [`docs/application-author.md`](docs/application-author.md) shows the public API and tool boundary.
+- [`examples/v1/hostile-audit.ts`](examples/v1/hostile-audit.ts) is the smallest Coverify-shaped slice.
+- [`examples/v1/pi-smoke.ts`](examples/v1/pi-smoke.ts) runs that slice through a real Pi model.

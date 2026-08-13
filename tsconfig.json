@@ -5,11 +5,13 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
     "noEmit": true,
     "noUncheckedIndexedAccess": true,
     "exactOptionalPropertyTypes": true,
     "skipLibCheck": true,
     "types": ["bun"]
   },
-  "include": ["src", "tests", "examples"]
+  "include": ["src", "tests/v1", "examples/v1"]
 }
