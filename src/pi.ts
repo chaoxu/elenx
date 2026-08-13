@@ -30,6 +30,7 @@ export interface PiRunOptions {
   readonly prompt: string;
   readonly candidate?: EntryId;
   readonly tools?: readonly Tool[];
+  readonly stopAfterToolResult?: true;
   readonly signal?: AbortSignal;
 }
 
@@ -54,9 +55,13 @@ const requestSchema = z.strictObject({
   }),
   system: z.string().optional(),
   prompt: z.string(),
+  stopAfterToolResult: z.literal(true).optional(),
 });
 
-function piTool(tool: AuditedTool): AgentTool<TSchema, Json> {
+function piTool(
+  tool: AuditedTool,
+  stopAfterToolResult: boolean,
+): AgentTool<TSchema, Json> {
   return {
     name: tool.name,
     label: tool.name,
@@ -69,6 +74,7 @@ function piTool(tool: AuditedTool): AgentTool<TSchema, Json> {
       return {
         content: [{ type: "text", text: JSON.stringify(output) }],
         details: output,
+        ...(stopAfterToolResult ? { terminate: true } : {}),
       };
     },
   };
@@ -78,7 +84,10 @@ function transcript(messages: readonly AgentMessage[]): readonly Json[] {
   return copyJson(JSON.parse(JSON.stringify(messages))) as readonly Json[];
 }
 
-function result(messages: readonly AgentMessage[]): PiResultBody {
+function result(
+  messages: readonly AgentMessage[],
+  stopAfterToolResult: boolean,
+): PiResultBody {
   const stored = transcript(messages);
   const final = [...messages]
     .reverse()
@@ -94,7 +103,16 @@ function result(messages: readonly AgentMessage[]): PiResultBody {
       error: final.errorMessage ?? "Pi call was cancelled",
     };
   }
-  if (final === undefined || final.stopReason !== "stop") {
+  const last = messages.at(-1);
+  const stoppedAfterTool =
+    stopAfterToolResult &&
+    final?.stopReason === "toolUse" &&
+    last?.role === "toolResult" &&
+    !last.isError;
+  if (
+    final === undefined ||
+    (final.stopReason !== "stop" && !stoppedAfterTool)
+  ) {
     return {
       state: "failed",
       text,
@@ -124,6 +142,9 @@ export async function runPi(
     },
     ...(options.system === undefined ? {} : { system: options.system }),
     prompt: options.prompt,
+    ...(options.stopAfterToolResult === true
+      ? { stopAfterToolResult: true as const }
+      : {}),
   });
   const request = copyJson(parsed);
   const receipt = await campaign.call(
@@ -143,7 +164,13 @@ export async function runPi(
         {
           systemPrompt: exact.system ?? "",
           messages: [],
-          ...(tools.length === 0 ? {} : { tools: tools.map(piTool) }),
+          ...(tools.length === 0
+            ? {}
+            : {
+                tools: tools.map((tool) =>
+                  piTool(tool, exact.stopAfterToolResult === true),
+                ),
+              }),
         },
         {
           model: options.model,
@@ -155,7 +182,7 @@ export async function runPi(
         (model, context, streamOptions) =>
           options.models.streamSimple(model, context, streamOptions),
       );
-      return result(messages);
+      return result(messages, exact.stopAfterToolResult === true);
     },
   );
   return { call: receipt.call, ...(receipt.output as PiResultBody) };

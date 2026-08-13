@@ -201,6 +201,55 @@ describe("thin Pi runner", () => {
     ).toMatchObject({ source: "add-1", input: { left: 2, right: 5 } });
   });
 
+  test("can stop after a successful structured tool result", async () => {
+    const store = campaign();
+    const submit = defineTool({
+      name: "submit",
+      description: "Submit one answer",
+      input: z.strictObject({ answer: z.number().int() }),
+      async run(input) {
+        return input;
+      },
+    });
+    let requests = 0;
+    const result = await runPi(store, {
+      models: models(
+        [
+          assistant(
+            [
+              {
+                type: "toolCall",
+                id: "submit-1",
+                name: "submit",
+                arguments: { answer: 7 },
+              },
+            ],
+            "toolUse",
+          ),
+        ],
+        () => {
+          requests += 1;
+        },
+      ),
+      model,
+      label: "structured/v1",
+      prompt: "Submit 7",
+      tools: [submit],
+      stopAfterToolResult: true,
+    });
+
+    expect(result).toMatchObject({ state: "succeeded", text: "" });
+    expect(requests).toBe(1);
+    expect(result.transcript).toMatchObject([
+      { role: "user" },
+      { role: "assistant" },
+      { role: "toolResult" },
+    ]);
+    expect(
+      store.records().find((entry) => entry.kind === "call"),
+    ).toMatchObject({ request: { stopAfterToolResult: true } });
+  });
+
   test("does not accept incomplete Pi completions as successful", async () => {
     for (const stopReason of ["length", "deferred", "toolUse"] as const) {
       const store = campaign();
