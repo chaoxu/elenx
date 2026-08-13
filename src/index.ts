@@ -1,5 +1,6 @@
 export { createCampaign, openCampaign, openReader } from "./campaign";
 export { defineTool } from "./types";
+export { status as deriveCandidateStatus } from "./verification";
 export type {
   AuditedTool,
   CallContext,

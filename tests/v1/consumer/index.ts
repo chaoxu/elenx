@@ -1,6 +1,7 @@
 import {
   createCampaign,
   defineTool,
+  deriveCandidateStatus,
   type CallReceipt,
   type Campaign,
 } from "elenx";
@@ -35,6 +36,7 @@ const result =
       });
 
 void createCampaign;
+void deriveCandidateStatus(campaign.records(), 1);
 void (undefined as unknown as CallReceipt);
 void result;
 void credentialModels;
