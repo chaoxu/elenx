@@ -8,6 +8,7 @@ import {
   createAssistantMessageEventStream,
   type Api,
   type AssistantMessage,
+  type Context,
   type Model,
   type Models,
 } from "@earendil-works/pi-ai";
@@ -73,10 +74,14 @@ function assistant(
   };
 }
 
-function models(replies: readonly AssistantMessage[]): PiModels {
+function models(
+  replies: readonly AssistantMessage[],
+  inspect?: (context: Context) => void,
+): PiModels {
   let index = 0;
   return {
-    streamSimple() {
+    streamSimple(_model, context) {
+      inspect?.(context);
       const reply = replies[index++];
       if (reply === undefined) throw new Error("no scripted Pi reply");
       const stream = createAssistantMessageEventStream();
@@ -141,6 +146,7 @@ describe("thin Pi runner", () => {
 
   test("gives Pi only the selected audited Zod tools", async () => {
     const store = campaign();
+    const contexts: Context[] = [];
     const add = defineTool({
       name: "add",
       description: "Add integers",
@@ -153,20 +159,23 @@ describe("thin Pi runner", () => {
       },
     });
     const result = await runPi(store, {
-      models: models([
-        assistant(
-          [
-            {
-              type: "toolCall",
-              id: "add-1",
-              name: "add",
-              arguments: { left: 2, right: 5 },
-            },
-          ],
-          "toolUse",
-        ),
-        assistant([{ type: "text", text: "7" }], "stop"),
-      ]),
+      models: models(
+        [
+          assistant(
+            [
+              {
+                type: "toolCall",
+                id: "add-1",
+                name: "add",
+                arguments: { left: 2, right: 5 },
+              },
+            ],
+            "toolUse",
+          ),
+          assistant([{ type: "text", text: "7" }], "stop"),
+        ],
+        (context) => contexts.push(context),
+      ),
       model,
       label: "math/v1",
       prompt: "Add 2 and 5",
@@ -174,6 +183,12 @@ describe("thin Pi runner", () => {
     });
 
     expect(result).toMatchObject({ state: "succeeded", text: "7" });
+    expect(contexts[0]?.tools).toMatchObject([
+      {
+        name: "add",
+        constrainedSampling: { type: "json_schema", strict: "prefer" },
+      },
+    ]);
     expect(store.records().map((entry) => entry.kind)).toEqual([
       "campaign",
       "call",

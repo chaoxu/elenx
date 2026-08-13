@@ -62,6 +62,7 @@ function piTool(tool: AuditedTool): AgentTool<TSchema, Json> {
     label: tool.name,
     description: tool.description,
     parameters: tool.inputSchema as TSchema,
+    constrainedSampling: { type: "json_schema", strict: "prefer" },
     executionMode: "sequential",
     async execute(id, input) {
       const output = await tool.execute(input, id);
