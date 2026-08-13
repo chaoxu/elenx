@@ -93,11 +93,9 @@ function open(path: string, create: boolean, readonly = false): Database {
 
 export class Journal {
   readonly #database: Database;
-  readonly #readonly: boolean;
 
-  private constructor(database: Database, readonly: boolean) {
+  private constructor(database: Database) {
     this.#database = database;
-    this.#readonly = readonly;
   }
 
   static create(path: string, application: string, config: Json): Journal {
@@ -119,7 +117,7 @@ export class Journal {
       database = open(path, true);
       database.run("BEGIN IMMEDIATE");
       database.run(SCHEMA);
-      const journal = new Journal(database, false);
+      const journal = new Journal(database);
       journal.append({ kind: "campaign", application, config });
       database.run("COMMIT");
       return journal;
@@ -133,23 +131,16 @@ export class Journal {
   }
 
   static open(path: string): Journal {
-    return new Journal(open(path, false, true), true);
+    return new Journal(open(path, false, true));
   }
 
   append(draft: EntryDraft, material?: Uint8Array): Entry {
-    if (this.#readonly) throw new Error("campaign is read-only");
     const atMs = Date.now();
     const checked = entrySchema.parse({ ...draft, seq: 1, atMs });
     const body: Record<string, unknown> = { ...checked };
     delete body.kind;
     delete body.seq;
     delete body.atMs;
-    if (checked.kind === "candidate" && material === undefined) {
-      throw new Error("candidate material is required");
-    }
-    if (checked.kind !== "candidate" && material !== undefined) {
-      throw new Error("material belongs only to a candidate");
-    }
     const storedMaterial =
       material === undefined ? null : Uint8Array.from(material);
     const result = this.#database.run(
