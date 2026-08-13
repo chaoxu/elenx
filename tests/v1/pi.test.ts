@@ -48,6 +48,8 @@ function campaign() {
 function assistant(
   content: AssistantMessage["content"],
   stopReason: AssistantMessage["stopReason"],
+  reasoning?: number,
+  measured = true,
 ): AssistantMessage {
   return {
     role: "assistant",
@@ -55,20 +57,37 @@ function assistant(
     api: model.api,
     provider: model.provider,
     model: model.id,
-    usage: {
-      input: 1,
-      output: 1,
-      cacheRead: 0,
-      cacheWrite: 0,
-      totalTokens: 2,
-      cost: {
-        input: 0,
-        output: 0,
-        cacheRead: 0,
-        cacheWrite: 0,
-        total: 0,
-      },
-    },
+    responseModel: "served-test-v1",
+    usage: measured
+      ? {
+          input: 11,
+          output: 7,
+          cacheRead: 5,
+          cacheWrite: 0,
+          ...(reasoning === undefined ? {} : { reasoning }),
+          totalTokens: 23,
+          cost: {
+            input: 0.011,
+            output: 0.014,
+            cacheRead: 0.001,
+            cacheWrite: 0,
+            total: 0.026,
+          },
+        }
+      : {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 0,
+          cost: {
+            input: 0,
+            output: 0,
+            cacheRead: 0,
+            cacheWrite: 0,
+            total: 0,
+          },
+        },
     stopReason,
     timestamp: 1,
   };
@@ -113,7 +132,9 @@ describe("thin Pi runner", () => {
       ["answer/v1"],
     );
     const result = await runPi(store, {
-      models: models([assistant([{ type: "text", text: "answer" }], "stop")]),
+      models: models([
+        assistant([{ type: "text", text: "answer" }], "stop", 3),
+      ]),
       model,
       label: "answer/v1",
       candidate,
@@ -122,6 +143,37 @@ describe("thin Pi runner", () => {
     });
 
     expect(result).toMatchObject({ state: "succeeded", text: "answer" });
+    const [runSpan, requestSpan] = result.telemetry.spans;
+    expect(runSpan).toMatchObject({
+      name: "elenx.pi.run",
+      parentId: null,
+      settled: true,
+      status: { status: "ok" },
+      attributes: {
+        "elenx.call.label": "answer/v1",
+        "elenx.candidate": candidate,
+        "elenx.pi.outcome": "succeeded",
+      },
+    });
+    expect(requestSpan).toMatchObject({
+      name: "pi.ai.request",
+      parentId: runSpan?.id,
+      settled: true,
+      status: { status: "ok" },
+      attributes: {
+        "pi.ai.operation": "stream",
+        "pi.ai.provider": model.provider,
+        "pi.ai.model": model.id,
+        "pi.ai.response.model": "served-test-v1",
+        "pi.ai.response.stop_reason": "stop",
+        "pi.ai.usage.input_tokens": 11,
+        "pi.ai.usage.output_tokens": 7,
+        "pi.ai.usage.cache_read_tokens": 5,
+        "pi.ai.usage.reasoning_tokens": 3,
+        "pi.ai.usage.total_tokens": 23,
+        "pi.ai.usage.cost": 0.026,
+      },
+    });
     const records = store.records();
     expect(records.map((entry) => entry.kind)).toEqual([
       "campaign",
@@ -141,6 +193,7 @@ describe("thin Pi runner", () => {
     expect(terminal.output).toMatchObject({
       state: "succeeded",
       transcript: [{ role: "user" }, { role: "assistant" }],
+      telemetry: result.telemetry,
     });
   });
 
@@ -183,6 +236,20 @@ describe("thin Pi runner", () => {
     });
 
     expect(result).toMatchObject({ state: "succeeded", text: "7" });
+    const requests = result.telemetry.spans.filter(
+      ({ name }) => name === "pi.ai.request",
+    );
+    expect(requests).toHaveLength(2);
+    expect(
+      requests.every(
+        ({ attributes }) => !("pi.ai.usage.reasoning_tokens" in attributes),
+      ),
+    ).toBe(true);
+    expect(
+      requests.every(
+        ({ parentId }) => parentId === result.telemetry.spans[0]?.id,
+      ),
+    ).toBe(true);
     expect(contexts[0]?.tools).toMatchObject([
       {
         name: "add",
@@ -306,19 +373,46 @@ describe("thin Pi runner", () => {
 
   test("preserves Pi failure and cancellation states", async () => {
     const failed = await runPi(campaign(), {
-      models: models([assistant([], "error")]),
+      models: models([assistant([], "error", undefined, false)]),
       model,
       label: "failure/v1",
       prompt: "Fail",
     });
     expect(failed.state).toBe("failed");
+    expect(
+      failed.telemetry.spans.every(({ status }) => status.status === "error"),
+    ).toBe(true);
+    const failedRequest = failed.telemetry.spans.find(
+      ({ name }) => name === "pi.ai.request",
+    );
+    expect(
+      failedRequest === undefined
+        ? undefined
+        : Object.hasOwn(failedRequest.attributes, "pi.ai.usage.total_tokens"),
+    ).toBe(false);
 
     const cancelled = await runPi(campaign(), {
-      models: models([assistant([], "aborted")]),
+      models: models([assistant([], "aborted", undefined, false)]),
       model,
       label: "cancel/v1",
       prompt: "Cancel",
     });
     expect(cancelled.state).toBe("cancelled");
+    expect(
+      cancelled.telemetry.spans.every(
+        ({ status }) => status.status === "error",
+      ),
+    ).toBe(true);
+    const cancelledRequest = cancelled.telemetry.spans.find(
+      ({ name }) => name === "pi.ai.request",
+    );
+    expect(
+      cancelledRequest === undefined
+        ? undefined
+        : Object.hasOwn(
+            cancelledRequest.attributes,
+            "pi.ai.usage.total_tokens",
+          ),
+    ).toBe(false);
   });
 });

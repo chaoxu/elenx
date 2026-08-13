@@ -1,5 +1,5 @@
 import { createCampaign } from "elenx";
-import { builtinPi, runPi } from "elenx/pi";
+import { runPi } from "elenx/pi";
 import { parseVerdict } from "./hostile-audit";
 
 const [path, provider, modelId] = process.argv.slice(2);
@@ -9,7 +9,8 @@ if (path === undefined || provider === undefined || modelId === undefined) {
   );
 }
 
-const models = builtinPi();
+const { ModelRuntime } = await import("@earendil-works/pi-coding-agent");
+const models = await ModelRuntime.create({ modelsPath: null });
 const model = models.getModel(provider, modelId);
 if (model === undefined)
   throw new Error(`unknown Pi model: ${provider}/${modelId}`);
