@@ -1,6 +1,7 @@
 import {
   createCampaign,
   defineTool,
+  deriveCandidateStatus,
   openCampaign,
   type CallReceipt,
   type Campaign,
@@ -39,7 +40,7 @@ const result =
 
 void createCampaign;
 void openCampaign;
-void campaign.status(1);
+void deriveCandidateStatus(campaign.records(), 1);
 void (undefined as unknown as CallReceipt);
 void result;
 void credentialModels;
