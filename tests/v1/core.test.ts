@@ -1,12 +1,13 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { z } from "zod";
 
 import {
   createCampaign,
   defineTool,
+  deriveCandidateStatus,
   openReader,
   type Tool,
   type ToolExecutionContext,
@@ -67,7 +68,7 @@ describe("small kernel", () => {
       new TextEncoder().encode("claim"),
       ["audit/v1", "compare/v1"],
     );
-    expect(campaign.status(candidate)).toEqual({
+    expect(deriveCandidateStatus(campaign.records(), candidate)).toEqual({
       verified: false,
       missing: ["audit/v1", "compare/v1"],
       failed: [],
@@ -78,7 +79,7 @@ describe("small kernel", () => {
       await pass(campaign, candidate, "audit/v1"),
       await pass(campaign, candidate, "compare/v1"),
     ];
-    expect(campaign.status(candidate)).toEqual({
+    expect(deriveCandidateStatus(campaign.records(), candidate)).toEqual({
       verified: true,
       missing: [],
       failed: [],
@@ -90,7 +91,7 @@ describe("small kernel", () => {
       async () => ({ state: "succeeded", result: "late counterexample" }),
     );
     campaign.recordVerdict(late.call, "FAIL", null);
-    expect(campaign.status(candidate)).toMatchObject({
+    expect(deriveCandidateStatus(campaign.records(), candidate)).toMatchObject({
       verified: false,
       missing: [],
       failed: ["audit/v1"],
@@ -147,7 +148,7 @@ describe("small kernel", () => {
     );
     campaign.recordVerdict(failed.call, "FAIL", null);
     await pass(campaign, candidate, "compare/v1");
-    expect(campaign.status(candidate)).toMatchObject({
+    expect(deriveCandidateStatus(campaign.records(), candidate)).toMatchObject({
       verified: false,
       missing: ["audit/v1"],
       failed: ["audit/v1"],
@@ -161,8 +162,12 @@ describe("small kernel", () => {
     const second = campaign.submitCandidate(material, ["audit/v1"]);
     expect(second).not.toBe(first);
     await pass(campaign, first, "audit/v1");
-    expect(campaign.status(first).verified).toBe(true);
-    expect(campaign.status(second).verified).toBe(false);
+    expect(deriveCandidateStatus(campaign.records(), first).verified).toBe(
+      true,
+    );
+    expect(deriveCandidateStatus(campaign.records(), second).verified).toBe(
+      false,
+    );
 
     const wrongVerifier = await campaign.call(
       { label: "other/v1", candidate: second, request: {} },
@@ -181,10 +186,9 @@ describe("small kernel", () => {
       "audit/v1",
       "compare/v1",
     ]);
-    expect(campaign.status(candidate).missing).toEqual([
-      "audit/v1",
-      "compare/v1",
-    ]);
+    expect(
+      deriveCandidateStatus(campaign.records(), candidate).missing,
+    ).toEqual(["audit/v1", "compare/v1"]);
   });
 
   test("records calls and tool effects before returning", async () => {
@@ -337,6 +341,26 @@ describe("small kernel", () => {
     await settlement;
     await expect(retained!()).rejects.toThrow("no longer accepting");
     expect(campaign.records().at(-1)?.kind).toBe("call-result");
+  });
+
+  test("handles a detached tool rejection on the promise it returns", () => {
+    const path = database();
+    const fixture = resolve("tests/v1/fixtures/detached-tool-rejection.ts");
+    const child = Bun.spawnSync([process.execPath, fixture, path], {
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    expect(child.exitCode).toBe(0);
+
+    const reader = openReader(path);
+    expect(reader.records().map(({ kind }) => kind)).toEqual([
+      "campaign",
+      "call",
+      "tool-call",
+      "tool-result",
+      "call-result",
+    ]);
+    reader.close();
   });
 
   test("records thrown calls and tools, then rethrows", async () => {

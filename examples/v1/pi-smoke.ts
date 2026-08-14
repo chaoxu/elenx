@@ -1,4 +1,4 @@
-import { createCampaign } from "elenx";
+import { createCampaign, deriveCandidateStatus } from "elenx";
 import { runPi } from "elenx/pi";
 import { parseVerdict } from "./hostile-audit";
 
@@ -39,7 +39,11 @@ try {
     text: audit.text,
   });
   console.log(
-    JSON.stringify({ candidate, ...campaign.status(candidate) }, null, 2),
+    JSON.stringify(
+      { candidate, ...deriveCandidateStatus(campaign.records(), candidate) },
+      null,
+      2,
+    ),
   );
 } finally {
   campaign.close();

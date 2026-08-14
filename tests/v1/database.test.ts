@@ -51,6 +51,40 @@ describe("campaign database", () => {
     reader.close();
   });
 
+  test("recovers a hot rollback journal before opening read-only", async () => {
+    const path = temporaryPath();
+    const marker = join(dirname(path), "ready");
+    createCampaign(path, "test", null).close();
+    const fixture = resolve("tests/v1/fixtures/hot-journal.ts");
+    const child = Bun.spawn([process.execPath, fixture, path, marker], {
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    for (
+      let attempt = 0;
+      !existsSync(marker) && attempt < 1_000;
+      attempt += 1
+    ) {
+      await Bun.sleep(5);
+    }
+    if (!existsSync(marker)) {
+      child.kill(9);
+      throw new Error("hot-journal fixture did not start");
+    }
+    child.kill(9);
+    await child.exited;
+    expect(existsSync(`${path}-journal`)).toBe(true);
+
+    const rawReader = new Database(path, { create: false, readonly: true });
+    expect(() => rawReader.query("SELECT * FROM entries").all()).toThrow();
+    rawReader.close(true);
+
+    const reader = openReader(path);
+    expect(reader.records().map(({ kind }) => kind)).toEqual(["campaign"]);
+    reader.close();
+    expect(existsSync(`${path}-journal`)).toBe(false);
+  });
+
   test("reopens one campaign for later appends", async () => {
     const path = temporaryPath();
     const first = createCampaign(path, "test", null);

@@ -2,14 +2,12 @@ import { z } from "zod";
 
 import { Journal } from "./db";
 import { copyJson, entryId, verdict as verdictSchema } from "./schemas";
-import { status as deriveStatus } from "./verification";
 import type {
   AuditedTool,
   CallContext,
   CallOptions,
   CallReceipt,
   Campaign,
-  CandidateStatus,
   Entry,
   EntryId,
   Json,
@@ -46,10 +44,6 @@ class CampaignReader implements Reader {
 
   material(candidate: EntryId): Uint8Array {
     return this.journal.material(candidate);
-  }
-
-  status(candidate: EntryId): CandidateStatus {
-    return deriveStatus(this.records(), entryId.parse(candidate));
   }
 
   close(): void {
@@ -199,23 +193,23 @@ class CampaignWriter extends CampaignReader implements Campaign {
       name,
       description,
       inputSchema,
-      execute: async (raw, sourceValue) => {
-        if (!state.accepting) {
-          throw new Error(`call is no longer accepting ${name}`);
-        }
-        const input = copyJson(tool.input.parse(raw));
-        const source =
-          sourceValue === undefined
-            ? undefined
-            : z.string().min(1).parse(sourceValue);
-        const toolCall = this.journal.append({
-          kind: "tool-call",
-          call,
-          tool: name,
-          ...(source === undefined ? {} : { source }),
-          input,
-        }).seq;
+      execute: (raw, sourceValue) => {
         const execution = (async () => {
+          if (!state.accepting) {
+            throw new Error(`call is no longer accepting ${name}`);
+          }
+          const input = copyJson(tool.input.parse(raw));
+          const source =
+            sourceValue === undefined
+              ? undefined
+              : z.string().min(1).parse(sourceValue);
+          const toolCall = this.journal.append({
+            kind: "tool-call",
+            call,
+            tool: name,
+            ...(source === undefined ? {} : { source }),
+            input,
+          }).seq;
           let output: Json;
           try {
             output = copyJson(

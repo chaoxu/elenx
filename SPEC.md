@@ -19,11 +19,11 @@ Runtime and dependency versions are pinned in `package.json` and `bun.lock`. Ele
 
 ## Campaign artifact
 
-A campaign is one SQLite database. The database uses SQLite's `journal_mode=DELETE` rollback journal, `synchronous=FULL`, a five-second busy timeout, a strict table, and append-only triggers. Each durable fact is one atomic row insertion. `createCampaign` creates a new artifact, `openCampaign` reopens an existing artifact for appends, and `openReader` opens it read-only. SQLite serializes individual row insertions; applications remain responsible for ensuring that only one coordinator attempts a logical phase at a time.
+A campaign is one SQLite database. The database uses SQLite's `journal_mode=DELETE` rollback journal, `synchronous=FULL`, a five-second busy timeout, a strict table, and append-only triggers. Each durable fact is one atomic row insertion. `createCampaign` creates a new artifact, `openCampaign` reopens an existing artifact for appends, and `openReader` recovers a hot rollback journal when present before opening the artifact read-only. SQLite serializes individual row insertions; applications remain responsible for ensuring that only one coordinator attempts a logical phase at a time.
 
 Creation uses an exclusive private file create and never overwrites an existing path. The schema and campaign identity commit together. A crash before that commit may leave an invalid file, which readers reject and an operator must remove before retry. The artifact is not tamper-resistant against an operator with raw filesystem or SQL access.
 
-Copy a campaign only after its handles close. Copying the file while a writer is active is not a supported live snapshot; that requires SQLite's backup facilities.
+Copy a campaign only after its handles close. If a crash left a rollback journal, open and close the campaign with `openReader` before copying so SQLite completes recovery. Copying the file while a writer is active is not a supported live snapshot; that requires SQLite's backup facilities.
 
 The positive `entries.seq` of a candidate, call, or tool call is its campaign-scoped identifier. It is not portable between campaign databases. Every submission creates a distinct candidate row, including submissions with identical bytes.
 
@@ -80,7 +80,7 @@ Elenx supplies Pi only the audited wrappers selected for that run and asks suppo
 
 `runPi` creates one typed `elenx.pi.run` span and one standard Pi `pi.ai.request` child for every logical provider operation, including continuations after tool results. Provider adapters may retry an operation without exposing each wire attempt. The settled span tree is stored inside that call's returned JSON, so its label, optional candidate, and optional requested reasoning level supply the reason and configuration for each operation without adding a telemetry table or stored roll-up. Request leaves carry the Pi schema's provider, requested and served models, API, response, stop reason, usage, cache, Pi model-price cost estimate, HTTP-status, and error fields when available.
 
-Pi's awaited `onPayload` hook exposes the adapter's final pre-send payload. Elenx stores its JSON serialization semantics in an internal `elenx/pi-request` call and completes that checkpoint before returning from the hook. `piRequestAttempts(records, parent?)` reconstructs every valid checkpoint call and reports it as completed, threw, or unsettled. A completed attempt proves which hook payload became dispatchable; it does not prove that the provider received it or produced a response, and an adapter may still add transport-only fields after the hook. The runtime rejects a successful logical provider operation unless exactly one checkpoint completed; an adapter may fail or be cancelled before constructing a payload. Built-in Pi adapters supply the ordering. A custom adapter is trusted to invoke the hook exactly once before dispatch and to keep credentials and tokens outside its payload. Provider authentication, headers, transport configuration, and SDK-internal retries are not persisted.
+Pi's awaited `onPayload` hook exposes the adapter's final pre-send payload. Elenx stores its JSON serialization semantics in an internal `elenx/pi-request` call and completes that checkpoint before returning from the hook. `piRequestAttempts(records, parent?)` reconstructs every valid checkpoint call and reports it as completed or unsettled. A completed attempt proves which hook payload became dispatchable; it does not prove that the provider received it or produced a response, and an adapter may still add transport-only fields after the hook. The runtime rejects a successful logical provider operation unless exactly one checkpoint completed; an adapter may fail or be cancelled before constructing a payload. Built-in Pi adapters supply the ordering. A custom adapter is trusted to invoke the hook exactly once before dispatch and to keep credentials and tokens outside its payload. Provider authentication, headers, transport configuration, and SDK-internal retries are not persisted.
 
 Applications derive totals from settled request leaves only and never add the native transcript's duplicate usage. Pi's input, cache-read, and cache-write fields are disjoint buckets; reasoning tokens are a subset of output and are not added again. A request with no measured usage remains a measurement gap instead of becoming zero spend. Telemetry is diagnostic and never affects candidate verification. An interrupted call can lack a completed span tree just as it can lack a call result.
 
@@ -100,7 +100,7 @@ The parent call contains the optional candidate sequence, provider, model ID, AP
 
 A candidate is verified when each required verifier has at least one PASS and no required verifier has any FAIL. INCONCLUSIVE neither passes nor fails. A later PASS does not erase a FAIL for that candidate ID. Failures are submission-scoped: submitting even identical bytes again creates an independent candidate, and applications decide whether to permit that retry.
 
-`status(candidate)` derives `verified`, missing verifier names, failed verifier names, and the first PASS verdict sequence for each satisfied verifier. It stores no status row. Later verdicts remain appendable, so the view always reflects the complete log. Writers and readers use the same derivation. Publishing, adopting, or otherwise promoting a verified candidate is an application action.
+`deriveCandidateStatus(records, candidate)` derives `verified`, missing verifier names, failed verifier names, and the first PASS verdict sequence for each satisfied verifier from one explicit record snapshot. It stores no status row. Publishing, adopting, or otherwise promoting a verified candidate is an application action.
 
 ## Public API
 
@@ -115,12 +115,10 @@ campaign.call(options, runner): Promise<CallReceipt>
 campaign.recordVerdict(call, verdict, evidence): EntryId
 campaign.records(): readonly Entry[]
 campaign.material(candidate): Uint8Array
-campaign.status(candidate): CandidateStatus
 campaign.close(): void
 
 reader.records(): readonly Entry[]
 reader.material(candidate): Uint8Array
-reader.status(candidate): CandidateStatus
 reader.close(): void
 
 defineTool(definition): Tool

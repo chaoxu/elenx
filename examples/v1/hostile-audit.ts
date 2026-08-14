@@ -1,6 +1,12 @@
 import { z } from "zod";
 
-import { createCampaign, openReader, type EntryId, type Verdict } from "elenx";
+import {
+  createCampaign,
+  deriveCandidateStatus,
+  openReader,
+  type EntryId,
+  type Verdict,
+} from "elenx";
 
 const verifier = "hostile-audit/v1";
 const verdict = z.enum(["PASS", "FAIL", "INCONCLUSIVE"]);
@@ -48,7 +54,7 @@ export async function runHostileAudit(path: string): Promise<AuditReport> {
     return {
       candidate,
       verdict: result,
-      verified: reader.status(candidate).verified,
+      verified: deriveCandidateStatus(reader.records(), candidate).verified,
     };
   } finally {
     reader.close();

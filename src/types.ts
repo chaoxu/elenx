@@ -40,7 +40,6 @@ export interface CandidateStatus {
 export interface Reader {
   records(): readonly Entry[];
   material(candidate: EntryId): Uint8Array;
-  status(candidate: EntryId): CandidateStatus;
   close(): void;
 }
 

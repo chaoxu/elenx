@@ -156,11 +156,7 @@ const piRequestAttempt = z.strictObject({
 
 export type PiRequestAttempt = z.output<typeof piRequestAttempt> & {
   readonly call: EntryId;
-} & (
-    | { readonly state: "completed" }
-    | { readonly state: "threw"; readonly error: string }
-    | { readonly state: "unsettled" }
-  );
+} & ({ readonly state: "completed" } | { readonly state: "unsettled" });
 
 export function piRequestAttempts(
   entries: readonly Entry[],
@@ -193,11 +189,9 @@ export function piRequestAttempts(
     }
     const settled = results.get(call.seq);
     const state =
-      settled === undefined
-        ? ({ state: "unsettled" } as const)
-        : settled.state === "threw"
-          ? ({ state: "threw", error: settled.error } as const)
-          : ({ state: "completed" } as const);
+      settled?.state === "returned"
+        ? ({ state: "completed" } as const)
+        : ({ state: "unsettled" } as const);
     return [{ call: call.seq, ...attempt, ...state }];
   });
 }

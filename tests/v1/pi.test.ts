@@ -521,7 +521,7 @@ describe("thin Pi runner", () => {
     expect(piRequestAttempts(store.records())).toEqual([]);
   });
 
-  test("projects completed, failed, and unsettled request attempts", async () => {
+  test("projects completed and unsettled request attempts", async () => {
     const store = campaign();
     let release!: () => void;
     let observed: ReturnType<typeof piRequestAttempts> = [];
@@ -547,11 +547,6 @@ describe("thin Pi runner", () => {
           { label: "elenx/pi-request", request },
           async () => null,
         );
-        await expect(
-          store.call({ label: "elenx/pi-request", request }, async () => {
-            throw new Error("checkpoint failed");
-          }),
-        ).rejects.toThrow("checkpoint failed");
         const pending = store.call(
           { label: "elenx/pi-request", request },
           async () => {
@@ -569,10 +564,8 @@ describe("thin Pi runner", () => {
 
     expect(observed.map(({ state }) => state)).toEqual([
       "completed",
-      "threw",
       "unsettled",
     ]);
-    expect(observed[1]).toMatchObject({ error: "checkpoint failed" });
   });
 
   test("checkpoints the real Pi OpenAI adapter before a stub transport", async () => {

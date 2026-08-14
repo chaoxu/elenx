@@ -9,7 +9,7 @@ bun add git+https://gitea.lab/chaoxu/elenx.git#main zod@4.4.3
 ## Create and verify a candidate
 
 ```ts
-import { createCampaign } from "elenx";
+import { createCampaign, deriveCandidateStatus } from "elenx";
 import { builtinPi, runPi } from "elenx/pi";
 
 const models = builtinPi();
@@ -40,13 +40,14 @@ const verdict = parseAndValidateVerdict(audit.text);
 campaign.recordVerdict(audit.call, verdict, {
   response: audit.text,
 });
-if (!campaign.status(candidate).verified) throw new Error("not verified");
+const status = deriveCandidateStatus(campaign.records(), candidate);
+if (!status.verified) throw new Error("not verified");
 campaign.close();
 ```
 
 `builtinPi()` uses Pi's normal environment and ambient provider authentication. An application that owns OAuth or API-key credentials can import `InMemoryCredentialStore` from `elenx/pi` and pass it as `builtinPi({ credentials })`; Elenx re-exports both implementations and their types directly from Pi. Elenx does not read, copy, or persist provider credentials.
 
-The candidate envelope is application-owned. Include every fact that must be audited together: statement revision, answer or proof, cited sources, imported assumptions, and dependency versions. `status(candidate).verified` is derived from the complete verdict log; Elenx stores no promotion event. Publishing or adopting a verified candidate belongs to the application.
+The candidate envelope is application-owned. Include every fact that must be audited together: statement revision, answer or proof, cited sources, imported assumptions, and dependency versions. `deriveCandidateStatus(records, candidate).verified` is derived from the supplied log snapshot; Elenx stores no promotion event. Publishing or adopting a verified candidate belongs to the application.
 
 ## Give a model one narrow tool
 
@@ -81,7 +82,7 @@ Zod validates the model's input before `run` executes and generates the JSON Sch
 
 Tools should express one bounded application action. Suitable proof-search tools read a named attached source, inspect a bounded frontier view, launch one application-approved computation, or submit one structured observation. Do not expose SQL, the campaign path, a database client, arbitrary record append, unrestricted candidate access, the whole `Campaign`, or a general filesystem shell.
 
-`piRequestAttempts(campaign.records(), call)` returns the JSON-semantic payload exposed by Pi's final pre-send hook for each provider operation in a Pi call, together with its completed, threw, or unsettled state. Built-in adapters keep credentials and HTTP headers outside it. An absent outer call result leaves the provider outcome unknown even when its request checkpoint completed. Custom adapters must invoke the hook exactly once before dispatch and must never put credentials or tokens in its payload.
+`piRequestAttempts(campaign.records(), call)` returns the JSON-semantic payload exposed by Pi's final pre-send hook for each provider operation in a Pi call, together with its completed or unsettled state. Built-in adapters keep credentials and HTTP headers outside it. An absent outer call result leaves the provider outcome unknown even when its request checkpoint completed. Custom adapters must invoke the hook exactly once before dispatch and must never put credentials or tokens in its payload.
 
 ## Keep orchestration outside the kernel
 
@@ -92,6 +93,6 @@ An application can maintain routes, task queues, source bundles, blind-review vi
 3. run each verifier through `runPi` or `campaign.call` with only its selected tools;
 4. parse and validate the verifier response in application code;
 5. record the verdict against that call; and
-6. publish or adopt the candidate in application code only when `status(candidate).verified` is true.
+6. publish or adopt the candidate in application code only when `deriveCandidateStatus(records, candidate).verified` is true.
 
 [`../examples/v1/hostile-audit.ts`](../examples/v1/hostile-audit.ts) shows the scripted path. [`../examples/v1/pi-smoke.ts`](../examples/v1/pi-smoke.ts) uses a real Pi model.

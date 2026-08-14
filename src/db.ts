@@ -1,4 +1,4 @@
-import { Database } from "bun:sqlite";
+import { Database, SQLiteError } from "bun:sqlite";
 import { closeSync, constants, existsSync, openSync, rmSync } from "node:fs";
 import { basename } from "node:path";
 
@@ -67,28 +67,31 @@ function open(path: string, create: boolean, readonly = false): Database {
     strict: true,
     safeIntegers: true,
   });
-  database.run("PRAGMA busy_timeout = 5000");
-  if (!readonly) configure(database);
-  const rawVersion = database
-    .query<VersionRow, []>("PRAGMA user_version")
-    .get()?.user_version;
-  const version = rawVersion === undefined ? undefined : Number(rawVersion);
-  if (!create && version !== SCHEMA_VERSION) {
-    database.close(true);
-    throw new Error(`unsupported campaign schema: ${String(version)}`);
-  }
-  if (!create) {
-    const campaign = database
-      .query<{ readonly count: number | bigint }, []>(
-        "SELECT COUNT(*) AS count FROM entries WHERE seq = 1 AND kind = 'campaign'",
-      )
-      .get();
-    if (Number(campaign?.count ?? 0) !== 1) {
-      database.close(true);
-      throw new Error("invalid campaign artifact");
+  try {
+    database.run("PRAGMA busy_timeout = 5000");
+    if (!readonly) configure(database);
+    const rawVersion = database
+      .query<VersionRow, []>("PRAGMA user_version")
+      .get()?.user_version;
+    const version = rawVersion === undefined ? undefined : Number(rawVersion);
+    if (!create && version !== SCHEMA_VERSION) {
+      throw new Error(`unsupported campaign schema: ${String(version)}`);
     }
+    if (!create) {
+      const campaign = database
+        .query<{ readonly count: number | bigint }, []>(
+          "SELECT COUNT(*) AS count FROM entries WHERE seq = 1 AND kind = 'campaign'",
+        )
+        .get();
+      if (Number(campaign?.count ?? 0) !== 1) {
+        throw new Error("invalid campaign artifact");
+      }
+    }
+    return database;
+  } catch (error) {
+    database.close(true);
+    throw error;
   }
-  return database;
 }
 
 export class Journal {
@@ -134,7 +137,19 @@ export class Journal {
   }
 
   static open(path: string, access: "read" | "write"): Journal {
-    return new Journal(open(path, false, access === "read"));
+    if (access === "write") return new Journal(open(path, false));
+    try {
+      return new Journal(open(path, false, true));
+    } catch (error) {
+      if (
+        !(error instanceof SQLiteError) ||
+        error.code !== "SQLITE_READONLY_ROLLBACK"
+      ) {
+        throw error;
+      }
+      open(path, false).close(true);
+      return new Journal(open(path, false, true));
+    }
   }
 
   append(draft: EntryDraft, material?: Uint8Array): Entry {
