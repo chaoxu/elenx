@@ -248,6 +248,29 @@ describe("small kernel", () => {
     ).toBe(true);
   });
 
+  test("runs against the request snapshot stored with the call", async () => {
+    const campaign = createCampaign(database(), "test", null);
+    const request = { value: "before" };
+    let release!: () => void;
+    const blocked = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const running = campaign.call(
+      { label: "snapshot", request },
+      async ({ request: recorded }) => {
+        await blocked;
+        return recorded;
+      },
+    );
+    request.value = "after";
+    release();
+
+    expect((await running).output).toEqual({ value: "before" });
+    expect(
+      campaign.records().find((entry) => entry.kind === "call")?.request,
+    ).toEqual({ value: "before" });
+  });
+
   test("rejects invalid tool input through the promised interface", async () => {
     const campaign = createCampaign(database(), "test", null);
     let ran = false;

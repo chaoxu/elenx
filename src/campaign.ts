@@ -81,7 +81,6 @@ class CampaignWriter extends CampaignReader implements Campaign {
   ): EntryId {
     const call = entryId.parse(callValue);
     const verdict = verdictSchema.parse(verdictValue);
-    const evidence = copyJson(evidenceValue);
     const records = this.records();
     const start = records.find(
       (entry) => entry.kind === "call" && entry.seq === call,
@@ -110,7 +109,7 @@ class CampaignWriter extends CampaignReader implements Campaign {
       kind: "verdict",
       call,
       verdict,
-      evidence,
+      evidence: evidenceValue,
     }).seq;
   }
 
@@ -202,9 +201,7 @@ class CampaignWriter extends CampaignReader implements Campaign {
       inputSchema,
       execute: async (raw, sourceValue) => {
         if (!state.accepting) {
-          return Promise.reject(
-            new Error(`call is no longer accepting ${name}`),
-          );
+          throw new Error(`call is no longer accepting ${name}`);
         }
         const input = copyJson(tool.input.parse(raw));
         const source =
@@ -271,11 +268,7 @@ export function createCampaign(
   config: Json,
 ): Campaign {
   return new CampaignWriter(
-    Journal.create(
-      path,
-      z.string().min(1).parse(application),
-      copyJson(config),
-    ),
+    Journal.create(path, z.string().min(1).parse(application), config),
   );
 }
 

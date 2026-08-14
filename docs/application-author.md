@@ -81,7 +81,7 @@ Zod validates the model's input before `run` executes and generates the JSON Sch
 
 Tools should express one bounded application action. Suitable proof-search tools read a named attached source, inspect a bounded frontier view, launch one application-approved computation, or submit one structured observation. Do not expose SQL, the campaign path, a database client, arbitrary record append, unrestricted candidate access, the whole `Campaign`, or a general filesystem shell.
 
-`piRequestCheckpoints(campaign.records(), call)` returns the JSON-semantic payload exposed by Pi's final pre-send hook for each provider operation in a Pi call. Built-in adapters keep credentials and HTTP headers outside it. An absent outer call result leaves the provider outcome unknown even when its request checkpoint is complete. Custom adapters must invoke the hook exactly once before dispatch and must never put credentials or tokens in its payload.
+`piRequestAttempts(campaign.records(), call)` returns the JSON-semantic payload exposed by Pi's final pre-send hook for each provider operation in a Pi call, together with its completed, threw, or unsettled state. Built-in adapters keep credentials and HTTP headers outside it. An absent outer call result leaves the provider outcome unknown even when its request checkpoint completed. Custom adapters must invoke the hook exactly once before dispatch and must never put credentials or tokens in its payload.
 
 ## Keep orchestration outside the kernel
 

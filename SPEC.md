@@ -80,7 +80,7 @@ Elenx supplies Pi only the audited wrappers selected for that run and asks suppo
 
 `runPi` creates one typed `elenx.pi.run` span and one standard Pi `pi.ai.request` child for every logical provider operation, including continuations after tool results. Provider adapters may retry an operation without exposing each wire attempt. The settled span tree is stored inside that call's returned JSON, so its label, optional candidate, and optional requested reasoning level supply the reason and configuration for each operation without adding a telemetry table or stored roll-up. Request leaves carry the Pi schema's provider, requested and served models, API, response, stop reason, usage, cache, Pi model-price cost estimate, HTTP-status, and error fields when available.
 
-Pi's awaited `onPayload` hook exposes the adapter's final pre-send payload. Elenx stores its JSON serialization semantics in an internal `elenx/pi-request` call and completes that checkpoint before returning from the hook. `piRequestCheckpoints(records, parent?)` reconstructs completed checkpoints from a fresh reader. A completed checkpoint proves which hook payload became dispatchable; it does not prove that the provider received it or produced a response, and an adapter may still add transport-only fields after the hook. The runtime rejects a successful logical provider operation unless exactly one checkpoint completed; an adapter may fail or be cancelled before constructing a payload. Built-in Pi adapters supply the ordering. A custom adapter is trusted to invoke the hook exactly once before dispatch and to keep credentials and tokens outside its payload. Provider authentication, headers, transport configuration, and SDK-internal retries are not persisted.
+Pi's awaited `onPayload` hook exposes the adapter's final pre-send payload. Elenx stores its JSON serialization semantics in an internal `elenx/pi-request` call and completes that checkpoint before returning from the hook. `piRequestAttempts(records, parent?)` reconstructs every valid checkpoint call and reports it as completed, threw, or unsettled. A completed attempt proves which hook payload became dispatchable; it does not prove that the provider received it or produced a response, and an adapter may still add transport-only fields after the hook. The runtime rejects a successful logical provider operation unless exactly one checkpoint completed; an adapter may fail or be cancelled before constructing a payload. Built-in Pi adapters supply the ordering. A custom adapter is trusted to invoke the hook exactly once before dispatch and to keep credentials and tokens outside its payload. Provider authentication, headers, transport configuration, and SDK-internal retries are not persisted.
 
 Applications derive totals from settled request leaves only and never add the native transcript's duplicate usage. Pi's input, cache-read, and cache-write fields are disjoint buckets; reasoning tokens are a subset of output and are not added again. A request with no measured usage remains a measurement gap instead of becoming zero spend. Telemetry is diagnostic and never affects candidate verification. An interrupted call can lack a completed span tree just as it can lack a call result.
 
@@ -108,7 +108,6 @@ A candidate is verified when each required verifier has at least one PASS and no
 createCampaign(path, application, config): Campaign
 openCampaign(path): Campaign
 openReader(path): Reader
-deriveCandidateStatus(records, candidate): CandidateStatus
 
 campaign.submitCandidate(material, requiredVerifiers): EntryId
 campaign.call(options, runner): Promise<CallReceipt>
@@ -125,7 +124,7 @@ reader.close(): void
 
 defineTool(definition): Tool
 runPi(campaign, options): Promise<PiResult> // from elenx/pi
-piRequestCheckpoints(records, parent?): readonly PiRequestCheckpoint[] // from elenx/pi
+piRequestAttempts(records, parent?): readonly PiRequestAttempt[] // from elenx/pi
 ```
 
 All database methods are synchronous because Bun SQLite is synchronous. Only external execution through `call` and `runPi` is asynchronous.

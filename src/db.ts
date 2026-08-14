@@ -150,11 +150,10 @@ export class Journal {
       "INSERT INTO entries(at_ms, kind, body, material) VALUES (?, ?, ?, ?)",
       [atMs, checked.kind, JSON.stringify(body), storedMaterial],
     );
-    return entrySchema.parse({
+    return {
       ...checked,
       seq: Number(result.lastInsertRowid),
-      atMs,
-    });
+    };
   }
 
   records(): readonly Entry[] {

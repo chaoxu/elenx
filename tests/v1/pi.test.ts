@@ -17,9 +17,8 @@ import { streamSimple as streamSimpleOpenAIResponses } from "@earendil-works/pi-
 import { createCampaign, defineTool, openReader } from "../../src";
 import {
   piRequest,
-  piRequestCheckpoints,
+  piRequestAttempts,
   piStoredResult,
-  PI_REQUEST_CHECKPOINT_LABEL,
   runPi,
 } from "../../src/pi";
 
@@ -427,11 +426,15 @@ describe("thin Pi runner", () => {
     });
 
     expect(sent).toEqual(payloads);
-    const checkpoints = piRequestCheckpoints(store.records(), result.call);
-    expect(checkpoints.map(({ payload }) => payload)).toEqual(
+    const attempts = piRequestAttempts(store.records(), result.call);
+    expect(attempts.map(({ payload }) => payload)).toEqual(
       JSON.parse(JSON.stringify(payloads)),
     );
-    expect(checkpoints.map(({ call }) => call)).toEqual([3, 7]);
+    expect(attempts.map(({ call }) => call)).toEqual([3, 7]);
+    expect(attempts.map(({ state }) => state)).toEqual([
+      "completed",
+      "completed",
+    ]);
     expect(store.records().map(({ kind }) => kind)).toEqual([
       "campaign",
       "call",
@@ -463,11 +466,12 @@ describe("thin Pi runner", () => {
       "call",
       "call-result",
     ]);
-    expect(piRequestCheckpoints(records)).toMatchObject([
+    expect(piRequestAttempts(records)).toMatchObject([
       {
         parent: 2,
         call: 3,
         payload: { input: "durable request" },
+        state: "completed",
       },
     ]);
     reader.close();
@@ -484,7 +488,7 @@ describe("thin Pi runner", () => {
           prompt: "Test adapter contract",
         }),
       ).rejects.toThrow("exactly once");
-      expect(piRequestCheckpoints(store.records())).toHaveLength(
+      expect(piRequestAttempts(store.records())).toHaveLength(
         calls === 0 ? 0 : 1,
       );
     }
@@ -514,19 +518,61 @@ describe("thin Pi runner", () => {
       state: "failed",
       error: "missing credentials",
     });
-    expect(piRequestCheckpoints(store.records())).toEqual([]);
+    expect(piRequestAttempts(store.records())).toEqual([]);
   });
 
-  test("ignores an application call that reuses the checkpoint label", async () => {
+  test("projects completed, failed, and unsettled request attempts", async () => {
     const store = campaign();
+    let release!: () => void;
+    let observed: ReturnType<typeof piRequestAttempts> = [];
+    const blocked = new Promise<void>((resolve) => {
+      release = resolve;
+    });
     await store.call(
       {
-        label: PI_REQUEST_CHECKPOINT_LABEL,
-        request: { application: "ordinary" },
+        label: "owner",
+        request: {
+          model: { provider: model.provider, id: model.id, api: model.api },
+          prompt: "test",
+        },
       },
-      async () => ({ done: true }),
+      async ({ call }) => {
+        const request = {
+          protocol: "pi" as const,
+          parent: call,
+          model: { provider: model.provider, id: model.id, api: model.api },
+          payload: { input: "test" },
+        };
+        await store.call(
+          { label: "elenx/pi-request", request },
+          async () => null,
+        );
+        await expect(
+          store.call({ label: "elenx/pi-request", request }, async () => {
+            throw new Error("checkpoint failed");
+          }),
+        ).rejects.toThrow("checkpoint failed");
+        const pending = store.call(
+          { label: "elenx/pi-request", request },
+          async () => {
+            await blocked;
+            return null;
+          },
+        );
+        await Promise.resolve();
+        observed = piRequestAttempts(store.records(), call);
+        release();
+        await pending;
+        return null;
+      },
     );
-    expect(piRequestCheckpoints(store.records())).toEqual([]);
+
+    expect(observed.map(({ state }) => state)).toEqual([
+      "completed",
+      "threw",
+      "unsettled",
+    ]);
+    expect(observed[1]).toMatchObject({ error: "checkpoint failed" });
   });
 
   test("checkpoints the real Pi OpenAI adapter before a stub transport", async () => {
@@ -560,7 +606,7 @@ describe("thin Pi runner", () => {
 
     expect(result.state).toBe("failed");
     expect(fetches).toBe(1);
-    expect(piRequestCheckpoints(store.records(), result.call)).toMatchObject([
+    expect(piRequestAttempts(store.records(), result.call)).toMatchObject([
       {
         parent: result.call,
         model: {
@@ -580,6 +626,7 @@ describe("thin Pi runner", () => {
           ],
           reasoning: { effort: "max" },
         },
+        state: "completed",
       },
     ]);
   });
@@ -601,8 +648,8 @@ describe("thin Pi runner", () => {
 
     expect(first.text).toBe("first");
     expect(second.text).toBe("second");
-    expect(piRequestCheckpoints(store.records(), first.call)).toHaveLength(1);
-    expect(piRequestCheckpoints(store.records(), second.call)).toHaveLength(1);
+    expect(piRequestAttempts(store.records(), first.call)).toHaveLength(1);
+    expect(piRequestAttempts(store.records(), second.call)).toHaveLength(1);
   });
 
   test("can stop after a successful structured tool result", async () => {

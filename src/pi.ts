@@ -132,41 +132,40 @@ export interface PiTelemetry {
   readonly spans: readonly RecordedTelemetrySpan[];
 }
 
+const piModel = z.strictObject({
+  provider: z.string().min(1),
+  id: z.string().min(1),
+  api: z.string().min(1),
+});
+
 export const piRequest = z.strictObject({
-  model: z.strictObject({
-    provider: z.string().min(1),
-    id: z.string().min(1),
-    api: z.string().min(1),
-  }),
+  model: piModel,
   system: z.string().optional(),
   prompt: z.string(),
   reasoning: piReasoning.optional(),
   stopAfterToolResult: z.literal(true).optional(),
 });
 
-export const PI_REQUEST_CHECKPOINT_LABEL = "elenx/pi-request";
-export const piRequestCheckpoint = z.strictObject({
+const piRequestLabel = "elenx/pi-request";
+const piRequestAttempt = z.strictObject({
   protocol: z.literal("pi"),
   parent: entryId,
-  model: z.strictObject({
-    provider: z.string().min(1),
-    id: z.string().min(1),
-    api: z.string().min(1),
-  }),
+  model: piModel,
   payload: json,
 });
-const piRequestCheckpointResult = z.strictObject({
-  checkpoint: z.literal("durable"),
-});
 
-export type PiRequestCheckpoint = z.output<typeof piRequestCheckpoint> & {
+export type PiRequestAttempt = z.output<typeof piRequestAttempt> & {
   readonly call: EntryId;
-};
+} & (
+    | { readonly state: "completed" }
+    | { readonly state: "threw"; readonly error: string }
+    | { readonly state: "unsettled" }
+  );
 
-export function piRequestCheckpoints(
+export function piRequestAttempts(
   entries: readonly Entry[],
   parent?: EntryId,
-): readonly PiRequestCheckpoint[] {
+): readonly PiRequestAttempt[] {
   const selected = parent === undefined ? undefined : entryId.parse(parent);
   const calls = new Map(
     entries
@@ -179,12 +178,12 @@ export function piRequestCheckpoints(
       .map((entry) => [entry.parent, entry]),
   );
   return [...calls.values()].flatMap((call) => {
-    if (call.label !== PI_REQUEST_CHECKPOINT_LABEL) return [];
-    const parsed = piRequestCheckpoint.safeParse(call.request);
+    if (call.label !== piRequestLabel) return [];
+    const parsed = piRequestAttempt.safeParse(call.request);
     if (!parsed.success) return [];
-    const checkpoint = parsed.data;
-    if (selected !== undefined && checkpoint.parent !== selected) return [];
-    const owner = calls.get(checkpoint.parent);
+    const attempt = parsed.data;
+    if (selected !== undefined && attempt.parent !== selected) return [];
+    const owner = calls.get(attempt.parent);
     if (
       owner === undefined ||
       owner.seq >= call.seq ||
@@ -193,9 +192,13 @@ export function piRequestCheckpoints(
       throw new Error(`invalid Pi request checkpoint call ${call.seq}`);
     }
     const settled = results.get(call.seq);
-    if (settled?.state !== "returned") return [];
-    piRequestCheckpointResult.parse(settled.output);
-    return [{ call: call.seq, ...checkpoint }];
+    const state =
+      settled === undefined
+        ? ({ state: "unsettled" } as const)
+        : settled.state === "threw"
+          ? ({ state: "threw", error: settled.error } as const)
+          : ({ state: "completed" } as const);
+    return [{ call: call.seq, ...attempt, ...state }];
   });
 }
 
@@ -228,8 +231,10 @@ function piTool(
   };
 }
 
-function transcript(messages: readonly AgentMessage[]): readonly Json[] {
-  return copyJson(JSON.parse(JSON.stringify(messages))) as readonly Json[];
+function jsonSnapshot(value: unknown): Json {
+  const encoded = JSON.stringify(value);
+  if (encoded === undefined) throw new TypeError("Pi value is not JSON");
+  return JSON.parse(encoded) as Json;
 }
 
 function result(
@@ -237,7 +242,7 @@ function result(
   stopAfterToolResult: boolean,
   signal: AbortSignal | undefined,
 ): PiOutcome {
-  const stored = transcript(messages);
+  const stored = jsonSnapshot(messages) as readonly Json[];
   const final = messages.findLast(
     (message): message is AssistantMessage => message.role === "assistant",
   );
@@ -281,12 +286,6 @@ function telemetryStopReason(
   return value === "pending" ? "error" : value;
 }
 
-function semanticJson(value: unknown): Json {
-  const encoded = JSON.stringify(value);
-  if (encoded === undefined) throw new TypeError("Pi payload is not JSON");
-  return copyJson(JSON.parse(encoded));
-}
-
 function measuredStream(
   campaign: Campaign,
   parent: EntryId,
@@ -322,10 +321,10 @@ function measuredStream(
               requestModel,
             );
             const effective = replacement === undefined ? payload : replacement;
-            const snapshot = semanticJson(effective);
+            const snapshot = jsonSnapshot(effective);
             await campaign.call(
               {
-                label: PI_REQUEST_CHECKPOINT_LABEL,
+                label: piRequestLabel,
                 request: {
                   protocol: "pi",
                   parent,
@@ -337,7 +336,7 @@ function measuredStream(
                   payload: snapshot,
                 },
               },
-              async () => ({ checkpoint: "durable" }),
+              async () => null,
             );
             checkpointed = true;
             return effective;
@@ -429,7 +428,6 @@ export async function runPi(
       : {}),
   });
   const request = copyJson(parsed);
-  let completed: PiResultBody | undefined;
   const receipt = await campaign.call(
     {
       label: options.label,
@@ -501,16 +499,14 @@ export async function runPi(
           return outcome;
         },
       );
-      completed = {
+      return {
         ...body,
         telemetry: {
           schemaVersions: PI_TELEMETRY_SCHEMA_VERSIONS,
           spans: telemetry.getSpans(),
         },
       } satisfies PiResultBody;
-      return completed;
     },
   );
-  if (completed === undefined) throw new Error("Pi call returned no result");
-  return { call: receipt.call, ...completed };
+  return { call: receipt.call, ...(receipt.output as unknown as PiResultBody) };
 }
