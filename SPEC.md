@@ -19,7 +19,7 @@ V1 targets Bun 1.3.14 or newer and campaign schema 4. It uses Bun SQLite for per
 
 ## Campaign artifact
 
-A campaign is one SQLite database. The database uses SQLite's `journal_mode=DELETE` rollback journal, `synchronous=FULL`, a five-second busy timeout, a strict table, and append-only triggers. Each durable fact is one atomic row insertion. `createCampaign` returns the artifact's only public writer; an existing artifact can only be reopened through the read-only `openReader`. Elenx has no writable reopen or resume API.
+A campaign is one SQLite database. The database uses SQLite's `journal_mode=DELETE` rollback journal, `synchronous=FULL`, a five-second busy timeout, a strict table, and append-only triggers. Each durable fact is one atomic row insertion. `createCampaign` creates a new artifact, `openCampaign` reopens an existing artifact for appends, and `openReader` opens it read-only. Concurrent writer handles rely on the same SQLite serialization and busy timeout; they can interleave complete row insertions but cannot update or delete prior records.
 
 Creation uses an exclusive private file create and never overwrites an existing path. The schema and campaign identity commit together. A crash before that commit may leave an invalid file, which readers reject and an operator must remove before retry. The artifact is not tamper-resistant against an operator with raw filesystem or SQL access.
 
@@ -71,15 +71,15 @@ The runner receives only the tools listed in `CallOptions`. The kernel never add
 
 ## Pi runner
 
-`runPi(campaign, options)` creates one fresh Pi `runAgentLoop`. The application selects a real model from the registry returned by `builtinPi`, then supplies that registry, label, system prompt, prompt, optional candidate ID, optional tools, and optional abort signal. A schema-constrained submission role may set `stopAfterToolResult: true` to finish after a successful tool batch without a redundant provider continuation. Pi terminates a batch only when every tool result requests termination; applications remain responsible for stricter cardinality such as exactly one submission. `builtinPi({ credentials })` accepts Pi's re-exported in-memory credential store for OAuth or API-key use.
+`runPi(campaign, options)` creates one fresh Pi `runAgentLoop`. The application selects a real model from the registry returned by `builtinPi`, then supplies that registry, label, system prompt, prompt, optional Pi reasoning level, optional candidate ID, optional tools, and optional abort signal. A schema-constrained submission role may set `stopAfterToolResult: true` to finish after a successful tool batch without a redundant provider continuation. Pi terminates a batch only when every tool result requests termination; applications remain responsible for stricter cardinality such as exactly one submission. `builtinPi({ credentials })` accepts Pi's re-exported in-memory credential store for OAuth or API-key use.
 
 Elenx supplies Pi only the audited wrappers selected for that run and asks supported providers to constrain each tool call to its JSON Schema, with ordinary tool calling as the fallback. Zod still validates every admitted input. Pi executes its own tool loop, provider calls, retries, and transcript construction. Elenx stores Pi's native transcript, including Pi-native usage and stop reasons, without inventing provider identity or cross-provider accounting. A final Pi `stop`, or an explicitly requested successful terminal tool result, is successful. Token limits, deferred work, tool errors, protocol errors, and cancellation do not become successful through terminal-tool mode.
 
-`runPi` creates one typed `elenx.pi.run` span and one standard Pi `pi.ai.request` child for every logical provider operation, including continuations after tool results. Provider adapters may retry an operation without exposing each wire attempt. The settled span tree is stored inside that call's returned JSON, so its label and optional candidate supply the reason for each operation without adding a telemetry table or stored roll-up. Request leaves carry the Pi schema's provider, requested and served models, API, response, stop reason, usage, cache, Pi model-price cost estimate, HTTP-status, and error fields when available.
+`runPi` creates one typed `elenx.pi.run` span and one standard Pi `pi.ai.request` child for every logical provider operation, including continuations after tool results. Provider adapters may retry an operation without exposing each wire attempt. The settled span tree is stored inside that call's returned JSON, so its label, optional candidate, and optional requested reasoning level supply the reason and configuration for each operation without adding a telemetry table or stored roll-up. Request leaves carry the Pi schema's provider, requested and served models, API, response, stop reason, usage, cache, Pi model-price cost estimate, HTTP-status, and error fields when available.
 
 Applications derive totals from settled request leaves only and never add the native transcript's duplicate usage. Pi's input, cache-read, and cache-write fields are disjoint buckets; reasoning tokens are a subset of output and are not added again. A request with no measured usage remains a measurement gap instead of becoming zero spend. Telemetry is diagnostic and never affects candidate verification. An interrupted call can lack a completed span tree just as it can lack a call result.
 
-The recorded call contains the optional candidate sequence, provider, model ID, API ID, prompt, optional system prompt, and selected tool declarations. Provider credentials, registry configuration, and the provider wire request remain Pi/application concerns and are not persisted by Elenx.
+The recorded call contains the optional candidate sequence, provider, model ID, API ID, prompt, optional system prompt, optional requested reasoning level, and selected tool declarations. Provider credentials, registry configuration, and the provider wire request remain Pi/application concerns and are not persisted by Elenx.
 
 ## Candidates, verdicts, and verification
 
@@ -101,6 +101,7 @@ A candidate is verified when each required verifier has at least one PASS and no
 
 ```ts
 createCampaign(path, application, config): Campaign
+openCampaign(path): Campaign
 openReader(path): Reader
 deriveCandidateStatus(records, candidate): CandidateStatus
 

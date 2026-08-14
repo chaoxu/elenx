@@ -12,6 +12,7 @@ import {
   type AssistantMessage,
   type Model,
   type Models,
+  type ThinkingLevel,
   type TSchema,
 } from "@earendil-works/pi-ai";
 import {
@@ -30,6 +31,15 @@ export { InMemoryCredentialStore } from "@earendil-works/pi-ai";
 export { builtinModels as builtinPi } from "@earendil-works/pi-ai/providers/all";
 
 type PiModels = Pick<Models, "streamSimple">;
+const reasoningLevels = [
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+] as const satisfies readonly ThinkingLevel[];
+const reasoning = z.enum(reasoningLevels);
 
 export interface PiRunOptions {
   readonly models: PiModels;
@@ -37,6 +47,7 @@ export interface PiRunOptions {
   readonly label: string;
   readonly system?: string;
   readonly prompt: string;
+  readonly reasoning?: ThinkingLevel;
   readonly candidate?: EntryId;
   readonly tools?: readonly Tool[];
   readonly stopAfterToolResult?: true;
@@ -85,6 +96,14 @@ export const ELENX_PI_TELEMETRY_SCHEMA = defineTelemetrySchema({
           cardinality: "high",
           description: "Candidate sequence when the call evaluates one.",
         },
+        "elenx.pi.reasoning.requested": {
+          type: "string",
+          required: false,
+          values: reasoningLevels,
+          cardinality: "low",
+          description:
+            "Pi reasoning level requested for every turn in the loop.",
+        },
       },
       endAttributes: {
         "elenx.pi.outcome": {
@@ -111,6 +130,7 @@ const requestSchema = z.strictObject({
   }),
   system: z.string().optional(),
   prompt: z.string(),
+  reasoning: reasoning.optional(),
   stopAfterToolResult: z.literal(true).optional(),
 });
 
@@ -278,6 +298,9 @@ export async function runPi(
     },
     ...(options.system === undefined ? {} : { system: options.system }),
     prompt: options.prompt,
+    ...(options.reasoning === undefined
+      ? {}
+      : { reasoning: options.reasoning }),
     ...(options.stopAfterToolResult === true
       ? { stopAfterToolResult: true as const }
       : {}),
@@ -307,6 +330,9 @@ export async function runPi(
           ...(options.candidate === undefined
             ? {}
             : { "elenx.candidate": options.candidate }),
+          ...(exact.reasoning === undefined
+            ? {}
+            : { "elenx.pi.reasoning.requested": exact.reasoning }),
         },
         async (span) => {
           const messages = await runAgentLoop(
@@ -327,6 +353,9 @@ export async function runPi(
               convertToLlm,
               toolExecution: "sequential",
               telemetryContext: span,
+              ...(exact.reasoning === undefined
+                ? {}
+                : { reasoning: exact.reasoning }),
             },
             () => {},
             signal,

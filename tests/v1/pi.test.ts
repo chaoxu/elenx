@@ -11,6 +11,7 @@ import {
   type Context,
   type Model,
   type Models,
+  type SimpleStreamOptions,
 } from "@earendil-works/pi-ai";
 
 import { createCampaign, defineTool } from "../../src";
@@ -24,7 +25,8 @@ const model: Model<Api> = {
   api: "openai-responses",
   provider: "fake",
   baseUrl: "https://invalid.test",
-  reasoning: false,
+  reasoning: true,
+  thinkingLevelMap: { max: "max" },
   input: ["text"],
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   contextWindow: 10_000,
@@ -95,12 +97,15 @@ function assistant(
 
 function models(
   replies: readonly AssistantMessage[],
-  inspect?: (context: Context) => void,
+  inspect?: (
+    context: Context,
+    options: SimpleStreamOptions | undefined,
+  ) => void,
 ): PiModels {
   let index = 0;
   return {
-    streamSimple(_model, context) {
-      inspect?.(context);
+    streamSimple(_model, context, options) {
+      inspect?.(context, options);
       const reply = replies[index++];
       if (reply === undefined) throw new Error("no scripted Pi reply");
       const stream = createAssistantMessageEventStream();
@@ -127,22 +132,26 @@ function models(
 describe("thin Pi runner", () => {
   test("runs a fresh Pi loop and stores its native transcript", async () => {
     const store = campaign();
+    const requests: (SimpleStreamOptions | undefined)[] = [];
     const candidate = store.submitCandidate(
       new TextEncoder().encode("answer"),
       ["answer/v1"],
     );
     const result = await runPi(store, {
-      models: models([
-        assistant([{ type: "text", text: "answer" }], "stop", 3),
-      ]),
+      models: models(
+        [assistant([{ type: "text", text: "answer" }], "stop", 3)],
+        (_context, options) => requests.push(options),
+      ),
       model,
       label: "answer/v1",
       candidate,
       system: "Answer exactly.",
       prompt: "Question",
+      reasoning: "max",
     });
 
     expect(result).toMatchObject({ state: "succeeded", text: "answer" });
+    expect(requests.map((options) => options?.reasoning)).toEqual(["max"]);
     const [runSpan, requestSpan] = result.telemetry.spans;
     expect(runSpan).toMatchObject({
       name: "elenx.pi.run",
@@ -152,6 +161,7 @@ describe("thin Pi runner", () => {
       attributes: {
         "elenx.call.label": "answer/v1",
         "elenx.candidate": candidate,
+        "elenx.pi.reasoning.requested": "max",
         "elenx.pi.outcome": "succeeded",
       },
     });
@@ -184,6 +194,7 @@ describe("thin Pi runner", () => {
     expect(records.find((entry) => entry.kind === "call")).toMatchObject({
       seq: result.call,
       candidate,
+      request: { reasoning: "max" },
     });
     const terminal = records.at(-1);
     expect(terminal?.kind).toBe("call-result");
@@ -200,6 +211,7 @@ describe("thin Pi runner", () => {
   test("gives Pi only the selected audited Zod tools", async () => {
     const store = campaign();
     const contexts: Context[] = [];
+    const reasoning: (SimpleStreamOptions["reasoning"] | undefined)[] = [];
     const add = defineTool({
       name: "add",
       description: "Add integers",
@@ -227,11 +239,15 @@ describe("thin Pi runner", () => {
           ),
           assistant([{ type: "text", text: "7" }], "stop"),
         ],
-        (context) => contexts.push(context),
+        (context, options) => {
+          contexts.push(context);
+          reasoning.push(options?.reasoning);
+        },
       ),
       model,
       label: "math/v1",
       prompt: "Add 2 and 5",
+      reasoning: "max",
       tools: [add],
     });
 
@@ -240,6 +256,7 @@ describe("thin Pi runner", () => {
       ({ name }) => name === "pi.ai.request",
     );
     expect(requests).toHaveLength(2);
+    expect(reasoning).toEqual(["max", "max"]);
     expect(
       requests.every(
         ({ attributes }) => !("pi.ai.usage.reasoning_tokens" in attributes),

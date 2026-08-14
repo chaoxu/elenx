@@ -2,6 +2,7 @@ import {
   createCampaign,
   defineTool,
   deriveCandidateStatus,
+  openCampaign,
   type CallReceipt,
   type Campaign,
 } from "elenx";
@@ -32,10 +33,12 @@ const result =
         model,
         label: "audit/v1",
         prompt: "audit",
+        reasoning: "max",
         tools: [tool],
       });
 
 void createCampaign;
+void openCampaign;
 void deriveCandidateStatus(campaign.records(), 1);
 void (undefined as unknown as CallReceipt);
 void result;
