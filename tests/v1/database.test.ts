@@ -51,7 +51,7 @@ describe("campaign database", () => {
     reader.close();
   });
 
-  test("recovers a hot rollback journal before opening read-only", async () => {
+  test("leaves hot-journal recovery to a writer", async () => {
     const path = temporaryPath();
     const marker = join(dirname(path), "ready");
     createCampaign(path, "test", null).close();
@@ -79,10 +79,20 @@ describe("campaign database", () => {
     expect(() => rawReader.query("SELECT * FROM entries").all()).toThrow();
     rawReader.close(true);
 
+    const databaseBefore = readFileSync(path);
+    const journalBefore = readFileSync(`${path}-journal`);
+    expect(() => openReader(path)).toThrow("campaign recovery required");
+    expect(readFileSync(path)).toEqual(databaseBefore);
+    expect(readFileSync(`${path}-journal`)).toEqual(journalBefore);
+
+    const writer = openCampaign(path);
+    expect(writer.records().map(({ kind }) => kind)).toEqual(["campaign"]);
+    writer.close();
+    expect(existsSync(`${path}-journal`)).toBe(false);
+
     const reader = openReader(path);
     expect(reader.records().map(({ kind }) => kind)).toEqual(["campaign"]);
     reader.close();
-    expect(existsSync(`${path}-journal`)).toBe(false);
   });
 
   test("reopens one campaign for later appends", async () => {

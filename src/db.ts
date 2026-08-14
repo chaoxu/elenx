@@ -142,13 +142,15 @@ export class Journal {
       return new Journal(open(path, false, true));
     } catch (error) {
       if (
-        !(error instanceof SQLiteError) ||
-        error.code !== "SQLITE_READONLY_ROLLBACK"
+        error instanceof SQLiteError &&
+        error.code === "SQLITE_READONLY_ROLLBACK"
       ) {
-        throw error;
+        throw new Error(
+          "campaign recovery required: reopen it for writing before reading",
+          { cause: error },
+        );
       }
-      open(path, false).close(true);
-      return new Journal(open(path, false, true));
+      throw error;
     }
   }
 

@@ -19,11 +19,11 @@ Runtime and dependency versions are pinned in `package.json` and `bun.lock`. Ele
 
 ## Campaign artifact
 
-A campaign is one SQLite database. The database uses SQLite's `journal_mode=DELETE` rollback journal, `synchronous=FULL`, a five-second busy timeout, a strict table, and append-only triggers. Each durable fact is one atomic row insertion. `createCampaign` creates a new artifact, `openCampaign` reopens an existing artifact for appends, and `openReader` recovers a hot rollback journal when present before opening the artifact read-only. SQLite serializes individual row insertions; applications remain responsible for ensuring that only one coordinator attempts a logical phase at a time.
+A campaign is one SQLite database. The database uses SQLite's `journal_mode=DELETE` rollback journal, `synchronous=FULL`, a five-second busy timeout, a strict table, and append-only triggers. Each durable fact is one atomic row insertion. `createCampaign` creates a new artifact, `openCampaign` reopens an existing artifact for appends and performs any required crash recovery, and `openReader` opens an existing artifact without write access. SQLite serializes individual row insertions; applications remain responsible for ensuring that only one coordinator attempts a logical phase at a time.
 
 Creation uses an exclusive private file create and never overwrites an existing path. The schema and campaign identity commit together. A crash before that commit may leave an invalid file, which readers reject and an operator must remove before retry. The artifact is not tamper-resistant against an operator with raw filesystem or SQL access.
 
-Copy a campaign only after its handles close. If a crash left a rollback journal, open and close the campaign with `openReader` before copying so SQLite completes recovery. Copying the file while a writer is active is not a supported live snapshot; that requires SQLite's backup facilities.
+Copy a campaign only after its handles close. If a crash left a rollback journal, open and close the campaign with `openCampaign` before copying so SQLite completes recovery. A reader refuses an artifact that requires recovery rather than mutating it. Copying the file while a writer is active is not a supported live snapshot; that requires SQLite's backup facilities.
 
 The positive `entries.seq` of a candidate, call, or tool call is its campaign-scoped identifier. It is not portable between campaign databases. Every submission creates a distinct candidate row, including submissions with identical bytes.
 
