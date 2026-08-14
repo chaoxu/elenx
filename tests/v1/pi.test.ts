@@ -15,7 +15,7 @@ import {
 } from "@earendil-works/pi-ai";
 
 import { createCampaign, defineTool } from "../../src";
-import { runPi } from "../../src/pi";
+import { piRequest, piStoredResult, runPi } from "../../src/pi";
 
 type PiModels = Pick<Models, "streamSimple">;
 
@@ -191,11 +191,14 @@ describe("thin Pi runner", () => {
       "call",
       "call-result",
     ]);
-    expect(records.find((entry) => entry.kind === "call")).toMatchObject({
+    const call = records.find((entry) => entry.kind === "call");
+    expect(call).toMatchObject({
       seq: result.call,
       candidate,
       request: { reasoning: "max" },
     });
+    if (call?.kind !== "call") throw new Error("missing Pi call");
+    expect(piRequest.parse(call.request)).toMatchObject({ reasoning: "max" });
     const terminal = records.at(-1);
     expect(terminal?.kind).toBe("call-result");
     if (terminal?.kind !== "call-result" || terminal.state !== "returned") {
@@ -204,6 +207,11 @@ describe("thin Pi runner", () => {
     expect(terminal.output).toMatchObject({
       state: "succeeded",
       transcript: [{ role: "user" }, { role: "assistant" }],
+      telemetry: result.telemetry,
+    });
+    expect(piStoredResult.parse(terminal.output)).toMatchObject({
+      state: "succeeded",
+      text: "answer",
       telemetry: result.telemetry,
     });
   });

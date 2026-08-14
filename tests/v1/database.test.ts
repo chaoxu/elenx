@@ -50,42 +50,25 @@ describe("campaign database", () => {
     reader.close();
   });
 
-  test("reopens one campaign for serialized concurrent appends", async () => {
+  test("reopens one campaign for later appends", async () => {
     const path = temporaryPath();
-    createCampaign(path, "test", null).close();
-    const first = openCampaign(path);
-    const second = openCampaign(path);
-    let release!: () => void;
-    const blocked = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    const slow = first.call({ label: "slow", request: null }, async () => {
-      await blocked;
-      return { done: "slow" };
-    });
-    const fast = await second.call(
-      { label: "fast", request: null },
-      async () => ({ done: "fast" }),
-    );
-    release();
-    const settled = await slow;
-
-    expect([settled.call, fast.call]).toEqual([2, 3]);
-    expect(first.records().map((entry) => entry.kind)).toEqual([
+    const first = createCampaign(path, "test", null);
+    await first.call({ label: "before-close", request: null }, async () => ({
+      done: true,
+    }));
+    first.close();
+    const reopened = openCampaign(path);
+    await reopened.call({ label: "after-reopen", request: null }, async () => ({
+      done: true,
+    }));
+    expect(reopened.records().map((entry) => entry.kind)).toEqual([
       "campaign",
       "call",
+      "call-result",
       "call",
       "call-result",
-      "call-result",
     ]);
-    expect(
-      first
-        .records()
-        .filter((entry) => entry.kind === "call-result")
-        .map((entry) => entry.parent),
-    ).toEqual([fast.call, settled.call]);
-    first.close();
-    second.close();
+    reopened.close();
   });
 
   test("removes an artifact when initial validation fails", () => {

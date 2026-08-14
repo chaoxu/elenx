@@ -114,12 +114,15 @@ export class Journal {
     closeSync(descriptor);
     let database: Database | undefined;
     try {
-      database = open(path, true);
-      database.run("BEGIN IMMEDIATE");
-      database.run(SCHEMA);
-      const journal = new Journal(database);
-      journal.append({ kind: "campaign", application, config });
-      database.run("COMMIT");
+      const created = open(path, true);
+      database = created;
+      const journal = new Journal(created);
+      created
+        .transaction(() => {
+          created.run(SCHEMA);
+          journal.append({ kind: "campaign", application, config });
+        })
+        .immediate();
       return journal;
     } catch (error) {
       database?.close(true);

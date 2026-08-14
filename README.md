@@ -14,9 +14,9 @@ bun add git+https://gitea.lab/chaoxu/elenx.git#main zod@4.4.3
 
 Elenx exposes Pi's types directly. Keep TypeScript's `skipLibCheck` enabled while Pi 0.84.1's provider SDK declarations require it.
 
-Elenx is an experimental harness. Its API and campaign schema may change directly; there are no migrations or compatibility aliases. The current tree uses schema 4. Delete and rerun stale campaigns.
+Elenx is an experimental harness. Its API and campaign schema may change directly; there are no migrations or compatibility aliases. Campaign files are accepted only when their schema matches the running package. Delete and rerun stale campaigns.
 
-Contributors run `bun install --frozen-lockfile` and `bun run check`. The check includes formatting, strict TypeScript, a clean-consumer compile, a 1,500-nonblank-source-line ceiling, and the complete test suite.
+Contributors run `bun install --frozen-lockfile` and `bun run check`. The check includes formatting, strict TypeScript, a clean-consumer compile, the configured source-size ceiling, and the complete test suite.
 
 - [`SPEC.md`](SPEC.md) is the normative v1 contract.
 - [`docs/application-author.md`](docs/application-author.md) shows the public API and tool boundary.

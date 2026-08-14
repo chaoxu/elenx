@@ -1,4 +1,5 @@
 import {
+  AI_TELEMETRY_SCHEMA,
   convertToLlm,
   runAgentLoop,
   startAiSpan,
@@ -39,7 +40,7 @@ const reasoningLevels = [
   "xhigh",
   "max",
 ] as const satisfies readonly ThinkingLevel[];
-const reasoning = z.enum(reasoningLevels);
+export const piReasoning = z.enum(reasoningLevels);
 
 export interface PiRunOptions {
   readonly models: PiModels;
@@ -68,14 +69,6 @@ type PiOutcome = {
 type PiResultBody = PiOutcome & { readonly telemetry: PiTelemetry };
 
 export type PiResult = PiResultBody & { readonly call: EntryId };
-
-export interface PiTelemetry {
-  readonly schemaVersions: {
-    readonly "elenx.pi": 1;
-    readonly "pi.ai": 1;
-  };
-  readonly spans: readonly RecordedTelemetrySpan[];
-}
 
 export const ELENX_PI_TELEMETRY_SCHEMA = defineTelemetrySchema({
   version: 1,
@@ -122,7 +115,17 @@ export const ELENX_PI_TELEMETRY_SCHEMA = defineTelemetrySchema({
   },
 } as const);
 
-const requestSchema = z.strictObject({
+export const PI_TELEMETRY_SCHEMA_VERSIONS = {
+  "elenx.pi": ELENX_PI_TELEMETRY_SCHEMA.version,
+  "pi.ai": AI_TELEMETRY_SCHEMA.version,
+} as const;
+
+export interface PiTelemetry {
+  readonly schemaVersions: typeof PI_TELEMETRY_SCHEMA_VERSIONS;
+  readonly spans: readonly RecordedTelemetrySpan[];
+}
+
+export const piRequest = z.strictObject({
   model: z.strictObject({
     provider: z.string().min(1),
     id: z.string().min(1),
@@ -130,8 +133,15 @@ const requestSchema = z.strictObject({
   }),
   system: z.string().optional(),
   prompt: z.string(),
-  reasoning: reasoning.optional(),
+  reasoning: piReasoning.optional(),
   stopAfterToolResult: z.literal(true).optional(),
+});
+
+export const piStoredResult = z.object({
+  state: z.enum(["succeeded", "failed", "cancelled"]),
+  text: z.string(),
+  error: z.string().optional(),
+  telemetry: z.unknown().optional(),
 });
 
 function piTool(
@@ -166,11 +176,9 @@ function result(
   signal: AbortSignal | undefined,
 ): PiOutcome {
   const stored = transcript(messages);
-  const final = [...messages]
-    .reverse()
-    .find(
-      (message): message is AssistantMessage => message.role === "assistant",
-    );
+  const final = messages.findLast(
+    (message): message is AssistantMessage => message.role === "assistant",
+  );
   const text = final === undefined ? "" : contentText(final.content);
   if (signal?.aborted || final?.stopReason === "aborted") {
     return {
@@ -290,7 +298,7 @@ export async function runPi(
   if (typeof options.models?.streamSimple !== "function") {
     throw new TypeError("Pi models must provide streamSimple");
   }
-  const parsed = requestSchema.parse({
+  const parsed = piRequest.parse({
     model: {
       provider: options.model?.provider,
       id: options.model?.id,
@@ -318,7 +326,7 @@ export async function runPi(
       ...(options.signal === undefined ? {} : { signal: options.signal }),
     },
     async ({ request: recorded, tools, signal }) => {
-      const exact = requestSchema.parse(recorded);
+      const exact = piRequest.parse(recorded);
       const telemetry = new InMemoryTelemetryContext();
       const startSpan = createTypedSpanStarter(telemetry, [
         ELENX_PI_TELEMETRY_SCHEMA,
@@ -381,7 +389,7 @@ export async function runPi(
       completed = {
         ...body,
         telemetry: {
-          schemaVersions: { "elenx.pi": 1, "pi.ai": 1 },
+          schemaVersions: PI_TELEMETRY_SCHEMA_VERSIONS,
           spans: telemetry.getSpans(),
         },
       } satisfies PiResultBody;

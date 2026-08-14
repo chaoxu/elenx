@@ -15,11 +15,11 @@ Elenx is not an agent framework. Applications own coordination, routes, context 
 
 ## Runtime and dependencies
 
-V1 targets Bun 1.3.14 or newer and campaign schema 4. It uses Bun SQLite for persistence, Zod 4.4.3 for input validation and JSON Schema generation, and Pi 0.84.1 for the bundled model loop and telemetry contracts. Elenx exposes Pi's types directly instead of maintaining local copies. The implementation contains no custom SQL parser, JSON Schema validator, model loop, provider client, identifier generator, or native lock binding.
+Runtime and dependency versions are pinned in `package.json` and `bun.lock`. Elenx uses Bun SQLite for persistence, Zod for input validation and JSON Schema generation, and Pi for the bundled model loop and telemetry contracts. Elenx exposes Pi's types directly instead of maintaining local copies. The implementation contains no custom SQL parser, JSON Schema validator, model loop, provider client, identifier generator, or native lock binding.
 
 ## Campaign artifact
 
-A campaign is one SQLite database. The database uses SQLite's `journal_mode=DELETE` rollback journal, `synchronous=FULL`, a five-second busy timeout, a strict table, and append-only triggers. Each durable fact is one atomic row insertion. `createCampaign` creates a new artifact, `openCampaign` reopens an existing artifact for appends, and `openReader` opens it read-only. Concurrent writer handles rely on the same SQLite serialization and busy timeout; they can interleave complete row insertions but cannot update or delete prior records.
+A campaign is one SQLite database. The database uses SQLite's `journal_mode=DELETE` rollback journal, `synchronous=FULL`, a five-second busy timeout, a strict table, and append-only triggers. Each durable fact is one atomic row insertion. `createCampaign` creates a new artifact, `openCampaign` reopens an existing artifact for appends, and `openReader` opens it read-only. SQLite serializes individual row insertions; applications remain responsible for ensuring that only one coordinator attempts a logical phase at a time.
 
 Creation uses an exclusive private file create and never overwrites an existing path. The schema and campaign identity commit together. A crash before that commit may leave an invalid file, which readers reject and an operator must remove before retry. The artifact is not tamper-resistant against an operator with raw filesystem or SQL access.
 
