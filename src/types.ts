@@ -14,7 +14,7 @@ export type {
 export interface Tool {
   readonly name: string;
   readonly description: string;
-  readonly input: z.ZodObject;
+  readonly input: z.ZodType;
   run(input: unknown, signal: AbortSignal): Promise<unknown>;
 }
 
@@ -67,14 +67,14 @@ export interface Campaign extends Reader {
   ): Promise<CallReceipt>;
 }
 
-export interface ToolDefinition<S extends z.ZodObject> {
+export interface ToolDefinition<S extends z.ZodType> {
   readonly name: string;
   readonly description: string;
   readonly input: S;
   run(input: z.output<S>, signal: AbortSignal): Promise<unknown>;
 }
 
-export function defineTool<S extends z.ZodObject>(
+export function defineTool<S extends z.ZodType>(
   definition: ToolDefinition<S>,
 ): Tool {
   return {
