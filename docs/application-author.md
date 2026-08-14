@@ -60,7 +60,8 @@ const inspectSource = defineTool({
   input: z.strictObject({
     source: z.enum(allowedSourceNames),
   }),
-  async run({ source }, signal) {
+  replay: "safe",
+  async run({ source }, { signal }) {
     signal.throwIfAborted();
     return { source, text: await sourceStore.read(source) };
   },
@@ -76,9 +77,11 @@ const audit = await runPi(campaign, {
 });
 ```
 
-Zod validates the model's input before `run` executes and generates the JSON Schema Pi receives. Tool inputs are Zod object schemas; their refinements and transforms must be pure admission logic. Elenx records the declaration, validated input, provider tool-call id, result, and containing Pi transcript.
+Zod validates the model's input before `run` executes and generates the JSON Schema Pi receives. Tool inputs are Zod schemas; their refinements and transforms must be pure admission logic. `replay: "safe"` means every valid repetition after an interrupted phase is harmless: the action is pure or read-only, or a write uses an application-stable semantic key or reconciliation rule that survives restart. Elenx records the declaration, validated input, provider tool-call id, result, and containing Pi transcript. A recorded tool call with no result has an unknown outcome and is never retried by the kernel. The execution context exposes a campaign-scoped `toolCall` sequence; combine it with an application-owned campaign namespace when reconciling the original external record. A new phase attempt gets a new sequence.
 
 Tools should express one bounded application action. Suitable proof-search tools read a named attached source, inspect a bounded frontier view, launch one application-approved computation, or submit one structured observation. Do not expose SQL, the campaign path, a database client, arbitrary record append, unrestricted candidate access, the whole `Campaign`, or a general filesystem shell.
+
+`piRequestCheckpoints(campaign.records(), call)` returns the JSON-semantic payload exposed by Pi's final pre-send hook for each provider operation in a Pi call. Built-in adapters keep credentials and HTTP headers outside it. An absent outer call result leaves the provider outcome unknown even when its request checkpoint is complete. Custom adapters must invoke the hook exactly once before dispatch and must never put credentials or tokens in its payload.
 
 ## Keep orchestration outside the kernel
 

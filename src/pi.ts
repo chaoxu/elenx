@@ -25,8 +25,15 @@ import {
 } from "@earendil-works/pi-telemetry";
 import { z } from "zod";
 
-import { copyJson } from "./schemas";
-import type { AuditedTool, Campaign, EntryId, Json, Tool } from "./types";
+import { copyJson, entryId, json } from "./schemas";
+import type {
+  AuditedTool,
+  Campaign,
+  Entry,
+  EntryId,
+  Json,
+  Tool,
+} from "./types";
 
 export { InMemoryCredentialStore } from "@earendil-works/pi-ai";
 export { builtinModels as builtinPi } from "@earendil-works/pi-ai/providers/all";
@@ -137,6 +144,61 @@ export const piRequest = z.strictObject({
   stopAfterToolResult: z.literal(true).optional(),
 });
 
+export const PI_REQUEST_CHECKPOINT_LABEL = "elenx/pi-request";
+export const piRequestCheckpoint = z.strictObject({
+  protocol: z.literal("pi"),
+  parent: entryId,
+  model: z.strictObject({
+    provider: z.string().min(1),
+    id: z.string().min(1),
+    api: z.string().min(1),
+  }),
+  payload: json,
+});
+const piRequestCheckpointResult = z.strictObject({
+  checkpoint: z.literal("durable"),
+});
+
+export type PiRequestCheckpoint = z.output<typeof piRequestCheckpoint> & {
+  readonly call: EntryId;
+};
+
+export function piRequestCheckpoints(
+  entries: readonly Entry[],
+  parent?: EntryId,
+): readonly PiRequestCheckpoint[] {
+  const selected = parent === undefined ? undefined : entryId.parse(parent);
+  const calls = new Map(
+    entries
+      .filter((entry) => entry.kind === "call")
+      .map((entry) => [entry.seq, entry]),
+  );
+  const results = new Map(
+    entries
+      .filter((entry) => entry.kind === "call-result")
+      .map((entry) => [entry.parent, entry]),
+  );
+  return [...calls.values()].flatMap((call) => {
+    if (call.label !== PI_REQUEST_CHECKPOINT_LABEL) return [];
+    const parsed = piRequestCheckpoint.safeParse(call.request);
+    if (!parsed.success) return [];
+    const checkpoint = parsed.data;
+    if (selected !== undefined && checkpoint.parent !== selected) return [];
+    const owner = calls.get(checkpoint.parent);
+    if (
+      owner === undefined ||
+      owner.seq >= call.seq ||
+      !piRequest.safeParse(owner.request).success
+    ) {
+      throw new Error(`invalid Pi request checkpoint call ${call.seq}`);
+    }
+    const settled = results.get(call.seq);
+    if (settled?.state !== "returned") return [];
+    piRequestCheckpointResult.parse(settled.output);
+    return [{ call: call.seq, ...checkpoint }];
+  });
+}
+
 export const piStoredResult = z.object({
   state: z.enum(["succeeded", "failed", "cancelled"]),
   text: z.string(),
@@ -219,7 +281,17 @@ function telemetryStopReason(
   return value === "pending" ? "error" : value;
 }
 
-function measuredStream(models: PiModels): StreamFn {
+function semanticJson(value: unknown): Json {
+  const encoded = JSON.stringify(value);
+  if (encoded === undefined) throw new TypeError("Pi payload is not JSON");
+  return copyJson(JSON.parse(encoded));
+}
+
+function measuredStream(
+  campaign: Campaign,
+  parent: EntryId,
+  models: PiModels,
+): StreamFn {
   return (model, context, options) =>
     startAiSpan(
       options?.telemetryContext ?? NOOP_TELEMETRY_CONTEXT,
@@ -233,15 +305,58 @@ function measuredStream(models: PiModels): StreamFn {
       },
       async (span) => {
         let httpStatus: number | undefined;
+        let hookCalls = 0;
+        let checkpointed = false;
         const stream = models.streamSimple(model, context, {
           ...options,
           telemetryContext: span,
+          onPayload: async (payload, requestModel) => {
+            hookCalls += 1;
+            if (hookCalls !== 1) {
+              throw new Error(
+                "Pi adapter must invoke onPayload exactly once per request",
+              );
+            }
+            const replacement = await options?.onPayload?.(
+              payload,
+              requestModel,
+            );
+            const effective = replacement === undefined ? payload : replacement;
+            const snapshot = semanticJson(effective);
+            await campaign.call(
+              {
+                label: PI_REQUEST_CHECKPOINT_LABEL,
+                request: {
+                  protocol: "pi",
+                  parent,
+                  model: {
+                    provider: requestModel.provider,
+                    id: requestModel.id,
+                    api: requestModel.api,
+                  },
+                  payload: snapshot,
+                },
+              },
+              async () => ({ checkpoint: "durable" }),
+            );
+            checkpointed = true;
+            return effective;
+          },
           onResponse: async (response, responseModel) => {
             httpStatus = response.status;
             await options?.onResponse?.(response, responseModel);
           },
         });
         const final = await stream.result();
+        const failedBeforeCheckpoint =
+          hookCalls <= 1 &&
+          !checkpointed &&
+          (final.stopReason === "error" || final.stopReason === "aborted");
+        if ((hookCalls !== 1 || !checkpointed) && !failedBeforeCheckpoint) {
+          throw new Error(
+            "Pi adapter must invoke onPayload exactly once per request",
+          );
+        }
         const hasUsage = [
           final.usage.input,
           final.usage.output,
@@ -325,7 +440,7 @@ export async function runPi(
       ...(options.tools === undefined ? {} : { tools: options.tools }),
       ...(options.signal === undefined ? {} : { signal: options.signal }),
     },
-    async ({ request: recorded, tools, signal }) => {
+    async ({ call, request: recorded, tools, signal }) => {
       const exact = piRequest.parse(recorded);
       const telemetry = new InMemoryTelemetryContext();
       const startSpan = createTypedSpanStarter(telemetry, [
@@ -367,7 +482,7 @@ export async function runPi(
             },
             () => {},
             signal,
-            measuredStream(options.models),
+            measuredStream(campaign, call, options.models),
           );
           const outcome = result(
             messages,

@@ -1,25 +1,31 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { z } from "zod";
 
 import {
   createAssistantMessageEventStream,
-  type Api,
   type AssistantMessage,
   type Context,
   type Model,
   type Models,
   type SimpleStreamOptions,
 } from "@earendil-works/pi-ai";
+import { streamSimple as streamSimpleOpenAIResponses } from "@earendil-works/pi-ai/api/openai-responses";
 
-import { createCampaign, defineTool } from "../../src";
-import { piRequest, piStoredResult, runPi } from "../../src/pi";
+import { createCampaign, defineTool, openReader } from "../../src";
+import {
+  piRequest,
+  piRequestCheckpoints,
+  piStoredResult,
+  PI_REQUEST_CHECKPOINT_LABEL,
+  runPi,
+} from "../../src/pi";
 
 type PiModels = Pick<Models, "streamSimple">;
 
-const model: Model<Api> = {
+const model: Model<"openai-responses"> = {
   id: "test-v1",
   name: "Test",
   api: "openai-responses",
@@ -104,26 +110,84 @@ function models(
 ): PiModels {
   let index = 0;
   return {
-    streamSimple(_model, context, options) {
+    streamSimple(requestModel, context, options) {
       inspect?.(context, options);
       const reply = replies[index++];
       if (reply === undefined) throw new Error("no scripted Pi reply");
       const stream = createAssistantMessageEventStream();
-      if (reply.stopReason === "error" || reply.stopReason === "aborted") {
-        stream.push({
-          type: "error",
-          reason: reply.stopReason,
-          error: reply,
-        });
-      } else if (reply.stopReason !== "pending") {
+      void (async () => {
+        await options?.onPayload?.(
+          { model: requestModel.id, context },
+          requestModel,
+        );
+        if (reply.stopReason === "error" || reply.stopReason === "aborted") {
+          stream.push({
+            type: "error",
+            reason: reply.stopReason,
+            error: reply,
+          });
+        } else if (reply.stopReason !== "pending") {
+          stream.push({
+            type: "done",
+            reason: reply.stopReason,
+            message: reply,
+          });
+        } else {
+          throw new Error("pending is not a terminal Pi event");
+        }
+      })();
+      return stream;
+    },
+  } as PiModels;
+}
+
+function payloadModels(
+  replies: readonly AssistantMessage[],
+  payloads: readonly unknown[],
+  sent: unknown[],
+): PiModels {
+  let index = 0;
+  return {
+    streamSimple(requestModel, _context, options) {
+      const turn = index++;
+      const reply = replies[turn];
+      if (reply === undefined) throw new Error("no scripted Pi reply");
+      const stream = createAssistantMessageEventStream();
+      void (async () => {
+        const payload = payloads[turn];
+        const replacement = await options?.onPayload?.(payload, requestModel);
+        sent.push(replacement === undefined ? payload : replacement);
         stream.push({
           type: "done",
-          reason: reply.stopReason,
+          reason: reply.stopReason as "stop" | "toolUse",
           message: reply,
         });
-      } else {
-        throw new Error("pending is not a terminal Pi event");
-      }
+      })();
+      return stream;
+    },
+  } as PiModels;
+}
+
+function invalidPayloadModels(calls: number): PiModels {
+  return {
+    streamSimple(requestModel, _context, options) {
+      const stream = createAssistantMessageEventStream();
+      void (async () => {
+        try {
+          for (let index = 0; index < calls; index++) {
+            await options?.onPayload?.({ index }, requestModel);
+          }
+          const reply = assistant([{ type: "text", text: "done" }], "stop");
+          stream.push({ type: "done", reason: "stop", message: reply });
+        } catch (error) {
+          const reply = {
+            ...assistant([], "error", undefined, false),
+            errorMessage:
+              error instanceof Error ? error.message : String(error),
+          };
+          stream.push({ type: "error", reason: "error", error: reply });
+        }
+      })();
       return stream;
     },
   } as PiModels;
@@ -189,6 +253,8 @@ describe("thin Pi runner", () => {
       "campaign",
       "candidate",
       "call",
+      "call",
+      "call-result",
       "call-result",
     ]);
     const call = records.find((entry) => entry.kind === "call");
@@ -227,6 +293,7 @@ describe("thin Pi runner", () => {
         left: z.number().int(),
         right: z.number().int(),
       }),
+      replay: "safe",
       async run({ left, right }) {
         return { sum: left + right };
       },
@@ -284,13 +351,258 @@ describe("thin Pi runner", () => {
     expect(store.records().map((entry) => entry.kind)).toEqual([
       "campaign",
       "call",
+      "call",
+      "call-result",
       "tool-call",
       "tool-result",
+      "call",
+      "call-result",
       "call-result",
     ]);
     expect(
       store.records().find((entry) => entry.kind === "tool-call"),
     ).toMatchObject({ source: "add-1", input: { left: 2, right: 5 } });
+  });
+
+  test("reconstructs every adapter-expanded request from durable checkpoints", async () => {
+    const store = campaign();
+    const payloads = [
+      {
+        instructions: "Use the adder.",
+        input: [{ role: "user", content: "Add 2 and 5" }],
+        tools: [{ name: "add", strict: true }],
+        reasoning: { effort: "high" },
+        prompt_cache_key: undefined,
+      },
+      {
+        instructions: "Use the adder.",
+        input: [
+          { role: "user", content: "Add 2 and 5" },
+          { type: "function_call", call_id: "add-1" },
+          { type: "function_call_output", output: '{"sum":7}' },
+        ],
+        tools: [{ name: "add", strict: true }],
+        reasoning: { effort: "high" },
+      },
+    ];
+    const sent: unknown[] = [];
+    const add = defineTool({
+      name: "add",
+      description: "Add integers",
+      input: z.strictObject({
+        left: z.number().int(),
+        right: z.number().int(),
+      }),
+      replay: "safe",
+      async run({ left, right }) {
+        return { sum: left + right };
+      },
+    });
+
+    const result = await runPi(store, {
+      models: payloadModels(
+        [
+          assistant(
+            [
+              {
+                type: "toolCall",
+                id: "add-1",
+                name: "add",
+                arguments: { left: 2, right: 5 },
+              },
+            ],
+            "toolUse",
+          ),
+          assistant([{ type: "text", text: "7" }], "stop"),
+        ],
+        payloads,
+        sent,
+      ),
+      model,
+      label: "checkpoint/v1",
+      system: "Use the adder.",
+      prompt: "Add 2 and 5",
+      reasoning: "max",
+      tools: [add],
+    });
+
+    expect(sent).toEqual(payloads);
+    const checkpoints = piRequestCheckpoints(store.records(), result.call);
+    expect(checkpoints.map(({ payload }) => payload)).toEqual(
+      JSON.parse(JSON.stringify(payloads)),
+    );
+    expect(checkpoints.map(({ call }) => call)).toEqual([3, 7]);
+    expect(store.records().map(({ kind }) => kind)).toEqual([
+      "campaign",
+      "call",
+      "call",
+      "call-result",
+      "tool-call",
+      "tool-result",
+      "call",
+      "call-result",
+      "call-result",
+    ]);
+  });
+
+  test("keeps a pre-dispatch payload after a hard provider crash", () => {
+    const directory = mkdtempSync(join(tmpdir(), "elenx-pi-crash-"));
+    directories.push(directory);
+    const path = join(directory, "campaign.db");
+    const fixture = resolve("tests/v1/fixtures/crash-pi-request.ts");
+    const child = Bun.spawnSync([process.execPath, fixture, path], {
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    expect(child.exitCode).toBe(0);
+    const reader = openReader(path);
+    const records = reader.records();
+    expect(records.map(({ kind }) => kind)).toEqual([
+      "campaign",
+      "call",
+      "call",
+      "call-result",
+    ]);
+    expect(piRequestCheckpoints(records)).toMatchObject([
+      {
+        parent: 2,
+        call: 3,
+        payload: { input: "durable request" },
+      },
+    ]);
+    reader.close();
+  });
+
+  test("rejects adapters that omit or repeat the pre-send hook", async () => {
+    for (const calls of [0, 2]) {
+      const store = campaign();
+      await expect(
+        runPi(store, {
+          models: invalidPayloadModels(calls),
+          model,
+          label: `invalid-hook/${calls}`,
+          prompt: "Test adapter contract",
+        }),
+      ).rejects.toThrow("exactly once");
+      expect(piRequestCheckpoints(store.records())).toHaveLength(
+        calls === 0 ? 0 : 1,
+      );
+    }
+  });
+
+  test("allows an adapter to fail before it constructs a payload", async () => {
+    const store = campaign();
+    const preflightFailure: PiModels = {
+      streamSimple() {
+        const stream = createAssistantMessageEventStream();
+        const failure = {
+          ...assistant([], "error", undefined, false),
+          errorMessage: "missing credentials",
+        };
+        stream.push({ type: "error", reason: "error", error: failure });
+        return stream;
+      },
+    };
+    const result = await runPi(store, {
+      models: preflightFailure,
+      model,
+      label: "preflight-failure/v1",
+      prompt: "Test adapter preflight",
+    });
+
+    expect(result).toMatchObject({
+      state: "failed",
+      error: "missing credentials",
+    });
+    expect(piRequestCheckpoints(store.records())).toEqual([]);
+  });
+
+  test("ignores an application call that reuses the checkpoint label", async () => {
+    const store = campaign();
+    await store.call(
+      {
+        label: PI_REQUEST_CHECKPOINT_LABEL,
+        request: { application: "ordinary" },
+      },
+      async () => ({ done: true }),
+    );
+    expect(piRequestCheckpoints(store.records())).toEqual([]);
+  });
+
+  test("checkpoints the real Pi OpenAI adapter before a stub transport", async () => {
+    const store = campaign();
+    let fetches = 0;
+    const stubFetch: typeof fetch = Object.assign(
+      async (..._args: Parameters<typeof fetch>): Promise<Response> => {
+        fetches += 1;
+        throw new Error("stub transport stopped here");
+      },
+      { preconnect: fetch.preconnect },
+    );
+    const adapter: PiModels = {
+      streamSimple(_requestModel, context, options) {
+        return streamSimpleOpenAIResponses(model, context, {
+          ...options,
+          apiKey: "stub-key",
+          maxRetries: 0,
+          fetch: stubFetch,
+        });
+      },
+    };
+    const result = await runPi(store, {
+      models: adapter,
+      model,
+      label: "real-adapter/v1",
+      system: "Answer briefly.",
+      prompt: "Test",
+      reasoning: "max",
+    });
+
+    expect(result.state).toBe("failed");
+    expect(fetches).toBe(1);
+    expect(piRequestCheckpoints(store.records(), result.call)).toMatchObject([
+      {
+        parent: result.call,
+        model: {
+          provider: model.provider,
+          id: model.id,
+          api: model.api,
+        },
+        payload: {
+          model: model.id,
+          stream: true,
+          input: [
+            { role: "developer", content: "Answer briefly." },
+            {
+              role: "user",
+              content: [{ type: "input_text", text: "Test" }],
+            },
+          ],
+          reasoning: { effort: "max" },
+        },
+      },
+    ]);
+  });
+
+  test("keeps concurrent Pi request checkpoints under their own calls", async () => {
+    const store = campaign();
+    const results = await Promise.all(
+      ["first", "second"].map((name) =>
+        runPi(store, {
+          models: models([assistant([{ type: "text", text: name }], "stop")]),
+          model,
+          label: `concurrent/${name}`,
+          prompt: name,
+        }),
+      ),
+    );
+    const first = results[0]!;
+    const second = results[1]!;
+
+    expect(first.text).toBe("first");
+    expect(second.text).toBe("second");
+    expect(piRequestCheckpoints(store.records(), first.call)).toHaveLength(1);
+    expect(piRequestCheckpoints(store.records(), second.call)).toHaveLength(1);
   });
 
   test("can stop after a successful structured tool result", async () => {
@@ -299,6 +611,7 @@ describe("thin Pi runner", () => {
       name: "submit",
       description: "Submit one answer",
       input: z.strictObject({ answer: z.number().int() }),
+      replay: "safe",
       async run(input) {
         return input;
       },
@@ -348,6 +661,7 @@ describe("thin Pi runner", () => {
       name: "submit",
       description: "Submit one answer",
       input: z.strictObject({ answer: z.number().int() }),
+      replay: "safe",
       async run(input) {
         controller.abort();
         return input;

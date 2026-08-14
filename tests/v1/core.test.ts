@@ -4,7 +4,13 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { z } from "zod";
 
-import { createCampaign, defineTool, openReader } from "../../src";
+import {
+  createCampaign,
+  defineTool,
+  openReader,
+  type Tool,
+  type ToolExecutionContext,
+} from "../../src";
 
 const directories: string[] = [];
 
@@ -183,6 +189,7 @@ describe("small kernel", () => {
 
   test("records calls and tool effects before returning", async () => {
     const campaign = createCampaign(database(), "test", null);
+    let executionContext: ToolExecutionContext | undefined;
     const add = defineTool({
       name: "add",
       description: "Add two integers",
@@ -190,7 +197,9 @@ describe("small kernel", () => {
         left: z.number().int(),
         right: z.number().int(),
       }),
-      async run({ left, right }) {
+      replay: "safe",
+      async run({ left, right }, context) {
+        executionContext = context;
         return { sum: left + right };
       },
     });
@@ -199,7 +208,10 @@ describe("small kernel", () => {
       { label: "math", request: { prompt: "add" }, tools: [add] },
       async ({ request, tools }) => ({
         request,
-        result: await tools[0]!.execute({ left: 2, right: 3 }),
+        result: await tools[0]!.execute(
+          { left: 2, right: 3 },
+          "provider-add-1",
+        ),
       }),
     );
     expect(receipt.output).toEqual({
@@ -217,6 +229,12 @@ describe("small kernel", () => {
     const call = records.find((entry) => entry.kind === "call")!;
     const toolCall = records.find((entry) => entry.kind === "tool-call")!;
     expect(receipt.call).toBe(call.seq);
+    expect(executionContext).toMatchObject({
+      call: call.seq,
+      toolCall: toolCall.seq,
+      source: "provider-add-1",
+    });
+    expect(executionContext?.signal).toBeInstanceOf(AbortSignal);
     expect(
       records.some(
         (entry) =>
@@ -238,6 +256,7 @@ describe("small kernel", () => {
       name: "restricted",
       description: "Accept only the declared input",
       input: z.strictObject({ safe: z.literal(true) }),
+      replay: "safe",
       async run() {
         ran = true;
         return null;
@@ -273,6 +292,7 @@ describe("small kernel", () => {
       name: "effect",
       description: "Finish one effect",
       input: z.strictObject({}),
+      replay: "safe",
       async run() {
         await blocked;
         return { done: true };
@@ -302,6 +322,7 @@ describe("small kernel", () => {
       name: "fail",
       description: "Fail",
       input: z.strictObject({}),
+      replay: "safe",
       async run() {
         throw new Error("tool failed");
       },
@@ -326,5 +347,25 @@ describe("small kernel", () => {
       ["tool-result", "threw"],
       ["call-result", "threw"],
     ]);
+  });
+
+  test("rejects tools without an explicit replay-safe contract", async () => {
+    const campaign = createCampaign(database(), "test", null);
+    const unsafe = {
+      name: "effect",
+      description: "Unclassified effect",
+      input: z.strictObject({}),
+      async run() {
+        return null;
+      },
+    } as unknown as Tool;
+
+    await expect(
+      campaign.call(
+        { label: "unsafe", request: null, tools: [unsafe] },
+        async () => null,
+      ),
+    ).rejects.toThrow();
+    expect(campaign.records().map((entry) => entry.kind)).toEqual(["campaign"]);
   });
 });

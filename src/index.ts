@@ -14,5 +14,6 @@ export type {
   Json,
   Reader,
   Tool,
+  ToolExecutionContext,
   Verdict,
 } from "./types";

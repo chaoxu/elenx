@@ -20,6 +20,7 @@ const tool = defineTool({
   name: "read",
   description: "Read one value",
   input: z.strictObject({ key: z.string() }),
+  replay: "safe",
   async run({ key }) {
     return { key };
   },

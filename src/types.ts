@@ -15,7 +15,15 @@ export interface Tool {
   readonly name: string;
   readonly description: string;
   readonly input: z.ZodType;
-  run(input: unknown, signal: AbortSignal): Promise<unknown>;
+  readonly replay: "safe";
+  run(input: unknown, context: ToolExecutionContext): Promise<unknown>;
+}
+
+export interface ToolExecutionContext {
+  readonly call: EntryId;
+  readonly toolCall: EntryId;
+  readonly source?: string;
+  readonly signal: AbortSignal;
 }
 
 export interface AuditedTool extends ToolDeclaration {
@@ -45,6 +53,7 @@ export interface CallOptions {
 }
 
 export interface CallContext {
+  readonly call: EntryId;
   readonly request: Json;
   readonly tools: readonly AuditedTool[];
   readonly signal: AbortSignal;
@@ -71,7 +80,8 @@ export interface ToolDefinition<S extends z.ZodType> {
   readonly name: string;
   readonly description: string;
   readonly input: S;
-  run(input: z.output<S>, signal: AbortSignal): Promise<unknown>;
+  readonly replay: "safe";
+  run(input: z.output<S>, context: ToolExecutionContext): Promise<unknown>;
 }
 
 export function defineTool<S extends z.ZodType>(
@@ -81,8 +91,9 @@ export function defineTool<S extends z.ZodType>(
     name: definition.name,
     description: definition.description,
     input: definition.input,
-    run(input, signal) {
-      return definition.run(input as z.output<S>, signal);
+    replay: definition.replay,
+    run(input, context) {
+      return definition.run(input as z.output<S>, context);
     },
   };
 }

@@ -142,7 +142,7 @@ class CampaignWriter extends CampaignReader implements Campaign {
     let output: Json | undefined;
     let failure: unknown;
     try {
-      output = copyJson(await runner({ request, tools, signal }));
+      output = copyJson(await runner({ call, request, tools, signal }));
     } catch (error) {
       failure = error;
     } finally {
@@ -178,6 +178,7 @@ class CampaignWriter extends CampaignReader implements Campaign {
       if (seen.has(name)) throw new Error(`duplicate tool name: ${name}`);
       seen.add(name);
       const description = z.string().min(1).parse(tool.description);
+      z.literal("safe").parse(tool.replay);
       const input = tool.input;
       const inputSchema = copyJson(z.toJSONSchema(input));
       return {
@@ -220,7 +221,14 @@ class CampaignWriter extends CampaignReader implements Campaign {
         const execution = (async () => {
           let output: Json;
           try {
-            output = copyJson(await tool.run(input, signal));
+            output = copyJson(
+              await tool.run(input, {
+                call,
+                toolCall,
+                ...(source === undefined ? {} : { source }),
+                signal,
+              }),
+            );
           } catch (error) {
             this.journal.append({
               kind: "tool-result",

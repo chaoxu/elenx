@@ -7,7 +7,7 @@ This file is the normative contract for kernel v1.
 Elenx provides four guarantees:
 
 1. one append-only SQLite campaign artifact containing exact candidate material;
-2. an exact record of each call, its selected tool declarations, admitted tool inputs and results, and final call result;
+2. an exact record of each call, its selected tool declarations, admitted tool inputs and results, and final call result, plus the JSON-semantic payload exposed before each Pi provider operation;
 3. verdicts bound to fresh successful calls carrying the ID of the exact stored candidate; and
 4. a derived, witnessed verification status requiring every declared verifier to pass and none to fail.
 
@@ -55,6 +55,7 @@ interface CallOptions {
 }
 
 interface CallContext {
+  readonly call: EntryId;
   readonly request: Json;
   readonly tools: readonly AuditedTool[];
   readonly signal: AbortSignal;
@@ -65,7 +66,9 @@ campaign.call(options, runner): Promise<{ call: EntryId; output: Json }>
 
 `call` validates and snapshots the optional candidate sequence, request, and each tool declaration, appends `call`, and then invokes `runner` with that recorded request. It appends one `call-result` if the runner settles. A crash may leave only the call row.
 
-A tool is defined with `defineTool({ name, description, input, run })`, where `input` is a Zod object schema. Elenx records `z.toJSONSchema(input)`. An audited wrapper parses each invocation with the same schema, appends `tool-call` before `run` executes, and appends one `tool-result` after settlement. Invalid arguments do not run `run`. Schema getters, refinements, and transforms are admission logic and must be pure. The call stops accepting new tool invocations when its runner settles and waits for every admitted tool invocation before writing its result. `close()` refuses while a local call remains active.
+A tool is defined with `defineTool({ name, description, input, replay: "safe", run })`, where `input` is a Zod schema. The replay declaration asserts that every valid repetition after an interrupted phase is harmless. Pure and read-only actions qualify; a write qualifies only when an application-stable semantic key or reconciliation rule survives phase restart. Calls reject unclassified tools before writing a call row. Elenx records `z.toJSONSchema(input)`. An audited wrapper parses each invocation with the same schema, appends `tool-call` before `run` executes, and passes `run` the containing call sequence, tool-call sequence, optional provider source ID, and abort signal. It appends one `tool-result` after settlement. Invalid arguments do not run `run`. Schema getters, refinements, and transforms are admission logic and must be pure. The call stops accepting new tool invocations when its runner settles and waits for every admitted tool invocation before writing its result. `close()` refuses while a local call remains active.
+
+A `tool-call` without a `tool-result` has an unknown outcome. Elenx does not retry it or invent a result. The application can combine its own campaign namespace with the campaign-scoped tool-call sequence to reconcile the original external record; a retried phase receives a new sequence. Non-idempotent external effects are outside the v1 tool contract. Replay safety is current execution policy, not a persisted historical classification: schema-4 tool declarations contain no replay field.
 
 The runner receives only the tools listed in `CallOptions`. The kernel never adds tools. Applications must keep tools semantic and policy-checked; they must not wrap the whole `Campaign`, expose SQL or the database path, offer generic record append, or provide unrestricted candidate or filesystem access. Application-supplied runners and Pi registries are trusted not to add capabilities outside this set.
 
@@ -77,9 +80,11 @@ Elenx supplies Pi only the audited wrappers selected for that run and asks suppo
 
 `runPi` creates one typed `elenx.pi.run` span and one standard Pi `pi.ai.request` child for every logical provider operation, including continuations after tool results. Provider adapters may retry an operation without exposing each wire attempt. The settled span tree is stored inside that call's returned JSON, so its label, optional candidate, and optional requested reasoning level supply the reason and configuration for each operation without adding a telemetry table or stored roll-up. Request leaves carry the Pi schema's provider, requested and served models, API, response, stop reason, usage, cache, Pi model-price cost estimate, HTTP-status, and error fields when available.
 
+Pi's awaited `onPayload` hook exposes the adapter's final pre-send payload. Elenx stores its JSON serialization semantics in an internal `elenx/pi-request` call and completes that checkpoint before returning from the hook. `piRequestCheckpoints(records, parent?)` reconstructs completed checkpoints from a fresh reader. A completed checkpoint proves which hook payload became dispatchable; it does not prove that the provider received it or produced a response, and an adapter may still add transport-only fields after the hook. The runtime rejects a successful logical provider operation unless exactly one checkpoint completed; an adapter may fail or be cancelled before constructing a payload. Built-in Pi adapters supply the ordering. A custom adapter is trusted to invoke the hook exactly once before dispatch and to keep credentials and tokens outside its payload. Provider authentication, headers, transport configuration, and SDK-internal retries are not persisted.
+
 Applications derive totals from settled request leaves only and never add the native transcript's duplicate usage. Pi's input, cache-read, and cache-write fields are disjoint buckets; reasoning tokens are a subset of output and are not added again. A request with no measured usage remains a measurement gap instead of becoming zero spend. Telemetry is diagnostic and never affects candidate verification. An interrupted call can lack a completed span tree just as it can lack a call result.
 
-The recorded call contains the optional candidate sequence, provider, model ID, API ID, prompt, optional system prompt, optional requested reasoning level, and selected tool declarations. Provider credentials, registry configuration, and the provider wire request remain Pi/application concerns and are not persisted by Elenx.
+The parent call contains the optional candidate sequence, provider, model ID, API ID, prompt, optional system prompt, optional requested reasoning level, and selected tool declarations. The child checkpoints contain the provider, model ID, API ID, and JSON-semantic pre-send hook payload. Provider credentials, headers, registry configuration, and authenticated transport details remain Pi/application concerns and are not persisted by built-in adapters.
 
 ## Candidates, verdicts, and verification
 
@@ -120,6 +125,7 @@ reader.close(): void
 
 defineTool(definition): Tool
 runPi(campaign, options): Promise<PiResult> // from elenx/pi
+piRequestCheckpoints(records, parent?): readonly PiRequestCheckpoint[] // from elenx/pi
 ```
 
 All database methods are synchronous because Bun SQLite is synchronous. Only external execution through `call` and `runPi` is asynchronous.

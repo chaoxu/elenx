@@ -4,6 +4,7 @@ import {
   copyFileSync,
   existsSync,
   mkdtempSync,
+  readFileSync,
   rmSync,
   statSync,
 } from "node:fs";
@@ -138,5 +139,35 @@ describe("campaign database", () => {
       "campaign",
       "call",
     ]);
+  });
+
+  test("persists tool intent before an interrupted tool effect", () => {
+    const path = temporaryPath();
+    const marker = join(dirname(path), "effect.json");
+    const fixture = resolve("tests/v1/fixtures/crash-tool.ts");
+    const child = Bun.spawnSync([process.execPath, fixture, path, marker], {
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    expect(child.exitCode).toBe(0);
+    const reader = openReader(path);
+    const records = reader.records();
+    expect(records.map((entry) => entry.kind)).toEqual([
+      "campaign",
+      "call",
+      "tool-call",
+    ]);
+    expect(records.at(-1)).toMatchObject({
+      source: "provider-effect-1",
+      input: { value: "durable" },
+    });
+    const call = records.find((entry) => entry.kind === "call")!;
+    const toolCall = records.find((entry) => entry.kind === "tool-call")!;
+    expect(JSON.parse(readFileSync(marker, "utf8"))).toEqual({
+      call: call.seq,
+      toolCall: toolCall.seq,
+      source: "provider-effect-1",
+    });
+    reader.close();
   });
 });
