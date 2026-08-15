@@ -55,7 +55,7 @@ export function finalizeVerdict(
   return campaign.recordVerdict(call, report.verdict, report.evidence);
 }
 
-export function status(
+export function deriveCandidateStatus(
   records: readonly Entry[],
   candidate: EntryId,
 ): CandidateStatus {

@@ -2,15 +2,18 @@ import { Database, SQLiteError } from "bun:sqlite";
 import { closeSync, constants, existsSync, openSync, rmSync } from "node:fs";
 import { basename } from "node:path";
 
-import { entry as entrySchema, entryId } from "./schemas";
+import { ENTRY_KINDS, entry as entrySchema, entryId } from "./schemas";
 import type { Entry, EntryDraft, EntryId, Json } from "./types";
 
 const SCHEMA_VERSION = 4;
+const ENTRY_KIND_SQL = Object.values(ENTRY_KINDS)
+  .map((kind) => `'${kind}'`)
+  .join(", ");
 const SCHEMA = `
   CREATE TABLE entries (
     seq INTEGER PRIMARY KEY,
     at_ms INTEGER NOT NULL,
-    kind TEXT NOT NULL CHECK(kind IN ('campaign', 'candidate', 'call', 'call-result', 'tool-call', 'tool-result', 'verdict')),
+    kind TEXT NOT NULL CHECK(kind IN (${ENTRY_KIND_SQL})),
     body TEXT NOT NULL CHECK(json_valid(body) AND json_type(body) = 'object'),
     material BLOB CHECK((kind = 'candidate') = (material IS NOT NULL))
   ) STRICT;
