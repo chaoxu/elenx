@@ -1,6 +1,10 @@
 import {
   AI_TELEMETRY_SCHEMA,
   convertToLlm,
+  createTypedSpanStarter,
+  defineTelemetrySchema,
+  InMemoryTelemetryContext,
+  NOOP_TELEMETRY_CONTEXT,
   runAgentLoop,
   startAiSpan,
   type AgentMessage,
@@ -16,12 +20,6 @@ import {
   type ThinkingLevel,
   type TSchema,
 } from "@earendil-works/pi-ai";
-import {
-  createTypedSpanStarter,
-  defineTelemetrySchema,
-  InMemoryTelemetryContext,
-  NOOP_TELEMETRY_CONTEXT,
-} from "@earendil-works/pi-telemetry";
 import { z } from "zod";
 
 import { copyJson, entryId, json } from "./schemas";
@@ -255,7 +253,6 @@ function piTool(
     description: tool.description,
     parameters: tool.inputSchema as TSchema,
     constrainedSampling: { type: "json_schema", strict: "prefer" },
-    executionMode: "sequential",
     async execute(id, input) {
       const output = await tool.execute(input, id);
       return {

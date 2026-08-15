@@ -4,21 +4,24 @@ import {
   createCampaign,
   deriveCandidateStatus,
   openReader,
+  verdictSchema,
   type EntryId,
   type Verdict,
 } from "elenx";
 
 const verifier = "hostile-audit/v1";
-const verdict = z.enum(["PASS", "FAIL", "INCONCLUSIVE"]);
+export const verdictSubmission = z.strictObject({
+  verdict: verdictSchema,
+  reason: z.string().min(1),
+});
+const scriptedAuditResult = verdictSubmission.extend({
+  state: z.literal("succeeded"),
+});
 
 export interface AuditReport {
   readonly candidate: EntryId;
   readonly verdict: Verdict;
   readonly verified: boolean;
-}
-
-export function parseVerdict(text: string): Verdict {
-  return verdict.parse(text.split(/\r?\n/, 1)[0]?.trim());
 }
 
 export async function runHostileAudit(path: string): Promise<AuditReport> {
@@ -39,21 +42,21 @@ export async function runHostileAudit(path: string): Promise<AuditReport> {
     },
     async () => ({
       state: "succeeded",
-      text: "PASS\nThe scripted verifier accepts this fixture.",
+      verdict: "PASS" as const,
+      reason: "The scripted verifier accepts this fixture.",
     }),
   );
-  const text = z
-    .strictObject({ state: z.literal("succeeded"), text: z.string() })
-    .parse(audit.output).text;
-  const result = parseVerdict(text);
-  campaign.recordVerdict(audit.call, result, { text });
+  const result = scriptedAuditResult.parse(audit.output);
+  campaign.recordVerdict(audit.call, result.verdict, {
+    reason: result.reason,
+  });
   campaign.close();
 
   const reader = openReader(path);
   try {
     return {
       candidate,
-      verdict: result,
+      verdict: result.verdict,
       verified: deriveCandidateStatus(reader.records(), candidate).verified,
     };
   } finally {

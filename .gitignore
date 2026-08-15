@@ -3,3 +3,4 @@ coverage/
 *.db
 *.db-shm
 *.db-wal
+*.tgz

@@ -1,6 +1,6 @@
-import { createCampaign, deriveCandidateStatus } from "elenx";
-import { runPi } from "elenx/pi";
-import { parseVerdict } from "./hostile-audit";
+import { createCampaign, defineTool, deriveCandidateStatus } from "elenx";
+import { builtinPi, runPi } from "elenx/pi";
+import { verdictSubmission } from "./hostile-audit";
 
 const [path, provider, modelId] = process.argv.slice(2);
 if (path === undefined || provider === undefined || modelId === undefined) {
@@ -9,8 +9,7 @@ if (path === undefined || provider === undefined || modelId === undefined) {
   );
 }
 
-const { ModelRuntime } = await import("@earendil-works/pi-coding-agent");
-const models = await ModelRuntime.create({ modelsPath: null });
+const models = builtinPi();
 const model = models.getModel(provider, modelId);
 if (model === undefined)
   throw new Error(`unknown Pi model: ${provider}/${modelId}`);
@@ -23,20 +22,44 @@ const campaign = createCampaign(path, "pi-hostile-audit", { revision: 1 });
 try {
   const candidate = campaign.submitCandidate(material, [verifier]);
   const stored = new TextDecoder().decode(campaign.material(candidate));
+  const submitVerdict = defineTool({
+    name: "submit_verdict",
+    description: "Submit the hostile audit verdict and reason",
+    input: verdictSubmission,
+    replay: "safe",
+    async run() {
+      return null;
+    },
+  });
   const audit = await runPi(campaign, {
     models,
     model,
     label: verifier,
-    system: "Audit the supplied claim adversarially.",
-    prompt:
-      "Return PASS, FAIL, or INCONCLUSIVE on the first line, then explain briefly.\n\n" +
-      stored,
+    system:
+      "Audit the supplied claim adversarially. Call submit_verdict exactly once, then stop.",
+    prompt: stored,
     candidate,
+    tools: [submitVerdict],
+    stopAfterToolResult: true,
   });
   if (audit.state !== "succeeded") throw new Error(audit.error);
-  const verdict = parseVerdict(audit.text);
-  campaign.recordVerdict(audit.call, verdict, {
-    text: audit.text,
+  const submissions = campaign
+    .records()
+    .flatMap((entry) =>
+      entry.kind === "tool-call" &&
+      entry.call === audit.call &&
+      entry.tool === submitVerdict.name
+        ? [entry]
+        : [],
+    );
+  if (submissions.length !== 1) {
+    throw new Error("audit did not submit exactly one verdict");
+  }
+  const submission = submissions[0]!;
+  const report = verdictSubmission.parse(submission.input);
+  campaign.recordVerdict(audit.call, report.verdict, {
+    submission: submission.seq,
+    reason: report.reason,
   });
   console.log(
     JSON.stringify(
