@@ -124,6 +124,7 @@ reader.close(): void
 defineTool(definition): Tool
 runPi(campaign, options): Promise<PiResult> // from elenx/pi
 piRequestAttempts(records, parent?): readonly PiRequestAttempt[] // from elenx/pi
+piTelemetry, piStoredResult // Zod schemas from elenx/pi
 ```
 
 All database methods are synchronous because Bun SQLite is synchronous. Only external execution through `call` and `runPi` is asynchronous.

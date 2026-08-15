@@ -19,6 +19,7 @@ import {
   piRequest,
   piRequestAttempts,
   piStoredResult,
+  piTelemetry,
   runPi,
 } from "../../src/pi";
 
@@ -279,6 +280,14 @@ describe("thin Pi runner", () => {
       text: "answer",
       telemetry: result.telemetry,
     });
+    expect(piTelemetry.safeParse(result.telemetry).success).toBe(true);
+    expect(
+      piStoredResult.safeParse({
+        state: "succeeded",
+        text: "answer",
+        telemetry: {},
+      }).success,
+    ).toBe(false);
   });
 
   test("gives Pi only the selected audited Zod tools", async () => {
