@@ -21,7 +21,6 @@ import {
   defineTelemetrySchema,
   InMemoryTelemetryContext,
   NOOP_TELEMETRY_CONTEXT,
-  type RecordedTelemetrySpan,
 } from "@earendil-works/pi-telemetry";
 import { z } from "zod";
 
@@ -131,11 +130,12 @@ const telemetryAttribute = z.union([
   z.string(),
   z.number(),
   z.boolean(),
-  z.array(z.string()),
-  z.array(z.number()),
-  z.array(z.boolean()),
+  z.array(z.string()).readonly(),
+  z.array(z.number()).readonly(),
+  z.array(z.boolean()).readonly(),
+  z.undefined(),
 ]);
-const telemetryAttributes = z.record(z.string(), telemetryAttribute);
+const telemetryAttributes = z.record(z.string(), telemetryAttribute).readonly();
 const telemetryStatus = z.discriminatedUnion("status", [
   z.strictObject({ status: z.literal("ok") }),
   z.strictObject({
@@ -143,31 +143,36 @@ const telemetryStatus = z.discriminatedUnion("status", [
     error: z.strictObject({ name: z.string(), message: z.string() }).optional(),
   }),
 ]);
-const telemetrySpan = z.strictObject({
-  id: z.number().int().positive(),
-  parentId: z.number().int().positive().nullable(),
-  name: z.string(),
-  attributes: telemetryAttributes,
-  events: z.array(
-    z.strictObject({ name: z.string(), attributes: telemetryAttributes }),
-  ),
-  status: telemetryStatus,
-  settled: z.boolean(),
-  endSequence: z.number().int().positive().optional(),
-});
+const telemetrySpan = z
+  .strictObject({
+    id: z.number().int().positive(),
+    parentId: z.number().int().positive().nullable(),
+    name: z.string(),
+    attributes: telemetryAttributes,
+    events: z
+      .array(
+        z.strictObject({ name: z.string(), attributes: telemetryAttributes }),
+      )
+      .readonly(),
+    status: telemetryStatus,
+    settled: z.boolean(),
+    endSequence: z.number().int().positive().optional(),
+  })
+  .readonly();
 
-export const piTelemetry = z.strictObject({
-  schemaVersions: z.strictObject({
-    "elenx.pi": z.literal(PI_TELEMETRY_SCHEMA_VERSIONS["elenx.pi"]),
-    "pi.ai": z.literal(PI_TELEMETRY_SCHEMA_VERSIONS["pi.ai"]),
-  }),
-  spans: z.array(telemetrySpan),
-});
+export const piTelemetry = z
+  .strictObject({
+    schemaVersions: z
+      .strictObject({
+        "elenx.pi": z.literal(PI_TELEMETRY_SCHEMA_VERSIONS["elenx.pi"]),
+        "pi.ai": z.literal(PI_TELEMETRY_SCHEMA_VERSIONS["pi.ai"]),
+      })
+      .readonly(),
+    spans: z.array(telemetrySpan).readonly(),
+  })
+  .readonly();
 
-export interface PiTelemetry {
-  readonly schemaVersions: typeof PI_TELEMETRY_SCHEMA_VERSIONS;
-  readonly spans: readonly RecordedTelemetrySpan[];
-}
+export type PiTelemetry = z.output<typeof piTelemetry>;
 
 const piModel = z.strictObject({
   provider: z.string().min(1),
