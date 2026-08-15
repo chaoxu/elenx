@@ -10,7 +10,7 @@ import {
 } from "elenx";
 
 const verifier = "hostile-audit/v1";
-export const verdictSubmission = z.strictObject({
+const verdictSubmission = z.strictObject({
   verdict: verdictSchema,
   reason: z.string().min(1),
 });

@@ -6,10 +6,10 @@ The package includes a thin Pi runner. Pi owns model execution, credentials, and
 
 Elenx deliberately excludes orchestration. Routes, context gathering, blind reconstruction, source search, retries, budgets, campaign UI, and human-readable files belong to applications. A Coverify replacement can build those independently around this kernel.
 
-The v1 kernel contract requires Bun 1.3.14 or newer. Applications define tool schemas with Zod, so install both packages:
+The v1 kernel contract requires Bun 1.3.13 or newer. Applications define tool schemas with Zod, so install both packages:
 
 ```sh
-bun add git+https://gitea.lab/chaoxu/elenx.git#v0.7.4 zod@4.4.3
+bun add git+https://gitea.lab/chaoxu/elenx.git#v0.7.5 zod@4.4.3
 ```
 
 Elenx exposes Pi's types directly. Keep TypeScript's `skipLibCheck` enabled while Pi's provider SDK declarations require it.
@@ -20,5 +20,6 @@ Contributors run `bun install --frozen-lockfile` and `bun run check`. The check 
 
 - [`SPEC.md`](SPEC.md) is the normative v1 contract.
 - [`docs/application-author.md`](docs/application-author.md) shows the public API and tool boundary.
+- [The Pi package mining study](https://gitea.lab/chaoxu/elenx/src/branch/main/docs/pi-package-mining-study.md) records which Pi ecosystem mechanisms fit outside that boundary.
 - [`examples/v1/hostile-audit.ts`](examples/v1/hostile-audit.ts) is the smallest Coverify-shaped slice.
 - [`examples/v1/pi-smoke.ts`](examples/v1/pi-smoke.ts) runs that slice through a real Pi model.

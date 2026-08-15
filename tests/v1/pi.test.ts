@@ -14,8 +14,10 @@ import {
 } from "@earendil-works/pi-ai";
 import { streamSimple as streamSimpleOpenAIResponses } from "@earendil-works/pi-ai/api/openai-responses";
 
-import { createCampaign, defineTool, openReader } from "../../src";
+import { createCampaign, defineTool, openReader, type Entry } from "../../src";
 import {
+  PI_TELEMETRY_SCHEMA_VERSIONS,
+  derivePiSpend,
   piRequest,
   piRequestAttempts,
   piStoredResult,
@@ -51,6 +53,68 @@ function campaign() {
   const directory = mkdtempSync(join(tmpdir(), "elenx-pi-"));
   directories.push(directory);
   return createCampaign(join(directory, "campaign.db"), "pi-test", null);
+}
+
+function spendEntries(
+  attributes: Record<string, string | number | boolean>,
+  error = false,
+): Entry[] {
+  return [
+    {
+      seq: 1,
+      atMs: 1,
+      kind: "campaign",
+      application: "test",
+      config: null,
+    },
+    {
+      seq: 2,
+      atMs: 2,
+      kind: "call",
+      label: "test/v1",
+      request: {
+        model: { provider: "fake", id: "test-v1", api: "openai-responses" },
+        prompt: "test",
+      },
+      tools: [],
+    },
+    {
+      seq: 3,
+      atMs: 3,
+      kind: "call-result",
+      parent: 2,
+      state: "returned",
+      output: {
+        state: "succeeded",
+        text: "done",
+        telemetry: {
+          schemaVersions: PI_TELEMETRY_SCHEMA_VERSIONS,
+          spans: [
+            {
+              id: 1,
+              parentId: null,
+              name: "elenx.pi.run",
+              attributes: {},
+              events: [],
+              status: { status: "ok" },
+              settled: true,
+            },
+            {
+              id: 2,
+              parentId: 1,
+              name: "pi.ai.request",
+              attributes,
+              events: [],
+              status: error
+                ? { status: "error", error: { name: "Error", message: "x" } }
+                : { status: "ok" },
+              settled: true,
+            },
+          ],
+        },
+      },
+    },
+  ];
 }
 
 function assistant(
@@ -194,6 +258,54 @@ function invalidPayloadModels(calls: number): PiModels {
 }
 
 describe("thin Pi runner", () => {
+  test("treats complete zero usage as measured and rejects partial usage", () => {
+    const attributes = {
+      "pi.ai.provider": "fake",
+      "pi.ai.model": "test-v1",
+      "pi.ai.api": "openai-responses",
+      "pi.ai.response.stop_reason": "error",
+      "pi.ai.usage.input_tokens": 0,
+      "pi.ai.usage.output_tokens": 0,
+      "pi.ai.usage.cache_read_tokens": 0,
+      "pi.ai.usage.cache_write_tokens": 0,
+      "pi.ai.usage.total_tokens": 0,
+      "pi.ai.usage.cost": 0,
+    };
+    expect(derivePiSpend(spendEntries(attributes, true)).summary).toEqual({
+      logicalProviderRequests: 1,
+      requestErrors: 1,
+      unmeasuredRequests: 0,
+      measuredUsage: {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 0,
+        estimatedCostUsd: 0,
+      },
+    });
+    const { "pi.ai.usage.cost": _cost, ...partial } = attributes;
+    expect(() => derivePiSpend(spendEntries(partial))).toThrow(
+      "partial Pi usage measurement",
+    );
+    expect(() =>
+      derivePiSpend(
+        spendEntries({
+          "pi.ai.provider": "fake",
+          "pi.ai.model": "test-v1",
+          "pi.ai.api": "openai-responses",
+          "pi.ai.usage.reasoning_tokens": 1,
+        }),
+      ),
+    ).toThrow("partial Pi usage measurement");
+    expect(() =>
+      derivePiSpend(spendEntries(attributes), {
+        call: 2,
+        candidate: 3,
+      } as never),
+    ).toThrow("either call or candidate");
+  });
+
   test("runs a fresh Pi loop and stores its native transcript", async () => {
     const store = campaign();
     const requests: (SimpleStreamOptions | undefined)[] = [];
@@ -281,6 +393,45 @@ describe("thin Pi runner", () => {
       telemetry: result.telemetry,
     });
     expect(piTelemetry.safeParse(result.telemetry).success).toBe(true);
+    const spend = derivePiSpend(records, { candidate });
+    expect(spend).toMatchObject({
+      calls: [
+        {
+          call: result.call,
+          logicalProviderRequests: 1,
+          requestErrors: 0,
+          unmeasuredRequests: 0,
+          operations: [
+            {
+              provider: "fake",
+              requestedModel: "test-v1",
+              servedModel: "served-test-v1",
+              api: "openai-responses",
+              stopReason: "stop",
+              error: false,
+              usage: {
+                input: 11,
+                output: 7,
+                cacheRead: 5,
+                cacheWrite: 0,
+                reasoning: 3,
+                totalTokens: 23,
+                estimatedCostUsd: 0.026,
+              },
+            },
+          ],
+        },
+      ],
+      unaccountedCalls: [],
+      potentialRequests: [],
+      summary: {
+        logicalProviderRequests: 1,
+        requestErrors: 0,
+        unmeasuredRequests: 0,
+        measuredUsage: { totalTokens: 23, reasoning: 3 },
+      },
+    });
+    expect(derivePiSpend(records, { call: result.call })).toEqual(spend);
     expect(
       piStoredResult.safeParse({
         state: "succeeded",
@@ -370,6 +521,19 @@ describe("thin Pi runner", () => {
     expect(
       store.records().find((entry) => entry.kind === "tool-call"),
     ).toMatchObject({ source: "add-1", input: { left: 2, right: 5 } });
+    expect(derivePiSpend(store.records()).summary).toEqual({
+      logicalProviderRequests: 2,
+      requestErrors: 0,
+      unmeasuredRequests: 0,
+      measuredUsage: {
+        input: 22,
+        output: 14,
+        cacheRead: 10,
+        cacheWrite: 0,
+        totalTokens: 46,
+        estimatedCostUsd: 0.052,
+      },
+    });
   });
 
   test("reconstructs every adapter-expanded request from durable checkpoints", async () => {
@@ -483,6 +647,26 @@ describe("thin Pi runner", () => {
         state: "completed",
       },
     ]);
+    expect(derivePiSpend(records)).toMatchObject({
+      calls: [],
+      unaccountedCalls: [2],
+      potentialRequests: [
+        {
+          call: 2,
+          checkpoint: 3,
+          model: {
+            provider: "fake",
+            id: "crash-test",
+            api: "openai-responses",
+          },
+        },
+      ],
+      summary: {
+        logicalProviderRequests: 0,
+        requestErrors: 0,
+        unmeasuredRequests: 0,
+      },
+    });
     reader.close();
   });
 

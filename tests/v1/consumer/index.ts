@@ -3,11 +3,18 @@ import {
   defineTool,
   deriveCandidateStatus,
   entryIdSchema,
+  finalizeVerdict,
   openCampaign,
+  submitVerdictTool,
   type CallReceipt,
   type Campaign,
 } from "elenx";
-import { builtinPi, InMemoryCredentialStore, runPi } from "elenx/pi";
+import {
+  builtinPi,
+  derivePiSpend,
+  InMemoryCredentialStore,
+  runPi,
+} from "elenx/pi";
 import { z } from "zod";
 
 declare const campaign: Campaign;
@@ -43,6 +50,9 @@ void createCampaign;
 void openCampaign;
 void entryIdSchema.parse(1);
 void deriveCandidateStatus(campaign.records(), 1);
+void derivePiSpend(campaign.records());
+void finalizeVerdict;
+void submitVerdictTool;
 void (undefined as unknown as CallReceipt);
 void result;
 void credentialModels;

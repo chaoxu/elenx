@@ -3,7 +3,7 @@
 Install Elenx from Gitea:
 
 ```sh
-bun add git+https://gitea.lab/chaoxu/elenx.git#v0.7.4 zod@4.4.3
+bun add git+https://gitea.lab/chaoxu/elenx.git#v0.7.5 zod@4.4.3
 ```
 
 ## Create and verify a candidate
@@ -11,12 +11,11 @@ bun add git+https://gitea.lab/chaoxu/elenx.git#v0.7.4 zod@4.4.3
 ```ts
 import {
   createCampaign,
-  defineTool,
   deriveCandidateStatus,
-  verdictSchema,
+  finalizeVerdict,
+  submitVerdictTool,
 } from "elenx";
 import { builtinPi, runPi } from "elenx/pi";
-import { z } from "zod";
 
 const models = builtinPi();
 const model = models.getModel("anthropic", "claude-sonnet-4-6");
@@ -31,56 +30,29 @@ const material = new TextEncoder().encode(
 );
 const candidate = campaign.submitCandidate(material, [verifier]);
 const stored = new TextDecoder().decode(campaign.material(candidate));
-const verdictSubmission = z.strictObject({
-  verdict: verdictSchema,
-  reason: z.string().min(1),
-});
-const submitVerdict = defineTool({
-  name: "submit_verdict",
-  description: "Submit the hostile audit verdict and reason",
-  input: verdictSubmission,
-  replay: "safe",
-  async run() {
-    return null;
-  },
-});
-
 const audit = await runPi(campaign, {
   models,
   model,
   label: verifier,
   candidate,
   system:
-    "Audit the candidate adversarially. Call submit_verdict exactly once, then stop.",
+    "Audit the candidate adversarially. Call submit_verdict exactly once with the reason in evidence, then stop.",
   prompt: stored,
-  tools: [submitVerdict],
+  tools: [submitVerdictTool],
   stopAfterToolResult: true,
 });
 if (audit.state !== "succeeded") throw new Error(audit.error);
-
-const submissions = campaign
-  .records()
-  .flatMap(
-    (entry) =>
-      entry.kind === "tool-call" &&
-      entry.call === audit.call &&
-      entry.tool === submitVerdict.name
-        ? [entry]
-        : [],
-  );
-if (submissions.length !== 1) throw new Error("invalid verdict submission");
-const submission = submissions[0]!;
-const report = verdictSubmission.parse(submission.input);
-campaign.recordVerdict(audit.call, report.verdict, {
-  submission: submission.seq,
-  reason: report.reason,
-});
+finalizeVerdict(campaign, audit.call);
 const status = deriveCandidateStatus(campaign.records(), candidate);
 if (!status.verified) throw new Error("not verified");
 campaign.close();
 ```
 
 `builtinPi()` uses Pi's normal environment and ambient provider authentication. An application that owns OAuth or API-key credentials can import `InMemoryCredentialStore` from `elenx/pi` and pass it as `builtinPi({ credentials })`; Elenx re-exports both implementations and their types directly from Pi. Elenx does not read, copy, or persist provider credentials.
+
+`submitVerdictTool` returns its validated `{ verdict, evidence }` input unchanged. `finalizeVerdict` requires one such tool call, its matching returned tool result, and a successful candidate-bound verifier call before appending the verdict. The application supplies no second verdict value that could disagree with the model's durable submission.
+
+Use `stopAfterToolResult` when `submitVerdictTool` is the call's only tool. Gather source inspections or other observations in earlier calls so finalization has one unambiguous submission.
 
 The candidate envelope is application-owned. Include every fact that must be audited together: statement revision, answer or proof, cited sources, imported assumptions, and dependency versions. `deriveCandidateStatus(records, candidate).verified` is derived from the supplied log snapshot; Elenx stores no promotion event. Publishing or adopting a verified candidate belongs to the application.
 
@@ -119,6 +91,8 @@ Tools should express one bounded application action. Suitable proof-search tools
 
 `piRequestAttempts(campaign.records(), call)` returns the JSON-semantic payload exposed by Pi's final pre-send hook for each provider operation in a Pi call, together with its completed or unsettled state. Built-in adapters keep credentials and HTTP headers outside it. An absent outer call result leaves the provider outcome unknown even when its request checkpoint completed. Custom adapters must invoke the hook exactly once before dispatch and must never put credentials or tokens in its payload.
 
+`derivePiSpend(records)` returns settled provider operations, per-call and campaign totals, unaccounted Pi calls, and redacted completed request checkpoints that may represent unknown spend. Provider-reported token buckets and estimated cost remain separate; missing usage is `null`, not zero. Pass `{ call }` or `{ candidate }` to restrict the projection. It reads one record snapshot and writes nothing.
+
 ## Keep orchestration outside the kernel
 
 An application can maintain routes, task queues, source bundles, blind-review views, stopping policy, and human-readable reports in ordinary files or its own database. Use Elenx at the points where evidence becomes durable:
@@ -126,8 +100,7 @@ An application can maintain routes, task queues, source bundles, blind-review vi
 1. package exact output and sources into candidate bytes;
 2. submit the candidate with versioned verifier names;
 3. run each verifier through `runPi` or `campaign.call` with only its selected tools;
-4. validate exactly one structured verifier submission against its schema;
-5. record the verdict against that call; and
-6. publish or adopt the candidate in application code only when `deriveCandidateStatus(records, candidate).verified` is true.
+4. finalize exactly one returned structured submission, recording its verdict; and
+5. publish or adopt the candidate in application code only when `deriveCandidateStatus(records, candidate).verified` is true.
 
 [`../examples/v1/hostile-audit.ts`](../examples/v1/hostile-audit.ts) shows the scripted path. [`../examples/v1/pi-smoke.ts`](../examples/v1/pi-smoke.ts) uses a real Pi model.

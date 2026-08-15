@@ -8,7 +8,9 @@ import {
   createCampaign,
   defineTool,
   deriveCandidateStatus,
+  finalizeVerdict,
   openReader,
+  submitVerdictTool,
   type Tool,
   type ToolExecutionContext,
 } from "../../src";
@@ -96,6 +98,223 @@ describe("small kernel", () => {
       missing: [],
       failed: ["audit/v1"],
     });
+  });
+
+  test("records each returned structured verdict exactly", async () => {
+    for (const submitted of ["PASS", "FAIL", "INCONCLUSIVE"] as const) {
+      const campaign = createCampaign(database(), "test", null);
+      const candidate = campaign.submitCandidate(
+        new TextEncoder().encode("claim"),
+        ["audit/v1"],
+      );
+      const audit = await campaign.call(
+        {
+          label: "audit/v1",
+          candidate,
+          request: null,
+          tools: [submitVerdictTool],
+        },
+        async ({ tools }) => {
+          await tools[0]!.execute({
+            verdict: submitted,
+            evidence: { submitted },
+          });
+          return { state: "succeeded" };
+        },
+      );
+      const verdict = finalizeVerdict(campaign, audit.call);
+      expect(
+        campaign.records().find((entry) => entry.seq === verdict),
+      ).toMatchObject({
+        kind: "verdict",
+        verdict: submitted,
+        evidence: { submitted },
+      });
+      expect(
+        deriveCandidateStatus(campaign.records(), candidate).verified,
+      ).toBe(submitted === "PASS");
+    }
+  });
+
+  test("rejects unmatched or duplicate verdict submissions", async () => {
+    const campaign = createCampaign(database(), "test", null);
+    const candidate = campaign.submitCandidate(
+      new TextEncoder().encode("claim"),
+      ["audit/v1"],
+    );
+    const mismatched = defineTool({
+      ...submitVerdictTool,
+      async run() {
+        return null;
+      },
+    });
+    const bad = await campaign.call(
+      {
+        label: "audit/v1",
+        candidate,
+        request: null,
+        tools: [mismatched],
+      },
+      async ({ tools }) => {
+        await tools[0]!.execute({ verdict: "PASS", evidence: null });
+        return { state: "succeeded" };
+      },
+    );
+    expect(() => finalizeVerdict(campaign, bad.call)).toThrow(
+      "matching returned result",
+    );
+
+    const duplicate = await campaign.call(
+      {
+        label: "audit/v1",
+        candidate,
+        request: null,
+        tools: [submitVerdictTool],
+      },
+      async ({ tools }) => {
+        await tools[0]!.execute({ verdict: "PASS", evidence: null });
+        await tools[0]!.execute({ verdict: "FAIL", evidence: null });
+        return { state: "succeeded" };
+      },
+    );
+    expect(() => finalizeVerdict(campaign, duplicate.call)).toThrow(
+      "exactly one submission",
+    );
+
+    const throwing = defineTool({
+      ...submitVerdictTool,
+      async run() {
+        throw new Error("submission failed");
+      },
+    });
+    await expect(
+      campaign.call(
+        {
+          label: "audit/v1",
+          candidate,
+          request: null,
+          tools: [throwing],
+        },
+        ({ tools }) => tools[0]!.execute({ verdict: "PASS", evidence: null }),
+      ),
+    ).rejects.toThrow("submission failed");
+    const thrown = campaign
+      .records()
+      .findLast((entry) => entry.kind === "call")!;
+    expect(() => finalizeVerdict(campaign, thrown.seq)).toThrow(
+      "matching returned result",
+    );
+  });
+
+  test("requires a finished successful verifier call", async () => {
+    const campaign = createCampaign(database(), "test", null);
+    const candidate = campaign.submitCandidate(
+      new TextEncoder().encode("claim"),
+      ["audit/v1"],
+    );
+    const empty = await campaign.call(
+      {
+        label: "audit/v1",
+        candidate,
+        request: null,
+        tools: [submitVerdictTool],
+      },
+      async () => ({ state: "succeeded" }),
+    );
+    expect(() => finalizeVerdict(campaign, empty.call)).toThrow(
+      "exactly one submission",
+    );
+    let release!: () => void;
+    const blocked = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const delayed = defineTool({
+      ...submitVerdictTool,
+      async run(input) {
+        await blocked;
+        return input;
+      },
+    });
+    const audit = await campaign.call(
+      {
+        label: "audit/v1",
+        candidate,
+        request: null,
+        tools: [delayed],
+      },
+      async ({ call, tools }) => {
+        const pending = tools[0]!.execute({
+          verdict: "PASS",
+          evidence: null,
+        });
+        expect(() => finalizeVerdict(campaign, call)).toThrow(
+          "matching returned result",
+        );
+        release();
+        await pending;
+        expect(() => finalizeVerdict(campaign, call)).toThrow(
+          "fresh successful verifier call",
+        );
+        return { state: "succeeded" };
+      },
+    );
+    finalizeVerdict(campaign, audit.call);
+    expect(() => finalizeVerdict(campaign, audit.call)).toThrow();
+    expect(
+      campaign.records().filter((entry) => entry.kind === "verdict"),
+    ).toHaveLength(1);
+  });
+
+  test("rejects failed, cancelled, and thrown verifier calls", async () => {
+    for (const state of ["failed", "cancelled"] as const) {
+      const campaign = createCampaign(database(), "test", null);
+      const candidate = campaign.submitCandidate(
+        new TextEncoder().encode("claim"),
+        ["audit/v1"],
+      );
+      const audit = await campaign.call(
+        {
+          label: "audit/v1",
+          candidate,
+          request: null,
+          tools: [submitVerdictTool],
+        },
+        async ({ tools }) => {
+          await tools[0]!.execute({ verdict: "PASS", evidence: null });
+          return { state };
+        },
+      );
+      expect(() => finalizeVerdict(campaign, audit.call)).toThrow(
+        "fresh successful verifier call",
+      );
+      expect(campaign.records().some((entry) => entry.kind === "verdict")).toBe(
+        false,
+      );
+    }
+
+    const campaign = createCampaign(database(), "test", null);
+    const candidate = campaign.submitCandidate(
+      new TextEncoder().encode("claim"),
+      ["audit/v1"],
+    );
+    await expect(
+      campaign.call(
+        {
+          label: "audit/v1",
+          candidate,
+          request: null,
+          tools: [submitVerdictTool],
+        },
+        async ({ tools }) => {
+          await tools[0]!.execute({ verdict: "PASS", evidence: null });
+          throw new Error("outer failure");
+        },
+      ),
+    ).rejects.toThrow("outer failure");
+    const call = campaign.records().findLast((entry) => entry.kind === "call")!;
+    expect(() => finalizeVerdict(campaign, call.seq)).toThrow(
+      "fresh successful verifier call",
+    );
   });
 
   test("rejects a call that guessed a future candidate sequence", async () => {

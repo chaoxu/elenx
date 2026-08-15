@@ -243,6 +243,209 @@ export const piStoredResult = z.object({
   telemetry: piTelemetry.optional(),
 });
 
+const nonnegative = z.number().finite().nonnegative();
+const stopReason = z.enum([
+  "stop",
+  "length",
+  "tool_use",
+  "error",
+  "aborted",
+  "deferred",
+]);
+const requestAttributes = z.object({
+  "pi.ai.provider": z.string().min(1),
+  "pi.ai.model": z.string().min(1),
+  "pi.ai.api": z.string().min(1),
+  "pi.ai.response.model": z.string().min(1).optional(),
+  "pi.ai.response.stop_reason": stopReason.optional(),
+});
+const usageAttributes = z
+  .object({
+    "pi.ai.usage.input_tokens": nonnegative,
+    "pi.ai.usage.output_tokens": nonnegative,
+    "pi.ai.usage.cache_read_tokens": nonnegative,
+    "pi.ai.usage.cache_write_tokens": nonnegative,
+    "pi.ai.usage.total_tokens": nonnegative,
+    "pi.ai.usage.cost": nonnegative,
+    "pi.ai.usage.reasoning_tokens": nonnegative.optional(),
+  })
+  .transform((usage) => ({
+    input: usage["pi.ai.usage.input_tokens"],
+    output: usage["pi.ai.usage.output_tokens"],
+    cacheRead: usage["pi.ai.usage.cache_read_tokens"],
+    cacheWrite: usage["pi.ai.usage.cache_write_tokens"],
+    totalTokens: usage["pi.ai.usage.total_tokens"],
+    estimatedCostUsd: usage["pi.ai.usage.cost"],
+    ...(usage["pi.ai.usage.reasoning_tokens"] === undefined
+      ? {}
+      : { reasoning: usage["pi.ai.usage.reasoning_tokens"] }),
+  }));
+const usageKeys = [
+  "pi.ai.usage.input_tokens",
+  "pi.ai.usage.output_tokens",
+  "pi.ai.usage.cache_read_tokens",
+  "pi.ai.usage.cache_write_tokens",
+  "pi.ai.usage.total_tokens",
+  "pi.ai.usage.cost",
+] as const;
+
+export type PiMeasuredUsage = z.output<typeof usageAttributes>;
+
+export interface PiSpendOperation {
+  readonly provider: string;
+  readonly requestedModel: string;
+  readonly servedModel?: string;
+  readonly api: string;
+  readonly stopReason?: z.output<typeof stopReason>;
+  readonly error: boolean;
+  readonly usage: PiMeasuredUsage | null;
+}
+
+export type PiSpendScope =
+  | { readonly call: EntryId; readonly candidate?: never }
+  | { readonly candidate: EntryId; readonly call?: never };
+
+function measuredUsage(
+  attributes: Record<string, unknown>,
+): PiMeasuredUsage | null {
+  const present = usageKeys.filter((key) => attributes[key] !== undefined);
+  const reasoning = attributes["pi.ai.usage.reasoning_tokens"] !== undefined;
+  if (present.length === 0 && !reasoning) return null;
+  if (present.length !== usageKeys.length) {
+    throw new Error("partial Pi usage measurement");
+  }
+  return usageAttributes.parse(attributes);
+}
+
+function spendSummary(operations: readonly PiSpendOperation[]) {
+  const measured = operations.flatMap(({ usage }) =>
+    usage === null ? [] : [usage],
+  );
+  const sum = (key: keyof Omit<PiMeasuredUsage, "reasoning">) =>
+    measured.reduce((total, usage) => total + usage[key], 0);
+  const summary = {
+    logicalProviderRequests: operations.length,
+    requestErrors: operations.filter(({ error }) => error).length,
+    unmeasuredRequests: operations.length - measured.length,
+  };
+  if (measured.length === 0) return summary;
+  const completeReasoning = measured.every(
+    ({ reasoning }) => reasoning !== undefined,
+  );
+  return {
+    ...summary,
+    measuredUsage: {
+      input: sum("input"),
+      output: sum("output"),
+      cacheRead: sum("cacheRead"),
+      cacheWrite: sum("cacheWrite"),
+      totalTokens: sum("totalTokens"),
+      estimatedCostUsd: sum("estimatedCostUsd"),
+      ...(completeReasoning
+        ? {
+            reasoning: measured.reduce(
+              (total, usage) => total + usage.reasoning!,
+              0,
+            ),
+          }
+        : {}),
+    },
+  };
+}
+
+export type PiSpendSummary = ReturnType<typeof spendSummary>;
+
+export function derivePiSpend(entries: readonly Entry[], scope?: PiSpendScope) {
+  if (scope !== undefined && "call" in scope && "candidate" in scope) {
+    throw new Error("Pi spend scope selects either call or candidate");
+  }
+  const selectedCall =
+    scope !== undefined && "call" in scope
+      ? entryId.parse(scope.call)
+      : undefined;
+  const selectedCandidate =
+    scope !== undefined && "candidate" in scope
+      ? entryId.parse(scope.candidate)
+      : undefined;
+  const calls = entries.filter(
+    (item): item is Extract<Entry, { kind: "call" }> =>
+      item.kind === "call" &&
+      piRequest.safeParse(item.request).success &&
+      (selectedCall === undefined || item.seq === selectedCall) &&
+      (selectedCandidate === undefined || item.candidate === selectedCandidate),
+  );
+  if (selectedCall !== undefined && calls.length !== 1)
+    throw new Error(`Pi call not found: ${selectedCall}`);
+  const results = new Map(
+    entries
+      .filter((item) => item.kind === "call-result")
+      .map((item) => [item.parent, item]),
+  );
+  const accounted = [] as (PiSpendSummary & {
+    call: EntryId;
+    operations: PiSpendOperation[];
+  })[];
+  const unaccountedCalls: EntryId[] = [];
+  for (const call of calls) {
+    const result = results.get(call.seq);
+    if (result?.state !== "returned") {
+      unaccountedCalls.push(call.seq);
+      continue;
+    }
+    const stored = piStoredResult.parse(result.output);
+    if (stored.telemetry === undefined) {
+      unaccountedCalls.push(call.seq);
+      continue;
+    }
+    const { spans } = stored.telemetry;
+    if (new Set(spans.map(({ id }) => id)).size !== spans.length)
+      throw new Error(`duplicate Pi telemetry span in call ${call.seq}`);
+    const roots = spans.filter(
+      ({ name, parentId }) => name === "elenx.pi.run" && parentId === null,
+    );
+    if (roots.length !== 1 || !roots[0]!.settled)
+      throw new Error(`invalid Pi telemetry root in call ${call.seq}`);
+    const operations = spans.flatMap((span): PiSpendOperation[] => {
+      if (span.name !== "pi.ai.request" || span.parentId !== roots[0]!.id)
+        return [];
+      if (!span.settled)
+        throw new Error(`unsettled Pi request span in call ${call.seq}`);
+      const attributes = requestAttributes.parse(span.attributes);
+      return [
+        {
+          provider: attributes["pi.ai.provider"],
+          requestedModel: attributes["pi.ai.model"],
+          ...(attributes["pi.ai.response.model"] === undefined
+            ? {}
+            : { servedModel: attributes["pi.ai.response.model"] }),
+          api: attributes["pi.ai.api"],
+          ...(attributes["pi.ai.response.stop_reason"] === undefined
+            ? {}
+            : { stopReason: attributes["pi.ai.response.stop_reason"] }),
+          error: span.status.status === "error",
+          usage: measuredUsage(span.attributes),
+        },
+      ];
+    });
+    accounted.push({ call: call.seq, operations, ...spendSummary(operations) });
+  }
+  const potentialRequests = unaccountedCalls.flatMap((call) =>
+    piRequestAttempts(entries, call).flatMap((attempt) =>
+      attempt.state === "completed"
+        ? [{ call, checkpoint: attempt.call, model: attempt.model }]
+        : [],
+    ),
+  );
+  return {
+    calls: accounted,
+    unaccountedCalls,
+    potentialRequests,
+    summary: spendSummary(accounted.flatMap(({ operations }) => operations)),
+  };
+}
+
+export type PiSpend = ReturnType<typeof derivePiSpend>;
+
 function piTool(
   tool: AuditedTool,
   stopAfterToolResult: boolean,

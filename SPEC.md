@@ -74,7 +74,7 @@ The runner receives only the tools listed in `CallOptions`. The kernel never add
 
 ## Pi runner
 
-`runPi(campaign, options)` creates one fresh Pi `runAgentLoop`. The application selects a real model from the registry returned by `builtinPi`, then supplies that registry, label, system prompt, prompt, optional Pi reasoning level, optional candidate ID, optional tools, and optional abort signal. A schema-constrained submission role may set `stopAfterToolResult: true` to finish after a successful tool batch without a redundant provider continuation. Pi terminates a batch only when every tool result requests termination; applications remain responsible for stricter cardinality such as exactly one submission. `builtinPi({ credentials })` accepts Pi's re-exported in-memory credential store for OAuth or API-key use.
+`runPi(campaign, options)` creates one fresh Pi `runAgentLoop`. The application selects a real model from the registry returned by `builtinPi`, then supplies that registry, label, system prompt, prompt, optional Pi reasoning level, optional candidate ID, optional tools, and optional abort signal. A structured-submission role may set `stopAfterToolResult: true` to finish after a successful tool batch without a redundant provider continuation. Use that mode when the submission tool is the call's sole tool; gather other observations in earlier calls. Pi terminates a batch only when every tool result requests termination; applications remain responsible for stricter cardinality such as exactly one submission. `builtinPi({ credentials })` accepts Pi's re-exported in-memory credential store for OAuth or API-key use.
 
 Elenx supplies Pi only the audited wrappers selected for that run and asks supported providers to constrain each tool call to its JSON Schema, with ordinary tool calling as the fallback. Zod still validates every admitted input. Pi executes its own tool loop, provider calls, retries, and transcript construction. Elenx stores Pi's native transcript, including Pi-native usage and stop reasons, without inventing provider identity or cross-provider accounting. A final Pi `stop`, or an explicitly requested successful terminal tool result, is successful. Token limits, deferred work, tool errors, protocol errors, and cancellation do not become successful through terminal-tool mode.
 
@@ -82,7 +82,7 @@ Elenx supplies Pi only the audited wrappers selected for that run and asks suppo
 
 Pi's awaited `onPayload` hook exposes the adapter's final pre-send payload. Elenx stores its JSON serialization semantics in an internal `elenx/pi-request` call and completes that checkpoint before returning from the hook. `piRequestAttempts(records, parent?)` reconstructs every valid checkpoint call and reports it as completed or unsettled. A completed attempt proves which hook payload became dispatchable; it does not prove that the provider received it or produced a response, and an adapter may still add transport-only fields after the hook. The runtime rejects a successful logical provider operation unless exactly one checkpoint completed; an adapter may fail or be cancelled before constructing a payload. Built-in Pi adapters supply the ordering. A custom adapter is trusted to invoke the hook exactly once before dispatch and to keep credentials and tokens outside its payload. Provider authentication, headers, transport configuration, and SDK-internal retries are not persisted.
 
-Applications derive totals from settled request leaves only and never add the native transcript's duplicate usage. Pi's input, cache-read, and cache-write fields are disjoint buckets; reasoning tokens are a subset of output and are not added again. A request with no measured usage remains a measurement gap instead of becoming zero spend. Telemetry is diagnostic and never affects candidate verification. An interrupted call can lack a completed span tree just as it can lack a call result.
+`derivePiSpend(records, scope?)` reads settled direct-child request leaves only and never adds the native transcript's duplicate usage. It returns JSON-safe operation identity, per-call and aggregate provider-reported usage, unaccounted Pi call IDs, and redacted completed request checkpoints that may represent unknown spend. Pass one call or candidate sequence to restrict the projection. The six core usage fields are atomic; a partial bundle is invalid, while no bundle yields `usage: null`. Pi's input, cache-read, and cache-write fields are disjoint buckets; reasoning tokens are a subset of output and are not added again. Telemetry is diagnostic and never affects candidate verification.
 
 The parent call contains the optional candidate sequence, provider, model ID, API ID, prompt, optional system prompt, optional requested reasoning level, and selected tool declarations. The child checkpoints contain the provider, model ID, API ID, and JSON-semantic pre-send hook payload. Provider credentials, headers, registry configuration, and authenticated transport details remain Pi/application concerns and are not persisted by built-in adapters.
 
@@ -98,6 +98,8 @@ The parent call contains the optional candidate sequence, provider, model ID, AP
 - the call returned JSON whose `state` is `"succeeded"`; and
 - SQLite admits the first verdict citing that call.
 
+`submitVerdictTool` admits one strict `{ verdict, evidence }` value and returns it unchanged. `finalizeVerdict(campaign, call)` reads one record snapshot, requires exactly one such tool call and an equal returned tool result, then passes that durable verdict and evidence to `recordVerdict`. It accepts no coordinator-supplied verdict and adds no record kind or verification rule.
+
 A candidate is verified when each required verifier has at least one PASS and no required verifier has any FAIL. INCONCLUSIVE neither passes nor fails. A later PASS does not erase a FAIL for that candidate ID. Failures are submission-scoped: submitting even identical bytes again creates an independent candidate, and applications decide whether to permit that retry.
 
 `deriveCandidateStatus(records, candidate)` derives `verified`, missing verifier names, failed verifier names, and the first PASS verdict sequence for each satisfied verifier from one explicit record snapshot. It stores no status row. Publishing, adopting, or otherwise promoting a verified candidate is an application action.
@@ -109,6 +111,8 @@ createCampaign(path, application, config): Campaign
 openCampaign(path): Campaign
 openReader(path): Reader
 deriveCandidateStatus(records, candidate): CandidateStatus
+submitVerdictTool: Tool
+finalizeVerdict(campaign, call): EntryId
 entryIdSchema // Zod schema for a positive integer EntryId
 
 campaign.submitCandidate(material, requiredVerifiers): EntryId
@@ -125,6 +129,7 @@ reader.close(): void
 defineTool(definition): Tool
 runPi(campaign, options): Promise<PiResult> // from elenx/pi
 piRequestAttempts(records, parent?): readonly PiRequestAttempt[] // from elenx/pi
+derivePiSpend(records, scope?): PiSpend // from elenx/pi
 piTelemetry, piStoredResult // Zod schemas from elenx/pi
 ```
 
