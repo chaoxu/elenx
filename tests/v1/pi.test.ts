@@ -944,13 +944,40 @@ describe("thin Pi runner", () => {
   });
 
   test("preserves Pi failure and cancellation states", async () => {
-    const failed = await runPi(campaign(), {
-      models: models([assistant([], "error", undefined, false)]),
+    const failedCampaign = campaign();
+    const failed = await runPi(failedCampaign, {
+      models: models([
+        {
+          ...assistant([], "error", undefined, false),
+          errorMessage: "WebSocket closed 1006 Connection ended",
+        },
+      ]),
       model,
       label: "failure/v1",
       prompt: "Fail",
     });
-    expect(failed.state).toBe("failed");
+    expect(failed).toMatchObject({
+      state: "failed",
+      error: "WebSocket closed 1006 Connection ended",
+      providerRetryable: true,
+    });
+    if (failed.state !== "failed") throw new Error("expected Pi failure");
+    expect(failed.providerRetryable).toBe(true);
+    const storedFailure = failedCampaign
+      .records()
+      .find(
+        (entry) => entry.kind === "call-result" && entry.parent === failed.call,
+      );
+    if (
+      storedFailure?.kind !== "call-result" ||
+      storedFailure.state !== "returned"
+    ) {
+      throw new Error("missing stored Pi failure");
+    }
+    expect(piStoredResult.parse(storedFailure.output)).toMatchObject({
+      state: "failed",
+      providerRetryable: true,
+    });
     expect(
       failed.telemetry.spans.every(({ status }) => status.status === "error"),
     ).toBe(true);
@@ -970,6 +997,7 @@ describe("thin Pi runner", () => {
       prompt: "Cancel",
     });
     expect(cancelled.state).toBe("cancelled");
+    expect(cancelled).not.toHaveProperty("providerRetryable");
     expect(
       cancelled.telemetry.spans.every(
         ({ status }) => status.status === "error",
@@ -986,5 +1014,35 @@ describe("thin Pi runner", () => {
             "pi.ai.usage.total_tokens",
           ),
     ).toBe(false);
+  });
+
+  test("does not classify context overflow or old failed results as retryable", async () => {
+    const overflow = await runPi(campaign(), {
+      models: models([
+        {
+          ...assistant([], "error", undefined, false),
+          errorMessage: "500 internal error: context_length_exceeded",
+        },
+      ]),
+      model,
+      label: "overflow/v1",
+      prompt: "Overflow",
+    });
+    expect(overflow).toMatchObject({
+      state: "failed",
+      providerRetryable: false,
+    });
+    expect(
+      piStoredResult.parse({
+        state: "failed",
+        text: "",
+        error: "legacy failure",
+      }),
+    ).toEqual({
+      state: "failed",
+      text: "",
+      error: "legacy failure",
+      providerRetryable: false,
+    });
   });
 });

@@ -13,6 +13,8 @@ import {
 } from "@earendil-works/pi-agent-core";
 import {
   contentText,
+  isContextOverflow,
+  isRetryableAssistantError,
   type Api,
   type AssistantMessage,
   type Model,
@@ -59,16 +61,21 @@ export interface PiRunOptions {
   readonly signal?: AbortSignal;
 }
 
-type PiOutcome = {
+type PiOutcomeBase = {
   readonly transcript: readonly Json[];
   readonly text: string;
-} & (
-  | { readonly state: "succeeded" }
-  | {
-      readonly state: "failed" | "cancelled";
-      readonly error: string;
-    }
-);
+};
+
+type PiOutcome = PiOutcomeBase &
+  (
+    | { readonly state: "succeeded" }
+    | {
+        readonly state: "failed";
+        readonly error: string;
+        readonly providerRetryable: boolean;
+      }
+    | { readonly state: "cancelled"; readonly error: string }
+  );
 
 type PiResultBody = PiOutcome & { readonly telemetry: PiTelemetry };
 
@@ -236,12 +243,25 @@ export function piRequestAttempts(
   });
 }
 
-export const piStoredResult = z.object({
-  state: z.enum(["succeeded", "failed", "cancelled"]),
+const storedResultBase = {
   text: z.string(),
-  error: z.string().optional(),
   telemetry: piTelemetry.optional(),
-});
+};
+
+export const piStoredResult = z.discriminatedUnion("state", [
+  z.object({ state: z.literal("succeeded"), ...storedResultBase }),
+  z.object({
+    state: z.literal("failed"),
+    error: z.string(),
+    providerRetryable: z.boolean().default(false),
+    ...storedResultBase,
+  }),
+  z.object({
+    state: z.literal("cancelled"),
+    error: z.string(),
+    ...storedResultBase,
+  }),
+]);
 
 const nonnegative = z.number().finite().nonnegative();
 const stopReason = z.enum([
@@ -477,6 +497,7 @@ function result(
   messages: readonly AgentMessage[],
   stopAfterToolResult: boolean,
   signal: AbortSignal | undefined,
+  contextWindow: number,
 ): PiOutcome {
   const stored = jsonSnapshot(messages) as readonly Json[];
   const final = messages.findLast(
@@ -505,6 +526,10 @@ function result(
       state: "failed",
       text,
       transcript: stored,
+      providerRetryable:
+        final !== undefined &&
+        !isContextOverflow(final, contextWindow) &&
+        isRetryableAssistantError(final),
       error:
         final?.errorMessage ??
         (final === undefined
@@ -722,6 +747,7 @@ export async function runPi(
             messages,
             exact.stopAfterToolResult === true,
             signal,
+            options.model.contextWindow,
           );
           span.setAttributes({
             "elenx.pi.outcome": outcome.state,

@@ -3,7 +3,7 @@
 Install Elenx from Gitea:
 
 ```sh
-bun add git+https://gitea.lab/chaoxu/elenx.git#v0.7.6 zod@4.4.3
+bun add git+https://gitea.lab/chaoxu/elenx.git#v0.7.7 zod@4.4.3
 ```
 
 ## Create and verify a candidate
