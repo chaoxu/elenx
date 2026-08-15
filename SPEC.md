@@ -109,6 +109,7 @@ createCampaign(path, application, config): Campaign
 openCampaign(path): Campaign
 openReader(path): Reader
 deriveCandidateStatus(records, candidate): CandidateStatus
+entryIdSchema // Zod schema for a positive integer EntryId
 
 campaign.submitCandidate(material, requiredVerifiers): EntryId
 campaign.call(options, runner): Promise<CallReceipt>

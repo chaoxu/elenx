@@ -2,6 +2,7 @@ import {
   createCampaign,
   defineTool,
   deriveCandidateStatus,
+  entryIdSchema,
   openCampaign,
   type CallReceipt,
   type Campaign,
@@ -40,6 +41,7 @@ const result =
 
 void createCampaign;
 void openCampaign;
+void entryIdSchema.parse(1);
 void deriveCandidateStatus(campaign.records(), 1);
 void (undefined as unknown as CallReceipt);
 void result;
