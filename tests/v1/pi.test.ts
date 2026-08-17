@@ -1028,6 +1028,26 @@ describe("thin Pi runner", () => {
     });
   });
 
+  test("continues after a gateway-phrase error stop", async () => {
+    const store = campaign();
+    const dropped = assistant([{ type: "text", text: "before drop" }], "error");
+    dropped.errorMessage = "Bad Gateway";
+    const result = await runPi(store, {
+      models: models([
+        dropped,
+        assistant([{ type: "text", text: " after drop." }], "stop"),
+      ]),
+      model,
+      label: "audit/v1",
+      prompt: "Audit",
+      continueOnLength: 2,
+    });
+    expect(result).toMatchObject({
+      state: "succeeded",
+      text: "before drop after drop.",
+    });
+  });
+
   test("does not continue a non-retryable error stop", async () => {
     const store = campaign();
     const exhausted = assistant([], "error");

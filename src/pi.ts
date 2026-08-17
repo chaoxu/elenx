@@ -795,7 +795,13 @@ export async function runPi(
               (final.stopReason === "length"
                 ? !isContextOverflow(final, options.model.contextWindow)
                 : final.stopReason === "error" &&
-                  isRetryableAssistantError(final));
+                  (isRetryableAssistantError(final) ||
+                    // Reverse-proxy error phrases Pi's classifier misses:
+                    // Caddy reports "Bad Gateway"/"Gateway Timeout" as text,
+                    // without the numeric status Pi's patterns match.
+                    /bad.?gateway|gateway.?time.?out/i.test(
+                      final.errorMessage ?? "",
+                    )));
             if (!interrupted) break;
             messages = [
               ...messages,
