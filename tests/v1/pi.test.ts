@@ -604,6 +604,10 @@ describe("thin Pi runner", () => {
       JSON.parse(JSON.stringify(payloads)),
     );
     expect(attempts.map(({ call }) => call)).toEqual([3, 7]);
+    expect(attempts.map(({ model }) => model.baseUrl)).toEqual([
+      "https://invalid.test",
+      "https://invalid.test",
+    ]);
     expect(attempts.map(({ state }) => state)).toEqual([
       "completed",
       "completed",

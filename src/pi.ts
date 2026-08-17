@@ -197,7 +197,7 @@ const piRequestLabel = "elenx/pi-request";
 const piRequestAttempt = z.strictObject({
   protocol: z.literal("pi"),
   parent: entryId,
-  model: piModel,
+  model: piModel.extend({ baseUrl: z.string().min(1).optional() }),
   payload: json,
 });
 
@@ -593,6 +593,9 @@ function measuredStream(
                     provider: requestModel.provider,
                     id: requestModel.id,
                     api: requestModel.api,
+                    ...(requestModel.baseUrl
+                      ? { baseUrl: requestModel.baseUrl }
+                      : {}),
                   },
                   payload: snapshot,
                 },
