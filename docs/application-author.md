@@ -91,7 +91,7 @@ Tools should express one bounded application action. Suitable proof-search tools
 
 `piRequestAttempts(campaign.records(), call)` returns the JSON-semantic payload exposed by Pi's final pre-send hook for each provider operation in a Pi call, together with its completed or unsettled state. Built-in adapters keep credentials and HTTP headers outside it. An absent outer call result leaves the provider outcome unknown even when its request checkpoint completed. Custom adapters must invoke the hook exactly once before dispatch and must never put credentials or tokens in its payload.
 
-`derivePiSpend(records)` returns settled provider operations, per-call and campaign totals, unaccounted Pi calls, and redacted completed request checkpoints that may represent unknown spend. Provider-reported token buckets and estimated cost remain separate; missing usage is `null`, not zero. Pass `{ call }` or `{ candidate }` to restrict the projection. It reads one record snapshot and writes nothing.
+`derivePiSpend(records)` returns settled provider operations, per-call and campaign totals, unaccounted Pi calls, and redacted completed request checkpoints that may represent unknown spend. Provider-reported token buckets and estimated cost remain separate; missing usage is `null`, not zero. Measured usage includes Pi's per-bucket cost split as `costBreakdownUsd` when recorded; totals carry it only when every measured request reports it. Pass `{ call }` or `{ candidate }` to restrict the projection. It reads one record snapshot and writes nothing.
 
 ## Keep orchestration outside the kernel
 

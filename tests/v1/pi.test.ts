@@ -290,6 +290,11 @@ describe("thin Pi runner", () => {
     );
     expect(() =>
       derivePiSpend(
+        spendEntries({ ...attributes, "pi.ai.usage.cost_input": 0 }),
+      ),
+    ).toThrow("partial Pi usage measurement");
+    expect(() =>
+      derivePiSpend(
         spendEntries({
           "pi.ai.provider": "fake",
           "pi.ai.model": "test-v1",
@@ -417,6 +422,12 @@ describe("thin Pi runner", () => {
                 reasoning: 3,
                 totalTokens: 23,
                 estimatedCostUsd: 0.026,
+                costBreakdownUsd: {
+                  input: 0.011,
+                  output: 0.014,
+                  cacheRead: 0.001,
+                  cacheWrite: 0,
+                },
               },
             },
           ],
@@ -532,6 +543,12 @@ describe("thin Pi runner", () => {
         cacheWrite: 0,
         totalTokens: 46,
         estimatedCostUsd: 0.052,
+        costBreakdownUsd: {
+          input: 0.022,
+          output: 0.028,
+          cacheRead: 0.002,
+          cacheWrite: 0,
+        },
       },
     });
   });
