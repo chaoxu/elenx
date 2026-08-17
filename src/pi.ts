@@ -751,8 +751,12 @@ export async function runPi(
           const loop = (
             content: string,
             prior: readonly AgentMessage[],
-          ): Promise<AgentMessage[]> =>
-            runAgentLoop(
+          ): Promise<AgentMessage[]> => {
+            // Pi retries truncated tool calls without any bound; cap the
+            // turns of one request loop so a repeatedly cut-off submission
+            // cannot buy unbounded full-context requests.
+            let turns = 0;
+            return runAgentLoop(
               [{ role: "user", content, timestamp: Date.now() }],
               {
                 systemPrompt: exact.system ?? "",
@@ -770,6 +774,7 @@ export async function runPi(
                 convertToLlm,
                 toolExecution: "sequential",
                 telemetryContext: span,
+                shouldStopAfterTurn: async () => (turns += 1) >= 32,
                 ...(exact.reasoning === undefined
                   ? {}
                   : { reasoning: exact.reasoning }),
@@ -778,6 +783,7 @@ export async function runPi(
               signal,
               measuredStream(campaign, call, options.models),
             );
+          };
           let messages = await loop(exact.prompt, []);
           for (let used = 0; used < (exact.continueOnLength ?? 0); used++) {
             const final = messages.findLast(

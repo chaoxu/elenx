@@ -1063,6 +1063,44 @@ describe("thin Pi runner", () => {
     expect(result.state === "failed" && result.providerRetryable).toBe(false);
   });
 
+  test("caps one request loop at thirty-two turns", async () => {
+    const store = campaign();
+    const echo = defineTool({
+      name: "echo",
+      description: "Echo",
+      input: z.strictObject({ value: z.string() }),
+      replay: "safe",
+      async run({ value }) {
+        return { value };
+      },
+    });
+    const replies = Array.from({ length: 40 }, (_, index) =>
+      assistant(
+        [
+          {
+            type: "toolCall",
+            id: `echo-${index}`,
+            name: "echo",
+            arguments: { value: "again" },
+          },
+        ],
+        "toolUse",
+      ),
+    );
+    const result = await runPi(store, {
+      models: models(replies),
+      model,
+      label: "audit/v1",
+      prompt: "Audit",
+      tools: [echo],
+    });
+    expect(result.state).toBe("failed");
+    const assistants = (
+      result.transcript as readonly { role?: string }[]
+    ).filter(({ role }) => role === "assistant");
+    expect(assistants).toHaveLength(32);
+  });
+
   test("fails after exhausting length continuations", async () => {
     const store = campaign();
     const result = await runPi(store, {
