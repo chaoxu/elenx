@@ -298,10 +298,6 @@ const usageAttributes = z
     "pi.ai.usage.total_tokens": nonnegative,
     "pi.ai.usage.cost": nonnegative,
     "pi.ai.usage.reasoning_tokens": nonnegative.optional(),
-    "pi.ai.usage.cost_input": nonnegative.optional(),
-    "pi.ai.usage.cost_output": nonnegative.optional(),
-    "pi.ai.usage.cost_cache_read": nonnegative.optional(),
-    "pi.ai.usage.cost_cache_write": nonnegative.optional(),
   })
   .transform((usage) => ({
     input: usage["pi.ai.usage.input_tokens"],
@@ -313,16 +309,6 @@ const usageAttributes = z
     ...(usage["pi.ai.usage.reasoning_tokens"] === undefined
       ? {}
       : { reasoning: usage["pi.ai.usage.reasoning_tokens"] }),
-    ...(usage["pi.ai.usage.cost_input"] === undefined
-      ? {}
-      : {
-          costBreakdownUsd: {
-            input: usage["pi.ai.usage.cost_input"],
-            output: usage["pi.ai.usage.cost_output"]!,
-            cacheRead: usage["pi.ai.usage.cost_cache_read"]!,
-            cacheWrite: usage["pi.ai.usage.cost_cache_write"]!,
-          },
-        }),
   }));
 const usageKeys = [
   "pi.ai.usage.input_tokens",
@@ -331,12 +317,6 @@ const usageKeys = [
   "pi.ai.usage.cache_write_tokens",
   "pi.ai.usage.total_tokens",
   "pi.ai.usage.cost",
-] as const;
-const costBreakdownKeys = [
-  "pi.ai.usage.cost_input",
-  "pi.ai.usage.cost_output",
-  "pi.ai.usage.cost_cache_read",
-  "pi.ai.usage.cost_cache_write",
 ] as const;
 
 export type PiMeasuredUsage = z.output<typeof usageAttributes>;
@@ -360,14 +340,8 @@ function measuredUsage(
 ): PiMeasuredUsage | null {
   const present = usageKeys.filter((key) => attributes[key] !== undefined);
   const reasoning = attributes["pi.ai.usage.reasoning_tokens"] !== undefined;
-  const costParts = costBreakdownKeys.filter(
-    (key) => attributes[key] !== undefined,
-  );
-  if (present.length === 0 && !reasoning && costParts.length === 0) return null;
-  if (
-    present.length !== usageKeys.length ||
-    (costParts.length !== 0 && costParts.length !== costBreakdownKeys.length)
-  ) {
+  if (present.length === 0 && !reasoning) return null;
+  if (present.length !== usageKeys.length) {
     throw new Error("partial Pi usage measurement");
   }
   return usageAttributes.parse(attributes);
@@ -377,9 +351,8 @@ function spendSummary(operations: readonly PiSpendOperation[]) {
   const measured = operations.flatMap(({ usage }) =>
     usage === null ? [] : [usage],
   );
-  const sum = (
-    key: keyof Omit<PiMeasuredUsage, "reasoning" | "costBreakdownUsd">,
-  ) => measured.reduce((total, usage) => total + usage[key], 0);
+  const sum = (key: keyof Omit<PiMeasuredUsage, "reasoning">) =>
+    measured.reduce((total, usage) => total + usage[key], 0);
   const summary = {
     logicalProviderRequests: operations.length,
     requestErrors: operations.filter(({ error }) => error).length,
@@ -389,8 +362,6 @@ function spendSummary(operations: readonly PiSpendOperation[]) {
   const completeReasoning = measured.every(
     ({ reasoning }) => reasoning !== undefined,
   );
-  const sumCost = (key: "input" | "output" | "cacheRead" | "cacheWrite") =>
-    measured.reduce((total, usage) => total + usage.costBreakdownUsd![key], 0);
   return {
     ...summary,
     measuredUsage: {
@@ -406,16 +377,6 @@ function spendSummary(operations: readonly PiSpendOperation[]) {
               (total, usage) => total + usage.reasoning!,
               0,
             ),
-          }
-        : {}),
-      ...(measured.every((usage) => usage.costBreakdownUsd !== undefined)
-        ? {
-            costBreakdownUsd: {
-              input: sumCost("input"),
-              output: sumCost("output"),
-              cacheRead: sumCost("cacheRead"),
-              cacheWrite: sumCost("cacheWrite"),
-            },
           }
         : {}),
     },
@@ -718,19 +679,6 @@ function measuredStream(
               }
             : {}),
         });
-        if (hasUsage) {
-          // Pi's per-bucket cost split; elenx-recorded because the pi.ai
-          // schema does not define these keys yet.
-          span.setAttributes({
-            "pi.ai.usage.cost_input": final.usage.cost.input,
-            "pi.ai.usage.cost_output": final.usage.cost.output,
-            "pi.ai.usage.cost_cache_read": final.usage.cost.cacheRead,
-            "pi.ai.usage.cost_cache_write": final.usage.cost.cacheWrite,
-          } satisfies Record<
-            (typeof costBreakdownKeys)[number],
-            number
-          > as never);
-        }
         if (final.stopReason === "error" || final.stopReason === "aborted") {
           span.setStatus({
             status: "error",

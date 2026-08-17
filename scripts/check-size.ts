@@ -1,4 +1,4 @@
-const limit = 1_650;
+const limit = 1_600;
 const files = [...new Bun.Glob("**/*.ts").scanSync({ cwd: "src" })].sort();
 let lines = 0;
 for (const file of files) {
