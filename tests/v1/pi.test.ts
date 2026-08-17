@@ -974,7 +974,7 @@ describe("thin Pi runner", () => {
     const continuation = (
       result.transcript as readonly { role?: string; content?: unknown }[]
     )[2];
-    expect(String(continuation?.content)).toContain("cut off");
+    expect(String(continuation?.content)).toContain("interrupted");
     expect(observed[1]?.messages.map(({ role }) => role)).toEqual([
       "user",
       "assistant",
@@ -1003,6 +1003,44 @@ describe("thin Pi runner", () => {
       providerRetryable: false,
       error: "Pi stopped with length",
     });
+  });
+
+  test("continues after a provider-retryable error stop", async () => {
+    const store = campaign();
+    const interrupted = assistant(
+      [{ type: "text", text: "half the proof" }],
+      "error",
+    );
+    interrupted.errorMessage = "Codex error: 502 upstream server error";
+    const result = await runPi(store, {
+      models: models([
+        interrupted,
+        assistant([{ type: "text", text: " and the rest." }], "stop"),
+      ]),
+      model,
+      label: "audit/v1",
+      prompt: "Audit",
+      continueOnLength: 2,
+    });
+    expect(result).toMatchObject({
+      state: "succeeded",
+      text: "half the proof and the rest.",
+    });
+  });
+
+  test("does not continue a non-retryable error stop", async () => {
+    const store = campaign();
+    const exhausted = assistant([], "error");
+    exhausted.errorMessage = "insufficient_quota: billing hard limit reached";
+    const result = await runPi(store, {
+      models: models([exhausted]),
+      model,
+      label: "audit/v1",
+      prompt: "Audit",
+      continueOnLength: 3,
+    });
+    expect(result).toMatchObject({ state: "failed" });
+    expect(result.state === "failed" && result.providerRetryable).toBe(false);
   });
 
   test("fails after exhausting length continuations", async () => {

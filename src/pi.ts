@@ -201,7 +201,7 @@ export const piRequest = z.strictObject({
 // keep their signatures), so one logical call can span multiple provider
 // requests the way interactive agent harnesses do.
 const lengthContinuation =
-  "The previous response was cut off at the provider's per-response output limit. Continue exactly where you left off; do not restart or repeat completed work.";
+  "The previous response was interrupted before completion. Continue exactly where you left off; do not restart or repeat completed work.";
 
 const piRequestLabel = "elenx/pi-request";
 const piRequestAttempt = z.strictObject({
@@ -523,7 +523,7 @@ function result(
       bridge?.role !== "user" ||
       bridge.content !== lengthContinuation ||
       previous?.role !== "assistant" ||
-      previous.stopReason !== "length"
+      (previous.stopReason !== "length" && previous.stopReason !== "error")
     )
       break;
     parts.unshift(contentText(previous.content));
@@ -784,15 +784,19 @@ export async function runPi(
               (message): message is AssistantMessage =>
                 message.role === "assistant",
             );
-            if (
-              final?.stopReason !== "length" ||
-              signal?.aborted ||
-              // An overflow-shaped length stop (truncated input filling the
-              // window, zero output) can only length-stop again; continuing
-              // would buy futile full-window-priced requests.
-              isContextOverflow(final, options.model.contextWindow)
-            )
-              break;
+            // Continue after an output-limit cut or a provider-retryable
+            // error stop (upstream 5xx, dropped stream), carrying the partial
+            // transcript. Overflow-shaped length stops can only repeat
+            // (truncated input filling the window), and non-retryable errors
+            // (quota, policy) or aborts always terminate.
+            const interrupted =
+              final !== undefined &&
+              !signal?.aborted &&
+              (final.stopReason === "length"
+                ? !isContextOverflow(final, options.model.contextWindow)
+                : final.stopReason === "error" &&
+                  isRetryableAssistantError(final));
+            if (!interrupted) break;
             messages = [
               ...messages,
               ...(await loop(lengthContinuation, messages)),
