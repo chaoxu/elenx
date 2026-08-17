@@ -1,0 +1,754 @@
+- generic [active] [ref=f28e1]:
+    - heading "The Open Problems Project" [level=1] [ref=f28e2]
+    - heading [level=3] [ref=f28e3]:
+        - text: edited by
+        - link "Erik D. Demaine" [ref=f28e4] [cursor=pointer]:
+            - /url: http://erikdemaine.org/
+        - text: ","
+        - link "Joseph S. B. Mitchell" [ref=f28e5] [cursor=pointer]:
+            - /url: http://www.ams.sunysb.edu/~jsbm/
+        - text: ","
+        - link "Joseph O’Rourke" [ref=f28e6] [cursor=pointer]:
+            - /url: http://cs.smith.edu/~orourke/
+    - heading "Introduction" [level=2] [ref=f28e7]
+    - paragraph [ref=f28e8]:
+        - text: This project originally aimed to record important open problems of interest to researchers in computational geometry and related fields. It commenced in 2001 with the publication of thirty problems in Computational Geometry Column 42
+        - link "[MO01]" [ref=f28e9] [cursor=pointer]:
+            - /url: "#MO01"
+        - text: (see
+        - link "Problems 1–30" [ref=f28e10] [cursor=pointer]:
+            - /url: /problems_by_number
+        - text: ), and then grew to over 75 problems.
+    - paragraph [ref=f28e11]:
+        - text: While we are no longer encouraging new problem submissions, we strongly encourage updates to existing problems, especially when those problems have been solved (completely or partially). Updates should be done in the form of a Github Pull Request; see the
+        - link "Github repository" [ref=f28e12] [cursor=pointer]:
+            - /url: https://github.com/edemaine/topp
+        - text: .
+    - paragraph [ref=f28e13]: Each problem is assigned a unique number for citation purposes. Problem numbers also indicate the order in which the problems were entered. Each problem is classified as belonging to one or more categories.
+    - paragraph [ref=f28e14]:
+        - text: The problems are also available as a single
+        - link "PDF" [ref=f28e15] [cursor=pointer]:
+            - /url: master.pdf
+        - text: file.
+    - heading [level=2] [ref=f28e16]:
+        - link "Numerical List of All Problems" [ref=f28e17] [cursor=pointer]:
+            - /url: /problems_by_number
+    - paragraph [ref=f28e18]:
+        - text: To begin navigating through the open problems, you may select from a category of interest below, or view
+        - link "a list of all problems sorted numerically" [ref=f28e19] [cursor=pointer]:
+            - /url: /problems_by_number
+        - text: .
+    - heading "Categorized List of All Problems" [level=2] [ref=f28e20]
+    - paragraph [ref=f28e21]: Below, each category lists the problems that are classified under that category. Note that each problem may be classified under several categories.
+    - generic [ref=f28e22]:
+        - term [ref=f28e23]: "arrangements:"
+        - definition [ref=f28e24]:
+            - list [ref=f28e25]:
+                - listitem [ref=f28e26]:
+                    - paragraph [ref=f28e27]:
+                        - link "3-Colorability of Arrangements of Great Circles (Problem 44)" [ref=f28e28] [cursor=pointer]:
+                            - /url: /p44
+        - term [ref=f28e29]: "art galleries:"
+        - definition [ref=f28e30]:
+            - list [ref=f28e31]:
+                - listitem [ref=f28e32]:
+                    - paragraph [ref=f28e33]:
+                        - link [ref=f28e34] [cursor=pointer]:
+                            - /url: /p23
+                            - text: Vertex
+                            - generic [ref=f28e36]:
+                                - math [ref=f28e38]:
+                                    - generic [ref=f28e39]: π
+                                - generic [ref=f28e42]: π
+                            - text: "-Floodlights (Problem 23)"
+        - term [ref=f28e44]: "coloring:"
+        - definition [ref=f28e45]:
+            - list [ref=f28e46]:
+                - listitem [ref=f28e47]:
+                    - paragraph [ref=f28e48]:
+                        - link "3-Colorability of Arrangements of Great Circles (Problem 44)" [ref=f28e49] [cursor=pointer]:
+                            - /url: /p44
+        - term [ref=f28e50]: "combinatorial geometry:"
+        - definition [ref=f28e51]:
+            - list [ref=f28e52]:
+                - listitem [ref=f28e53]:
+                    - paragraph [ref=f28e54]:
+                        - link [ref=f28e55] [cursor=pointer]:
+                            - /url: /p7
+                            - generic [ref=f28e57]:
+                                - math [ref=f28e59]:
+                                    - generic [ref=f28e60]: k
+                                - generic [ref=f28e63]: k
+                            - text: "-sets (Problem 7)"
+                - listitem [ref=f28e65]:
+                    - paragraph [ref=f28e66]:
+                        - link "Binary Space Partition Size (Problem 14)" [ref=f28e67] [cursor=pointer]:
+                            - /url: /p14
+                - listitem [ref=f28e68]:
+                    - paragraph [ref=f28e69]:
+                        - link "Chromatic Number of the Plane (Problem 57)" [ref=f28e70] [cursor=pointer]:
+                            - /url: /p57
+                - listitem [ref=f28e71]:
+                    - paragraph [ref=f28e72]:
+                        - link "Counting Polyominoes (Problem 37)" [ref=f28e73] [cursor=pointer]:
+                            - /url: /p37
+                - listitem [ref=f28e74]:
+                    - paragraph [ref=f28e75]:
+                        - link [ref=f28e76] [cursor=pointer]:
+                            - /url: /p39
+                            - text: Distances among Point Sets in
+                            - generic [ref=f28e78]:
+                                - math [ref=f28e80]:
+                                    - generic [ref=f28e83]:
+                                        - generic [ref=f28e84]: R
+                                        - generic [ref=f28e85]: "2"
+                                - generic [ref=f28e88]:
+                                    - generic [ref=f28e89]: R
+                                    - generic [ref=f28e90]: "2"
+                            - text: and
+                            - generic [ref=f28e96]:
+                                - math [ref=f28e98]:
+                                    - generic [ref=f28e101]:
+                                        - generic [ref=f28e102]: R
+                                        - generic [ref=f28e103]: "3"
+                                - generic [ref=f28e106]:
+                                    - generic [ref=f28e107]: R
+                                    - generic [ref=f28e108]: "3"
+                            - text: (Problem 39)
+                - listitem [ref=f28e113]:
+                    - paragraph [ref=f28e114]:
+                        - link "Extending Pseudosegment Arrangements by Subdivision (Problem 34)" [ref=f28e115] [cursor=pointer]:
+                            - /url: /p34
+                - listitem [ref=f28e116]:
+                    - paragraph [ref=f28e117]:
+                        - link "Lines Tangent to Four Unit Balls (Problem 61)" [ref=f28e118] [cursor=pointer]:
+                            - /url: /p61
+                - listitem [ref=f28e119]:
+                    - paragraph [ref=f28e120]:
+                        - link "Monochromatic Triangles (Problem 58)" [ref=f28e121] [cursor=pointer]:
+                            - /url: /p58
+                - listitem [ref=f28e122]:
+                    - paragraph [ref=f28e123]:
+                        - link "Pushing Disks Together (Problem 18)" [ref=f28e124] [cursor=pointer]:
+                            - /url: /p18
+                - listitem [ref=f28e125]:
+                    - paragraph [ref=f28e126]:
+                        - link "Rolling a Die over a Labeled Board (Problem 68)" [ref=f28e127] [cursor=pointer]:
+                            - /url: /p68
+                - listitem [ref=f28e128]:
+                    - paragraph [ref=f28e129]:
+                        - link "Slicing Axes-Parallel Rectangles (Problem 74)" [ref=f28e130] [cursor=pointer]:
+                            - /url: /p74
+                - listitem [ref=f28e131]:
+                    - paragraph [ref=f28e132]:
+                        - link "The Number of Pointed Pseudotriangulations (Problem 40)" [ref=f28e133] [cursor=pointer]:
+                            - /url: /p40
+                - listitem [ref=f28e134]:
+                    - paragraph [ref=f28e135]:
+                        - link "Thrackles (Problem 30)" [ref=f28e136] [cursor=pointer]:
+                            - /url: /p30
+                - listitem [ref=f28e137]:
+                    - paragraph [ref=f28e138]:
+                        - link "Union of Fat Objects in 3D (Problem 4)" [ref=f28e139] [cursor=pointer]:
+                            - /url: /p4
+                - listitem [ref=f28e140]:
+                    - paragraph [ref=f28e141]:
+                        - link [ref=f28e142] [cursor=pointer]:
+                            - /url: /p19
+                            - text: Vertical Decompositions in
+                            - generic [ref=f28e144]:
+                                - math [ref=f28e146]:
+                                    - generic [ref=f28e149]:
+                                        - generic [ref=f28e150]: R
+                                        - generic [ref=f28e151]: d
+                                - generic [ref=f28e154]:
+                                    - generic [ref=f28e155]: R
+                                    - generic [ref=f28e156]: d
+                            - text: (Problem 19)
+        - term [ref=f28e161]: "convex hulls:"
+        - definition [ref=f28e162]:
+            - list [ref=f28e163]:
+                - listitem [ref=f28e164]:
+                    - paragraph [ref=f28e165]:
+                        - link "Dynamic Planar Convex Hull (Problem 12)" [ref=f28e166] [cursor=pointer]:
+                            - /url: /p12
+                - listitem [ref=f28e167]:
+                    - paragraph [ref=f28e168]:
+                        - link "Dynamic Planar Nearest Neighbors (Problem 63)" [ref=f28e169] [cursor=pointer]:
+                            - /url: /p63
+                - listitem [ref=f28e170]:
+                    - paragraph [ref=f28e171]:
+                        - link "Inplace Convex Hull of a Simple Polygonal Chain (Problem 36)" [ref=f28e172] [cursor=pointer]:
+                            - /url: /p36
+                - listitem [ref=f28e173]:
+                    - paragraph [ref=f28e174]:
+                        - link [ref=f28e175] [cursor=pointer]:
+                            - /url: /p15
+                            - text: Output-sensitive Convex Hull in
+                            - generic [ref=f28e177]:
+                                - math [ref=f28e179]:
+                                    - generic [ref=f28e182]:
+                                        - generic [ref=f28e183]: R
+                                        - generic [ref=f28e184]: d
+                                - generic [ref=f28e187]:
+                                    - generic [ref=f28e188]: R
+                                    - generic [ref=f28e189]: d
+                            - text: (Problem 15)
+        - term [ref=f28e194]: "data structures:"
+        - definition [ref=f28e195]:
+            - list [ref=f28e196]:
+                - listitem [ref=f28e197]:
+                    - paragraph [ref=f28e198]:
+                        - link "Binary Space Partition Size (Problem 14)" [ref=f28e199] [cursor=pointer]:
+                            - /url: /p14
+                - listitem [ref=f28e200]:
+                    - paragraph [ref=f28e201]:
+                        - link "Dynamic Planar Convex Hull (Problem 12)" [ref=f28e202] [cursor=pointer]:
+                            - /url: /p12
+                - listitem [ref=f28e203]:
+                    - paragraph [ref=f28e204]:
+                        - link "Dynamic Planar Nearest Neighbors (Problem 63)" [ref=f28e205] [cursor=pointer]:
+                            - /url: /p63
+                - listitem [ref=f28e206]:
+                    - paragraph [ref=f28e207]:
+                        - link "Point Location in 3D Subdivision (Problem 13)" [ref=f28e208] [cursor=pointer]:
+                            - /url: /p13
+        - term [ref=f28e209]: "Delaunay triangulations:"
+        - definition [ref=f28e210]:
+            - list [ref=f28e211]:
+                - listitem [ref=f28e212]:
+                    - paragraph [ref=f28e213]:
+                        - link "Flip Graph Connectivity in 3D (Problem 28)" [ref=f28e214] [cursor=pointer]:
+                            - /url: /p28
+                - listitem [ref=f28e215]:
+                    - paragraph [ref=f28e216]:
+                        - link "Stretch-Factor for Points in Convex Position (Problem 71)" [ref=f28e217] [cursor=pointer]:
+                            - /url: /p71
+                - listitem [ref=f28e218]:
+                    - paragraph [ref=f28e219]:
+                        - link "Voronoi Diagram of Moving Points (Problem 2)" [ref=f28e220] [cursor=pointer]:
+                            - /url: /p2
+        - term [ref=f28e221]: "dissections:"
+        - definition [ref=f28e222]:
+            - list [ref=f28e223]:
+                - listitem [ref=f28e224]:
+                    - paragraph [ref=f28e225]:
+                        - link "Congruent Partitions of Polygons (Problem 73)" [ref=f28e226] [cursor=pointer]:
+                            - /url: /p73
+        - term [ref=f28e227]: "folding and unfolding:"
+        - definition [ref=f28e228]:
+            - list [ref=f28e229]:
+                - listitem [ref=f28e230]:
+                    - paragraph [ref=f28e231]:
+                        - link "Edge-Unfolding Convex Polyhedra (Problem 9)" [ref=f28e232] [cursor=pointer]:
+                            - /url: /p9
+                - listitem [ref=f28e233]:
+                    - paragraph [ref=f28e234]:
+                        - link "Edge-Unfolding Polycubes (Problem 64)" [ref=f28e235] [cursor=pointer]:
+                            - /url: /p64
+                - listitem [ref=f28e236]:
+                    - paragraph [ref=f28e237]:
+                        - link "General Unfoldings of Nonconvex Polyhedra (Problem 43)" [ref=f28e238] [cursor=pointer]:
+                            - /url: /p43
+                - listitem [ref=f28e239]:
+                    - paragraph [ref=f28e240]:
+                        - link "Vertex-Unfolding Polyhedra (Problem 42)" [ref=f28e241] [cursor=pointer]:
+                            - /url: /p42
+                - listitem [ref=f28e242]:
+                    - paragraph [ref=f28e243]:
+                        - link "Volume Maximizing Convex Shape (Problem 62)" [ref=f28e244] [cursor=pointer]:
+                            - /url: /p62
+        - term [ref=f28e245]: "geometric graphs:"
+        - definition [ref=f28e246]:
+            - list [ref=f28e247]:
+                - listitem [ref=f28e248]:
+                    - paragraph [ref=f28e249]:
+                        - link "Edge-Coloring Geometric Graphs (Problem 75)" [ref=f28e250] [cursor=pointer]:
+                            - /url: /p75
+                - listitem [ref=f28e251]:
+                    - paragraph [ref=f28e252]:
+                        - link "Thrackles (Problem 30)" [ref=f28e253] [cursor=pointer]:
+                            - /url: /p30
+                - listitem [ref=f28e254]:
+                    - paragraph [ref=f28e255]:
+                        - link "Yao-Yao Graph a Spanner? (Problem 70)" [ref=f28e256] [cursor=pointer]:
+                            - /url: /p70
+        - term [ref=f28e257]: "graph drawing:"
+        - definition [ref=f28e258]:
+            - list [ref=f28e259]:
+                - listitem [ref=f28e260]:
+                    - paragraph [ref=f28e261]:
+                        - link "3D Minimum-Bend Orthogonal Graph Drawings (Problem 46)" [ref=f28e262] [cursor=pointer]:
+                            - /url: /p46
+                - listitem [ref=f28e263]:
+                    - paragraph [ref=f28e264]:
+                        - link "Isoceles Planar Graph Drawing (Problem 69)" [ref=f28e265] [cursor=pointer]:
+                            - /url: /p69
+                - listitem [ref=f28e266]:
+                    - paragraph [ref=f28e267]:
+                        - link "Linear-Volume 3D Grid Drawings of Planar Graphs (Problem 51)" [ref=f28e268] [cursor=pointer]:
+                            - /url: /p51
+                - listitem [ref=f28e269]:
+                    - paragraph [ref=f28e270]:
+                        - link "Queue-Number of Planar Graphs (Problem 52)" [ref=f28e271] [cursor=pointer]:
+                            - /url: /p52
+                - listitem [ref=f28e272]:
+                    - paragraph [ref=f28e273]:
+                        - link "Smallest Universal Set of Points for Planar Graphs (Problem 45)" [ref=f28e274] [cursor=pointer]:
+                            - /url: /p45
+                - listitem [ref=f28e275]:
+                    - paragraph [ref=f28e276]:
+                        - link "Thrackles (Problem 30)" [ref=f28e277] [cursor=pointer]:
+                            - /url: /p30
+        - term [ref=f28e278]: "graphs:"
+        - definition [ref=f28e279]:
+            - list [ref=f28e280]:
+                - listitem [ref=f28e281]:
+                    - paragraph [ref=f28e282]:
+                        - link "Minimum-Turn Cycle Cover in Planar Grid Graphs (Problem 53)" [ref=f28e283] [cursor=pointer]:
+                            - /url: /p53
+                - listitem [ref=f28e284]:
+                    - paragraph [ref=f28e285]:
+                        - link "Smallest Universal Set of Points for Planar Graphs (Problem 45)" [ref=f28e286] [cursor=pointer]:
+                            - /url: /p45
+                - listitem [ref=f28e287]:
+                    - paragraph [ref=f28e288]:
+                        - link "Thrackles (Problem 30)" [ref=f28e289] [cursor=pointer]:
+                            - /url: /p30
+                - listitem [ref=f28e290]:
+                    - paragraph [ref=f28e291]:
+                        - link "Traveling Salesman Problem in Solid Grid Graphs (Problem 54)" [ref=f28e292] [cursor=pointer]:
+                            - /url: /p54
+        - term [ref=f28e293]: "linear programming:"
+        - definition [ref=f28e294]:
+            - list [ref=f28e295]:
+                - listitem [ref=f28e296]:
+                    - paragraph [ref=f28e297]:
+                        - 'link "Linear Programming: Strongly Polynomial? (Problem 8)" [ref=f28e298] [cursor=pointer]':
+                            - /url: /p8
+        - term [ref=f28e299]: "lower bounds:"
+        - definition [ref=f28e300]:
+            - list [ref=f28e301]:
+                - listitem [ref=f28e302]:
+                    - paragraph [ref=f28e303]:
+                        - link "3SUM Hard Problems (Problem 11)" [ref=f28e304] [cursor=pointer]:
+                            - /url: /p11
+                - listitem [ref=f28e305]:
+                    - paragraph [ref=f28e306]:
+                        - link [ref=f28e307] [cursor=pointer]:
+                            - /url: /p41
+                            - text: Sorting
+                            - generic [ref=f28e309]:
+                                - math [ref=f28e311]:
+                                    - generic [ref=f28e313]:
+                                        - generic [ref=f28e314]: X
+                                        - generic [ref=f28e315]: +
+                                        - generic [ref=f28e316]: "Y"
+                                - generic [ref=f28e317]:
+                                    - generic [ref=f28e318]: X +
+                                    - generic [ref=f28e319]: "Y"
+                            - text: (Pairwise Sums) (Problem 41)
+        - term [ref=f28e320]: "meshing:"
+        - definition [ref=f28e321]:
+            - list [ref=f28e322]:
+                - listitem [ref=f28e323]:
+                    - paragraph [ref=f28e324]:
+                        - link "Hexahedral Meshing (Problem 27)" [ref=f28e325] [cursor=pointer]:
+                            - /url: /p27
+                - listitem [ref=f28e326]:
+                    - paragraph [ref=f28e327]:
+                        - link "Most Circular Partition of a Square (Problem 59)" [ref=f28e328] [cursor=pointer]:
+                            - /url: /p59
+        - term [ref=f28e329]: "minimum spanning tree:"
+        - definition [ref=f28e330]:
+            - list [ref=f28e331]:
+                - listitem [ref=f28e332]:
+                    - paragraph [ref=f28e333]:
+                        - link "Bounded-Degree Minimum Euclidean Spanning Tree (Problem 48)" [ref=f28e334] [cursor=pointer]:
+                            - /url: /p48
+                - listitem [ref=f28e335]:
+                    - paragraph [ref=f28e336]:
+                        - link "Euclidean Minimum Spanning Tree (Problem 5)" [ref=f28e337] [cursor=pointer]:
+                            - /url: /p5
+        - term [ref=f28e338]: "numerical computations:"
+        - definition [ref=f28e339]:
+            - list [ref=f28e340]:
+                - listitem [ref=f28e341]:
+                    - paragraph [ref=f28e342]:
+                        - link "Sum of Square Roots (Problem 33)" [ref=f28e343] [cursor=pointer]:
+                            - /url: /p33
+        - term [ref=f28e344]: "optimization:"
+        - definition [ref=f28e345]:
+            - list [ref=f28e346]:
+                - listitem [ref=f28e347]:
+                    - paragraph [ref=f28e348]:
+                        - link "Bounded-Degree Minimum Euclidean Spanning Tree (Problem 48)" [ref=f28e349] [cursor=pointer]:
+                            - /url: /p48
+                - listitem [ref=f28e350]:
+                    - paragraph [ref=f28e351]:
+                        - 'link "Freeze-Tag: Optimal Strategies for Awakening a Swarm of Robots (Problem 35)" [ref=f28e352] [cursor=pointer]':
+                            - /url: /p35
+                - listitem [ref=f28e353]:
+                    - paragraph [ref=f28e354]:
+                        - link "Minimum-Turn Cycle Cover in Planar Grid Graphs (Problem 53)" [ref=f28e355] [cursor=pointer]:
+                            - /url: /p53
+                - listitem [ref=f28e356]:
+                    - paragraph [ref=f28e357]:
+                        - link "Packing Unit Squares in a Simple Polygon (Problem 56)" [ref=f28e358] [cursor=pointer]:
+                            - /url: /p56
+                - listitem [ref=f28e359]:
+                    - paragraph [ref=f28e360]:
+                        - link "Pallet Loading (Problem 55)" [ref=f28e361] [cursor=pointer]:
+                            - /url: /p55
+                - listitem [ref=f28e362]:
+                    - paragraph [ref=f28e363]:
+                        - link "Planar Euclidean Maximum TSP (Problem 49)" [ref=f28e364] [cursor=pointer]:
+                            - /url: /p49
+                - listitem [ref=f28e365]:
+                    - paragraph [ref=f28e366]:
+                        - link "Traveling Salesman Problem in Solid Grid Graphs (Problem 54)" [ref=f28e367] [cursor=pointer]:
+                            - /url: /p54
+        - term [ref=f28e368]: "packing:"
+        - definition [ref=f28e369]:
+            - list [ref=f28e370]:
+                - listitem [ref=f28e371]:
+                    - paragraph [ref=f28e372]:
+                        - link "Most Circular Partition of a Square (Problem 59)" [ref=f28e373] [cursor=pointer]:
+                            - /url: /p59
+                - listitem [ref=f28e374]:
+                    - paragraph [ref=f28e375]:
+                        - link "Packing Unit Squares in a Simple Polygon (Problem 56)" [ref=f28e376] [cursor=pointer]:
+                            - /url: /p56
+                - listitem [ref=f28e377]:
+                    - paragraph [ref=f28e378]:
+                        - link "Pallet Loading (Problem 55)" [ref=f28e379] [cursor=pointer]:
+                            - /url: /p55
+                - listitem [ref=f28e380]:
+                    - paragraph [ref=f28e381]:
+                        - link "Rectangling a Rectangle (Problem 78)" [ref=f28e382] [cursor=pointer]:
+                            - /url: /p78
+        - term [ref=f28e383]: "partitioning:"
+        - definition [ref=f28e384]:
+            - list [ref=f28e385]:
+                - listitem [ref=f28e386]:
+                    - paragraph [ref=f28e387]:
+                        - link "Congruent Partitions of Polygons (Problem 73)" [ref=f28e388] [cursor=pointer]:
+                            - /url: /p73
+                - listitem [ref=f28e389]:
+                    - paragraph [ref=f28e390]:
+                        - link "Fair Partitioning of Convex Polygons (Problem 67)" [ref=f28e391] [cursor=pointer]:
+                            - /url: /p67
+        - term [ref=f28e392]: "partitioning.:"
+        - definition [ref=f28e393]:
+            - list [ref=f28e394]:
+                - listitem [ref=f28e395]:
+                    - paragraph [ref=f28e396]:
+                        - link "Rectangling a Rectangle (Problem 78)" [ref=f28e397] [cursor=pointer]:
+                            - /url: /p78
+        - term [ref=f28e398]: "planar graphs:"
+        - definition [ref=f28e399]:
+            - list [ref=f28e400]:
+                - listitem [ref=f28e401]:
+                    - paragraph [ref=f28e402]:
+                        - link "Bar-Magnet Polyhedra (Problem 32)" [ref=f28e403] [cursor=pointer]:
+                            - /url: /p32
+                - listitem [ref=f28e404]:
+                    - paragraph [ref=f28e405]:
+                        - link "Isoceles Planar Graph Drawing (Problem 69)" [ref=f28e406] [cursor=pointer]:
+                            - /url: /p69
+                - listitem [ref=f28e407]:
+                    - paragraph [ref=f28e408]:
+                        - link "Pointed Spanning Trees in Triangulations (Problem 50)" [ref=f28e409] [cursor=pointer]:
+                            - /url: /p50
+        - term [ref=f28e410]: "point sets:"
+        - definition [ref=f28e411]:
+            - list [ref=f28e412]:
+                - listitem [ref=f28e413]:
+                    - paragraph [ref=f28e414]:
+                        - link [ref=f28e415] [cursor=pointer]:
+                            - /url: /p7
+                            - generic [ref=f28e417]:
+                                - math [ref=f28e419]:
+                                    - generic [ref=f28e420]: k
+                                - generic [ref=f28e423]: k
+                            - text: "-sets (Problem 7)"
+                - listitem [ref=f28e425]:
+                    - paragraph [ref=f28e426]:
+                        - link "Bounded-Degree Minimum Euclidean Spanning Tree (Problem 48)" [ref=f28e427] [cursor=pointer]:
+                            - /url: /p48
+                - listitem [ref=f28e428]:
+                    - paragraph [ref=f28e429]:
+                        - link "Magic Configurations (Problem 65)" [ref=f28e430] [cursor=pointer]:
+                            - /url: /p65
+                - listitem [ref=f28e431]:
+                    - paragraph [ref=f28e432]:
+                        - link "Minimum-Turn Cycle Cover in Planar Grid Graphs (Problem 53)" [ref=f28e433] [cursor=pointer]:
+                            - /url: /p53
+                - listitem [ref=f28e434]:
+                    - paragraph [ref=f28e435]:
+                        - link "Planar Euclidean Maximum TSP (Problem 49)" [ref=f28e436] [cursor=pointer]:
+                            - /url: /p49
+                - listitem [ref=f28e437]:
+                    - paragraph [ref=f28e438]:
+                        - link "Simple Polygonalizations (Problem 16)" [ref=f28e439] [cursor=pointer]:
+                            - /url: /p16
+                - listitem [ref=f28e440]:
+                    - paragraph [ref=f28e441]:
+                        - link "Smallest Universal Set of Points for Planar Graphs (Problem 45)" [ref=f28e442] [cursor=pointer]:
+                            - /url: /p45
+                - listitem [ref=f28e443]:
+                    - paragraph [ref=f28e444]:
+                        - link "Surface Reconstruction (Problem 26)" [ref=f28e445] [cursor=pointer]:
+                            - /url: /p26
+                - listitem [ref=f28e446]:
+                    - paragraph [ref=f28e447]:
+                        - link "Traveling Salesman Problem in Solid Grid Graphs (Problem 54)" [ref=f28e448] [cursor=pointer]:
+                            - /url: /p54
+        - term [ref=f28e449]: "point sets.:"
+        - definition [ref=f28e450]:
+            - list [ref=f28e451]:
+                - listitem [ref=f28e452]:
+                    - paragraph [ref=f28e453]:
+                        - link "Reflexivity of Point Sets (Problem 66)" [ref=f28e454] [cursor=pointer]:
+                            - /url: /p66
+        - term [ref=f28e455]: "polygons:"
+        - definition [ref=f28e456]:
+            - list [ref=f28e457]:
+                - listitem [ref=f28e458]:
+                    - paragraph [ref=f28e459]:
+                        - link "Congruent Partitions of Polygons (Problem 73)" [ref=f28e460] [cursor=pointer]:
+                            - /url: /p73
+                - listitem [ref=f28e461]:
+                    - paragraph [ref=f28e462]:
+                        - link "Fair Partitioning of Convex Polygons (Problem 67)" [ref=f28e463] [cursor=pointer]:
+                            - /url: /p67
+                - listitem [ref=f28e464]:
+                    - paragraph [ref=f28e465]:
+                        - link "Hinged Dissections (Problem 47)" [ref=f28e466] [cursor=pointer]:
+                            - /url: /p47
+                - listitem [ref=f28e467]:
+                    - paragraph [ref=f28e468]:
+                        - link "Reflexivity of Point Sets (Problem 66)" [ref=f28e469] [cursor=pointer]:
+                            - /url: /p66
+                - listitem [ref=f28e470]:
+                    - paragraph [ref=f28e471]:
+                        - link "Simple Polygonalizations (Problem 16)" [ref=f28e472] [cursor=pointer]:
+                            - /url: /p16
+                - listitem [ref=f28e473]:
+                    - paragraph [ref=f28e474]:
+                        - link "Transforming Polygons via Vertex-Centroid Moves (Problem 60)" [ref=f28e475] [cursor=pointer]:
+                            - /url: /p60
+        - term [ref=f28e476]: "polyhedra:"
+        - definition [ref=f28e477]:
+            - list [ref=f28e478]:
+                - listitem [ref=f28e479]:
+                    - paragraph [ref=f28e480]:
+                        - link "3-Colorability of Arrangements of Great Circles (Problem 44)" [ref=f28e481] [cursor=pointer]:
+                            - /url: /p44
+                - listitem [ref=f28e482]:
+                    - paragraph [ref=f28e483]:
+                        - link "Bar-Magnet Polyhedra (Problem 32)" [ref=f28e484] [cursor=pointer]:
+                            - /url: /p32
+                - listitem [ref=f28e485]:
+                    - paragraph [ref=f28e486]:
+                        - link "Edge-Unfolding Convex Polyhedra (Problem 9)" [ref=f28e487] [cursor=pointer]:
+                            - /url: /p9
+                - listitem [ref=f28e488]:
+                    - paragraph [ref=f28e489]:
+                        - link "Edge-Unfolding Polycubes (Problem 64)" [ref=f28e490] [cursor=pointer]:
+                            - /url: /p64
+                - listitem [ref=f28e491]:
+                    - paragraph [ref=f28e492]:
+                        - link "Equiprojective Polyhedra (Problem 76)" [ref=f28e493] [cursor=pointer]:
+                            - /url: /p76
+                - listitem [ref=f28e494]:
+                    - paragraph [ref=f28e495]:
+                        - link "General Unfoldings of Nonconvex Polyhedra (Problem 43)" [ref=f28e496] [cursor=pointer]:
+                            - /url: /p43
+                - listitem [ref=f28e497]:
+                    - paragraph [ref=f28e498]:
+                        - link "Hamiltonian Tetrahedralizations (Problem 29)" [ref=f28e499] [cursor=pointer]:
+                            - /url: /p29
+                - listitem [ref=f28e500]:
+                    - paragraph [ref=f28e501]:
+                        - link "Polyhedron with Regular Pentagon Faces (Problem 72)" [ref=f28e502] [cursor=pointer]:
+                            - /url: /p72
+                - listitem [ref=f28e503]:
+                    - paragraph [ref=f28e504]:
+                        - link "Vertex-Unfolding Polyhedra (Problem 42)" [ref=f28e505] [cursor=pointer]:
+                            - /url: /p42
+                - listitem [ref=f28e506]:
+                    - paragraph [ref=f28e507]:
+                        - link "Zipper Unfoldings of Convex Polyhedra (Problem 77)" [ref=f28e508] [cursor=pointer]:
+                            - /url: /p77
+        - term [ref=f28e509]: "reconstruction:"
+        - definition [ref=f28e510]:
+            - list [ref=f28e511]:
+                - listitem [ref=f28e512]:
+                    - paragraph [ref=f28e513]:
+                        - link "Surface Reconstruction (Problem 26)" [ref=f28e514] [cursor=pointer]:
+                            - /url: /p26
+        - term [ref=f28e515]: "robotics:"
+        - definition [ref=f28e516]:
+            - list [ref=f28e517]:
+                - listitem [ref=f28e518]:
+                    - paragraph [ref=f28e519]:
+                        - 'link "Freeze-Tag: Optimal Strategies for Awakening a Swarm of Robots (Problem 35)" [ref=f28e520] [cursor=pointer]':
+                            - /url: /p35
+        - term [ref=f28e521]: "scheduling:"
+        - definition [ref=f28e522]:
+            - list [ref=f28e523]:
+                - listitem [ref=f28e524]:
+                    - paragraph [ref=f28e525]:
+                        - 'link "Freeze-Tag: Optimal Strategies for Awakening a Swarm of Robots (Problem 35)" [ref=f28e526] [cursor=pointer]':
+                            - /url: /p35
+        - term [ref=f28e527]: "shortest paths:"
+        - definition [ref=f28e528]:
+            - list [ref=f28e529]:
+                - listitem [ref=f28e530]:
+                    - paragraph [ref=f28e531]:
+                        - link "Euclidean Minimum Spanning Tree (Problem 5)" [ref=f28e532] [cursor=pointer]:
+                            - /url: /p5
+                - listitem [ref=f28e533]:
+                    - paragraph [ref=f28e534]:
+                        - link "Minimum Euclidean Matching in 2D (Problem 6)" [ref=f28e535] [cursor=pointer]:
+                            - /url: /p6
+                - listitem [ref=f28e536]:
+                    - paragraph [ref=f28e537]:
+                        - link "Minimum-Link Path in 2D (Problem 22)" [ref=f28e538] [cursor=pointer]:
+                            - /url: /p22
+                - listitem [ref=f28e539]:
+                    - paragraph [ref=f28e540]:
+                        - link "Shortest Paths among Obstacles in 2D (Problem 21)" [ref=f28e541] [cursor=pointer]:
+                            - /url: /p21
+        - term [ref=f28e542]: "simplification:"
+        - definition [ref=f28e543]:
+            - list [ref=f28e544]:
+                - listitem [ref=f28e545]:
+                    - paragraph [ref=f28e546]:
+                        - link "Polygonal Curve Simplification (Problem 24)" [ref=f28e547] [cursor=pointer]:
+                            - /url: /p24
+                - listitem [ref=f28e548]:
+                    - paragraph [ref=f28e549]:
+                        - link "Polyhedral Surface Approximation (Problem 25)" [ref=f28e550] [cursor=pointer]:
+                            - /url: /p25
+        - term [ref=f28e551]: "spanners:"
+        - definition [ref=f28e552]:
+            - list [ref=f28e553]:
+                - listitem [ref=f28e554]:
+                    - paragraph [ref=f28e555]:
+                        - link "Stretch-Factor for Points in Convex Position (Problem 71)" [ref=f28e556] [cursor=pointer]:
+                            - /url: /p71
+                - listitem [ref=f28e557]:
+                    - paragraph [ref=f28e558]:
+                        - link "Yao-Yao Graph a Spanner? (Problem 70)" [ref=f28e559] [cursor=pointer]:
+                            - /url: /p70
+        - term [ref=f28e560]: "stabbing:"
+        - definition [ref=f28e561]:
+            - list [ref=f28e562]:
+                - listitem [ref=f28e563]:
+                    - paragraph [ref=f28e564]:
+                        - link "Minimum Stabbing Spanning Tree (Problem 20)" [ref=f28e565] [cursor=pointer]:
+                            - /url: /p20
+        - term [ref=f28e566]: "traveling salesman:"
+        - definition [ref=f28e567]:
+            - list [ref=f28e568]:
+                - listitem [ref=f28e569]:
+                    - paragraph [ref=f28e570]:
+                        - link "Minimum-Turn Cycle Cover in Planar Grid Graphs (Problem 53)" [ref=f28e571] [cursor=pointer]:
+                            - /url: /p53
+                - listitem [ref=f28e572]:
+                    - paragraph [ref=f28e573]:
+                        - link "Planar Euclidean Maximum TSP (Problem 49)" [ref=f28e574] [cursor=pointer]:
+                            - /url: /p49
+                - listitem [ref=f28e575]:
+                    - paragraph [ref=f28e576]:
+                        - link "Traveling Salesman Problem in Solid Grid Graphs (Problem 54)" [ref=f28e577] [cursor=pointer]:
+                            - /url: /p54
+        - term [ref=f28e578]: "triangulations:"
+        - definition [ref=f28e579]:
+            - list [ref=f28e580]:
+                - listitem [ref=f28e581]:
+                    - paragraph [ref=f28e582]:
+                        - link "Compatible Triangulations (Problem 38)" [ref=f28e583] [cursor=pointer]:
+                            - /url: /p38
+                - listitem [ref=f28e584]:
+                    - paragraph [ref=f28e585]:
+                        - link "Flip Graph Connectivity in 3D (Problem 28)" [ref=f28e586] [cursor=pointer]:
+                            - /url: /p28
+                - listitem [ref=f28e587]:
+                    - paragraph [ref=f28e588]:
+                        - link "Hamiltonian Tetrahedralizations (Problem 29)" [ref=f28e589] [cursor=pointer]:
+                            - /url: /p29
+                - listitem [ref=f28e590]:
+                    - paragraph [ref=f28e591]:
+                        - link "Minimum Weight Triangulation (Problem 1)" [ref=f28e592] [cursor=pointer]:
+                            - /url: /p1
+                - listitem [ref=f28e593]:
+                    - paragraph [ref=f28e594]:
+                        - link "Pointed Spanning Trees in Triangulations (Problem 50)" [ref=f28e595] [cursor=pointer]:
+                            - /url: /p50
+                - listitem [ref=f28e596]:
+                    - paragraph [ref=f28e597]:
+                        - link "Simple Linear-Time Polygon Triangulation (Problem 10)" [ref=f28e598] [cursor=pointer]:
+                            - /url: /p10
+                - listitem [ref=f28e599]:
+                    - paragraph [ref=f28e600]:
+                        - link "The Number of Pointed Pseudotriangulations (Problem 40)" [ref=f28e601] [cursor=pointer]:
+                            - /url: /p40
+        - term [ref=f28e602]: "visibility:"
+        - definition [ref=f28e603]:
+            - list [ref=f28e604]:
+                - listitem [ref=f28e605]:
+                    - paragraph [ref=f28e606]:
+                        - link "Trapping Light Rays with Segment Mirrors (Problem 31)" [ref=f28e607] [cursor=pointer]:
+                            - /url: /p31
+                - listitem [ref=f28e608]:
+                    - paragraph [ref=f28e609]:
+                        - link [ref=f28e610] [cursor=pointer]:
+                            - /url: /p23
+                            - text: Vertex
+                            - generic [ref=f28e612]:
+                                - math [ref=f28e614]:
+                                    - generic [ref=f28e615]: π
+                                - generic [ref=f28e618]: π
+                            - text: "-Floodlights (Problem 23)"
+                - listitem [ref=f28e620]:
+                    - paragraph [ref=f28e621]:
+                        - link "Visibility Graph Recognition (Problem 17)" [ref=f28e622] [cursor=pointer]:
+                            - /url: /p17
+        - term [ref=f28e623]: "Voronoi diagrams:"
+        - definition [ref=f28e624]:
+            - list [ref=f28e625]:
+                - listitem [ref=f28e626]:
+                    - paragraph [ref=f28e627]:
+                        - link "Dynamic Planar Nearest Neighbors (Problem 63)" [ref=f28e628] [cursor=pointer]:
+                            - /url: /p63
+                - listitem [ref=f28e629]:
+                    - paragraph [ref=f28e630]:
+                        - link "Voronoi Diagram of Lines in 3D (Problem 3)" [ref=f28e631] [cursor=pointer]:
+                            - /url: /p3
+                - listitem [ref=f28e632]:
+                    - paragraph [ref=f28e633]:
+                        - link "Voronoi Diagram of Moving Points (Problem 2)" [ref=f28e634] [cursor=pointer]:
+                            - /url: /p2
+    - heading "Bibliography" [level=1] [ref=f28e635]
+    - generic [ref=f28e636]:
+        - term [ref=f28e637]: "[MO01]"
+        - definition [ref=f28e638]:
+            - paragraph [ref=f28e639]:
+                - text: J. S. B. Mitchell and Joseph O’Rourke.
+                - link "Computational geometry column 42" [ref=f28e640] [cursor=pointer]:
+                    - /url: https://arxiv.org/abs/cs/0108021
+                - text: .
+                - emphasis [ref=f28e642]: Internat. J. Comput. Geom. Appl.
+                - text: ", 11(5):573–582, 2001. Also in"
+                - emphasis [ref=f28e644]: SIGACT News
+                - text: 32(3):63-72 (2001), Issue 120.
+    - heading "Acknowledgments" [level=1] [ref=f28e645]
+    - paragraph [ref=f28e646]: Partially supported by NSF grants to the three editors.
+    - paragraph [ref=f28e647]:
+        - text: This site is powered by
+        - link "Netlify" [ref=f28e648] [cursor=pointer]:
+            - /url: https://www.netlify.com/
+        - text: .

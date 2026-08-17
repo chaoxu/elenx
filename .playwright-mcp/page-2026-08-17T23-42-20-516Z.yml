@@ -1,0 +1,401 @@
+- generic [active] [ref=f29e1]:
+    - generic [ref=f29e2]:
+        - generic [ref=f29e3]:
+            - link "Skip to content" [ref=f29e4] [cursor=pointer]:
+                - /url: "#start-of-content"
+            - banner [ref=f29e9]:
+                - heading "Navigation Menu" [level=2] [ref=f29e10]
+                - generic [ref=f29e11]:
+                    - link "Homepage" [ref=f29e13] [cursor=pointer]:
+                        - /url: /
+                    - generic [ref=f29e16]:
+                        - navigation "Global" [ref=f29e17]:
+                            - list [ref=f29e18]:
+                                - listitem [ref=f29e19]:
+                                    - button "Platform" [ref=f29e21] [cursor=pointer]
+                                - listitem [ref=f29e24]:
+                                    - button "Solutions" [ref=f29e26] [cursor=pointer]
+                                - listitem [ref=f29e29]:
+                                    - button "Resources" [ref=f29e31] [cursor=pointer]
+                                - listitem [ref=f29e34]:
+                                    - button "Open Source" [ref=f29e36] [cursor=pointer]
+                                - listitem [ref=f29e39]:
+                                    - button "Enterprise" [ref=f29e41] [cursor=pointer]
+                                - listitem [ref=f29e44]:
+                                    - link "Pricing" [ref=f29e45] [cursor=pointer]:
+                                        - /url: https://github.com/pricing
+                        - generic [ref=f29e46]:
+                            - button "Search or jump to, type / to search" [ref=f29e48] [cursor=pointer]
+                            - link "Sign in" [ref=f29e55] [cursor=pointer]:
+                                - /url: /login?return_to=https%3A%2F%2Fgithub.com%2Fedemaine%2Ftopp
+                            - link "Sign up" [ref=f29e58] [cursor=pointer]:
+                                - /url: /signup?ref_cta=Sign+up&ref_loc=header+logged+out&ref_page=%2F%3Cuser-name%3E%2F%3Crepo-name%3E&source=header-repo&source_repo=edemaine%2Ftopp
+                            - button "Appearance settings" [ref=f29e61] [cursor=pointer]
+        - main [ref=f29e68]:
+            - generic [ref=f29e69]:
+                - generic [ref=f29e70]:
+                    - generic [ref=f29e72]:
+                        - link "edemaine" [ref=f29e76] [cursor=pointer]:
+                            - /url: /edemaine
+                        - generic [ref=f29e77]: /
+                        - strong [ref=f29e78]:
+                            - link "topp" [ref=f29e79] [cursor=pointer]:
+                                - /url: /edemaine/topp
+                        - generic [ref=f29e80]: Public
+                    - generic [ref=f29e81]:
+                        - list:
+                            - listitem [ref=f29e82]:
+                                - link "You must be signed in to change notification settings" [ref=f29e83] [cursor=pointer]:
+                                    - /url: /login?return_to=%2Fedemaine%2Ftopp
+                                    - text: Notifications
+                            - listitem [ref=f29e86]:
+                                - link "Fork 6" [ref=f29e87] [cursor=pointer]:
+                                    - /url: /login?return_to=%2Fedemaine%2Ftopp
+                                    - text: Fork
+                                    - generic "6" [ref=f29e90]
+                            - listitem [ref=f29e91]:
+                                - link "You must be signed in to star a repository" [ref=f29e93] [cursor=pointer]:
+                                    - /url: /login?return_to=%2Fedemaine%2Ftopp
+                                    - text: Star
+                                    - generic "42 users starred this repository" [ref=f29e96]: "42"
+                - navigation "Repository" [ref=f29e97]:
+                    - list [ref=f29e98]:
+                        - listitem [ref=f29e99]:
+                            - link "Code" [ref=f29e100] [cursor=pointer]:
+                                - /url: /edemaine/topp
+                        - listitem [ref=f29e104]:
+                            - link "Issues 4" [ref=f29e105] [cursor=pointer]:
+                                - /url: /edemaine/topp/issues
+                                - generic [ref=f29e109]: Issues
+                                - generic "4" [ref=f29e110]
+                        - listitem [ref=f29e111]:
+                            - link "Pull requests 1" [ref=f29e112] [cursor=pointer]:
+                                - /url: /edemaine/topp/pulls
+                                - generic [ref=f29e115]: Pull requests
+                                - generic "1" [ref=f29e116]
+                        - listitem [ref=f29e117]:
+                            - link "Discussions" [ref=f29e118] [cursor=pointer]:
+                                - /url: /edemaine/topp/discussions
+                        - listitem [ref=f29e122]:
+                            - link "Actions" [ref=f29e123] [cursor=pointer]:
+                                - /url: /edemaine/topp/actions
+                        - listitem [ref=f29e127]:
+                            - link "Projects" [ref=f29e128] [cursor=pointer]:
+                                - /url: /edemaine/topp/projects
+                        - listitem [ref=f29e132]:
+                            - link "Security and quality" [ref=f29e133] [cursor=pointer]:
+                                - /url: /edemaine/topp/security
+                        - listitem [ref=f29e137]:
+                            - link "Insights" [ref=f29e138] [cursor=pointer]:
+                                - /url: /edemaine/topp/pulse
+            - generic [ref=f29e155]:
+                - generic [ref=f29e158]:
+                    - generic [ref=f29e159]:
+                        - generic [ref=f29e160]:
+                            - button "main branch" [ref=f29e162] [cursor=pointer]:
+                                - generic [ref=f29e163]: main
+                            - generic [ref=f29e167]:
+                                - link "Branches" [ref=f29e168] [cursor=pointer]:
+                                    - /url: /edemaine/topp/branches
+                                - link "Tags" [ref=f29e171] [cursor=pointer]:
+                                    - /url: /edemaine/topp/tags
+                        - button "Code" [ref=f29e175] [cursor=pointer]
+                    - generic [ref=f29e178]:
+                        - generic [ref=f29e179]:
+                            - generic [ref=f29e181]:
+                                - heading "Latest commit" [level=2] [ref=f29e182]
+                                - generic [ref=f29e185]:
+                                    - heading "History" [level=2] [ref=f29e186]
+                                    - link "44 Commits" [ref=f29e187] [cursor=pointer]:
+                                        - /url: /edemaine/topp/commits/main/
+                            - heading "Folders and files" [level=2] [ref=f29e190]
+                            - table "Folders and files" [ref=f29e191]:
+                                - rowgroup:
+                                    - row "Name Last commit message Last commit date":
+                                        - columnheader "Name"
+                                        - columnheader "Last commit message"
+                                        - columnheader "Last commit date"
+                                - rowgroup [ref=f29e192]:
+                                    - row "Problems, (Directory)" [ref=f29e193]:
+                                        - cell [ref=f29e194]:
+                                            - link "Problems, (Directory)" [ref=f29e201] [cursor=pointer]:
+                                                - /url: /edemaine/topp/tree/main/Problems
+                                                - text: Problems
+                                        - cell [ref=f29e202]
+                                        - cell [ref=f29e204]
+                                    - row "figs, (Directory)" [ref=f29e207]:
+                                        - cell [ref=f29e208]:
+                                            - link "figs, (Directory)" [ref=f29e215] [cursor=pointer]:
+                                                - /url: /edemaine/topp/tree/main/figs
+                                                - text: figs
+                                        - cell [ref=f29e216]
+                                        - cell [ref=f29e218]
+                                    - row ".gitignore, (File)" [ref=f29e221]:
+                                        - cell [ref=f29e222]:
+                                            - link ".gitignore, (File)" [ref=f29e229] [cursor=pointer]:
+                                                - /url: /edemaine/topp/blob/main/.gitignore
+                                                - text: .gitignore
+                                        - cell [ref=f29e230]
+                                        - cell [ref=f29e232]
+                                    - row "CODE_OF_CONDUCT.md, (File)" [ref=f29e235]:
+                                        - cell [ref=f29e236]:
+                                            - link "CODE_OF_CONDUCT.md, (File)" [ref=f29e243] [cursor=pointer]:
+                                                - /url: /edemaine/topp/blob/main/CODE_OF_CONDUCT.md
+                                                - text: CODE_OF_CONDUCT.md
+                                        - cell [ref=f29e244]
+                                        - cell [ref=f29e246]
+                                    - row "LICENSE, (File)" [ref=f29e249]:
+                                        - cell [ref=f29e250]:
+                                            - link "LICENSE, (File)" [ref=f29e257] [cursor=pointer]:
+                                                - /url: /edemaine/topp/blob/main/LICENSE
+                                                - text: LICENSE
+                                        - cell [ref=f29e258]
+                                        - cell [ref=f29e260]
+                                    - row "README.md, (File)" [ref=f29e263]:
+                                        - cell [ref=f29e264]:
+                                            - link "README.md, (File)" [ref=f29e271] [cursor=pointer]:
+                                                - /url: /edemaine/topp/blob/main/README.md
+                                                - text: README.md
+                                        - cell [ref=f29e272]
+                                        - cell [ref=f29e274]
+                                    - row "TOPP.py, (File)" [ref=f29e277]:
+                                        - cell [ref=f29e278]:
+                                            - link "TOPP.py, (File)" [ref=f29e285] [cursor=pointer]:
+                                                - /url: /edemaine/topp/blob/main/TOPP.py
+                                                - text: TOPP.py
+                                        - cell [ref=f29e286]
+                                        - cell [ref=f29e288]
+                                    - row "acknowledgments.tex, (File)" [ref=f29e291]:
+                                        - cell [ref=f29e292]:
+                                            - link "acknowledgments.tex, (File)" [ref=f29e299] [cursor=pointer]:
+                                                - /url: /edemaine/topp/blob/main/acknowledgments.tex
+                                                - text: acknowledgments.tex
+                                        - cell [ref=f29e300]
+                                        - cell [ref=f29e302]
+                                    - row "alphahtml.bst, (File)" [ref=f29e305]:
+                                        - cell [ref=f29e306]:
+                                            - link "alphahtml.bst, (File)" [ref=f29e313] [cursor=pointer]:
+                                                - /url: /edemaine/topp/blob/main/alphahtml.bst
+                                                - text: alphahtml.bst
+                                        - cell [ref=f29e314]
+                                        - cell [ref=f29e316]
+                                    - row "author.tex, (File)" [ref=f29e319]:
+                                        - cell [ref=f29e320]:
+                                            - link "author.tex, (File)" [ref=f29e327] [cursor=pointer]:
+                                                - /url: /edemaine/topp/blob/main/author.tex
+                                                - text: author.tex
+                                        - cell [ref=f29e328]
+                                        - cell [ref=f29e330]
+                                    - row "html.sty, (File)" [ref=f29e333]:
+                                        - cell [ref=f29e334]:
+                                            - link "html.sty, (File)" [ref=f29e341] [cursor=pointer]:
+                                                - /url: /edemaine/topp/blob/main/html.sty
+                                                - text: html.sty
+                                        - cell [ref=f29e342]
+                                        - cell [ref=f29e344]
+                                    - row "intro.tex, (File)" [ref=f29e347]:
+                                        - cell [ref=f29e348]:
+                                            - link "intro.tex, (File)" [ref=f29e355] [cursor=pointer]:
+                                                - /url: /edemaine/topp/blob/main/intro.tex
+                                                - text: intro.tex
+                                        - cell [ref=f29e356]
+                                        - cell [ref=f29e358]
+                                    - row "master.tex, (File)" [ref=f29e361]:
+                                        - cell [ref=f29e362]:
+                                            - link "master.tex, (File)" [ref=f29e369] [cursor=pointer]:
+                                                - /url: /edemaine/topp/blob/main/master.tex
+                                                - text: master.tex
+                                        - cell [ref=f29e370]
+                                        - cell [ref=f29e372]
+                                    - row "netlify-latex.sh, (File)" [ref=f29e375]:
+                                        - cell [ref=f29e376]:
+                                            - link "netlify-latex.sh, (File)" [ref=f29e383] [cursor=pointer]:
+                                                - /url: /edemaine/topp/blob/main/netlify-latex.sh
+                                                - text: netlify-latex.sh
+                                        - cell [ref=f29e384]
+                                        - cell [ref=f29e386]
+                                    - row "netlify-pandoc.sh, (File)" [ref=f29e389]:
+                                        - cell [ref=f29e390]:
+                                            - link "netlify-pandoc.sh, (File)" [ref=f29e397] [cursor=pointer]:
+                                                - /url: /edemaine/topp/blob/main/netlify-pandoc.sh
+                                                - text: netlify-pandoc.sh
+                                        - cell [ref=f29e398]
+                                        - cell [ref=f29e400]
+                                    - row "pandoc.defaults, (File)" [ref=f29e403]:
+                                        - cell [ref=f29e404]:
+                                            - link "pandoc.defaults, (File)" [ref=f29e411] [cursor=pointer]:
+                                                - /url: /edemaine/topp/blob/main/pandoc.defaults
+                                                - text: pandoc.defaults
+                                        - cell [ref=f29e412]
+                                        - cell [ref=f29e414]
+                                    - row "pandoc.template, (File)" [ref=f29e417]:
+                                        - cell [ref=f29e418]:
+                                            - link "pandoc.template, (File)" [ref=f29e425] [cursor=pointer]:
+                                                - /url: /edemaine/topp/blob/main/pandoc.template
+                                                - text: pandoc.template
+                                        - cell [ref=f29e426]
+                                        - cell [ref=f29e428]
+                                    - row "remove_url_spaces.py, (File)" [ref=f29e431]:
+                                        - cell [ref=f29e432]:
+                                            - link "remove_url_spaces.py, (File)" [ref=f29e439] [cursor=pointer]:
+                                                - /url: /edemaine/topp/blob/main/remove_url_spaces.py
+                                                - text: remove_url_spaces.py
+                                        - cell [ref=f29e440]
+                                        - cell [ref=f29e442]
+                                    - row "topp.bib, (File)" [ref=f29e445]:
+                                        - cell [ref=f29e446]:
+                                            - link "topp.bib, (File)" [ref=f29e453] [cursor=pointer]:
+                                                - /url: /edemaine/topp/blob/main/topp.bib
+                                                - text: topp.bib
+                                        - cell [ref=f29e454]
+                                        - cell [ref=f29e456]
+                        - generic [ref=f29e460]:
+                            - generic [ref=f29e461]:
+                                - heading "Repository files navigation" [level=2] [ref=f29e462]
+                                - navigation "Repository files" [ref=f29e463]:
+                                    - list [ref=f29e464]:
+                                        - listitem [ref=f29e465]:
+                                            - link "README" [ref=f29e466] [cursor=pointer]:
+                                                - /url: "#"
+                                        - listitem [ref=f29e468]:
+                                            - link "Code of conduct" [ref=f29e469] [cursor=pointer]:
+                                                - /url: "#"
+                                        - listitem [ref=f29e471]:
+                                            - link "License" [ref=f29e472] [cursor=pointer]:
+                                                - /url: "#"
+                                - button "Outline" [ref=f29e474] [cursor=pointer]
+                            - article [ref=f29e478]:
+                                - generic [ref=f29e479]:
+                                    - 'heading "TOPP: The Open Problems Project" [level=1] [ref=f29e480]'
+                                    - 'link "Permalink: TOPP: The Open Problems Project" [ref=f29e481] [cursor=pointer]':
+                                        - /url: "#topp-the-open-problems-project"
+                                - paragraph [ref=f29e484]:
+                                    - link "TOPP.py" [ref=f29e485] [cursor=pointer]:
+                                        - /url: /edemaine/topp/blob/main/TOPP.py
+                                    - text: is an
+                                    - link "open-source" [ref=f29e486] [cursor=pointer]:
+                                        - /url: /edemaine/topp/blob/main/LICENSE
+                                    - text: tool for converting TOPP-style
+                                    - link "problem specification files" [ref=f29e487] [cursor=pointer]:
+                                        - /url: /edemaine/topp/blob/main/Problems
+                                    - text: into a website with those problems. It uses
+                                    - link "pandoc" [ref=f29e488] [cursor=pointer]:
+                                        - /url: https://pandoc.org/
+                                    - text: to convert (limited) LaTeX into HTML, including
+                                    - link "KaTeX" [ref=f29e489] [cursor=pointer]:
+                                        - /url: https://katex.org/
+                                    - text: for powerful LaTeX math rendering.
+                                - paragraph [ref=f29e490]:
+                                    - text: In particular, this repository builds
+                                    - link "the official TOPP problem list" [ref=f29e491] [cursor=pointer]:
+                                        - /url: https://topp.openproblem.net/
+                                    - text: via
+                                    - link "Netlify" [ref=f29e492] [cursor=pointer]:
+                                        - /url: https://www.netlify.com/
+                                    - text: . To build locally, install texlive and run
+                                    - code [ref=f29e493]: python2 TOPP.py
+                                    - text: to make an
+                                    - code [ref=f29e494]: html
+                                    - text: directory.
+                                - generic [ref=f29e495]:
+                                    - heading "Submitting Updates" [level=2] [ref=f29e496]
+                                    - 'link "Permalink: Submitting Updates" [ref=f29e497] [cursor=pointer]':
+                                        - /url: "#submitting-updates"
+                                - paragraph [ref=f29e500]:
+                                    - text: If you'd like to update any of the TOPP problems — for example, to indicate progress from a recent paper or to correct a typo — then please make a
+                                    - link "Github Pull Request" [ref=f29e501] [cursor=pointer]:
+                                        - /url: https://opensource.com/article/19/7/create-pull-request-github
+                                    - text: ". You probably want to:"
+                                - list [ref=f29e502]:
+                                    - listitem [ref=f29e503]:
+                                        - text: edit a
+                                        - link "problem specification file" [ref=f29e504] [cursor=pointer]:
+                                            - /url: /edemaine/topp/blob/main/Problems
+                                        - text: ", and"
+                                    - listitem [ref=f29e505]:
+                                        - text: add an entry to
+                                        - link "the BibTeX file" [ref=f29e506] [cursor=pointer]:
+                                            - /url: /edemaine/topp/blob/main/topp.bib
+                                        - text: .
+                                - paragraph [ref=f29e507]:
+                                    - text: To correct a typo without adding a bib entry, you can go to the
+                                    - link "problem specification file" [ref=f29e508] [cursor=pointer]:
+                                        - /url: /edemaine/topp/blob/main/Problems
+                                    - text: and click Github's Edit button. This will create a fork with your change, which you can submit as a PR.
+                                - paragraph [ref=f29e509]:
+                                    - text: In the past, new problem submissions were created using
+                                    - link "this problem template" [ref=f29e510] [cursor=pointer]:
+                                        - /url: /edemaine/topp/blob/main/Problems/problem.template
+                                    - text: . Feel free to use this template in your own project.
+                - generic [ref=f29e513]:
+                    - generic [ref=f29e514]:
+                        - heading "About" [level=2] [ref=f29e515]
+                        - paragraph [ref=f29e516]: The Open Problems Project
+                        - generic "https://topp.openproblem.net/" [ref=f29e520]:
+                            - link "topp.openproblem.net/" [ref=f29e521] [cursor=pointer]:
+                                - /url: https://topp.openproblem.net/
+                        - heading "Resources" [level=3] [ref=f29e522]
+                        - link "Readme" [ref=f29e524] [cursor=pointer]:
+                            - /url: "#readme-ov-file"
+                        - link "License" [ref=f29e528] [cursor=pointer]:
+                            - /url: "#License-1-ov-file"
+                        - heading "Code of conduct" [level=3] [ref=f29e531]
+                        - link "Code of conduct" [ref=f29e533] [cursor=pointer]:
+                            - /url: /edemaine/topp#coc-ov-file
+                        - link "Activity" [ref=f29e537] [cursor=pointer]:
+                            - /url: /edemaine/topp/activity
+                        - heading "Stars" [level=3] [ref=f29e540]
+                        - generic [ref=f29e542]:
+                            - strong [ref=f29e545]: "42"
+                            - text: stars
+                        - heading "Watchers" [level=3] [ref=f29e546]
+                        - generic [ref=f29e548]:
+                            - strong [ref=f29e551]: "8"
+                            - text: watching
+                        - heading "Forks" [level=3] [ref=f29e552]
+                        - link [ref=f29e554] [cursor=pointer]:
+                            - /url: /edemaine/topp/forks
+                            - strong [ref=f29e558]: "6"
+                            - text: forks
+                        - link "Report repository" [ref=f29e560] [cursor=pointer]:
+                            - /url: /contact/report-content?content_url=https%3A%2F%2Fgithub.com%2Fedemaine%2Ftopp&report=edemaine+%28user%29
+                    - heading "Releases" [level=2] [ref=f29e562]
+                    - heading "Packages" [level=2] [ref=f29e566]
+                    - heading "Contributors" [level=2] [ref=f29e569]
+                    - heading "Languages" [level=2] [ref=f29e572]
+        - contentinfo [ref=f29e575]:
+            - heading "Footer" [level=2] [ref=f29e576]
+            - generic [ref=f29e577]:
+                - generic [ref=f29e578]:
+                    - link "GitHub Homepage" [ref=f29e579] [cursor=pointer]:
+                        - /url: https://github.com
+                    - generic [ref=f29e582]: © 2026 GitHub, Inc.
+                - navigation "Footer" [ref=f29e583]:
+                    - heading "Footer navigation" [level=3] [ref=f29e584]
+                    - list "Footer navigation" [ref=f29e585]:
+                        - listitem [ref=f29e586]:
+                            - link "Terms" [ref=f29e587] [cursor=pointer]:
+                                - /url: https://docs.github.com/site-policy/github-terms/github-terms-of-service
+                        - listitem [ref=f29e588]:
+                            - link "Privacy" [ref=f29e589] [cursor=pointer]:
+                                - /url: https://docs.github.com/site-policy/privacy-policies/github-privacy-statement
+                        - listitem [ref=f29e590]:
+                            - link "Security" [ref=f29e591] [cursor=pointer]:
+                                - /url: https://github.com/security
+                        - listitem [ref=f29e592]:
+                            - link "Status" [ref=f29e593] [cursor=pointer]:
+                                - /url: https://www.githubstatus.com/
+                        - listitem [ref=f29e594]:
+                            - link "Community" [ref=f29e595] [cursor=pointer]:
+                                - /url: https://github.community/
+                        - listitem [ref=f29e596]:
+                            - link "Docs" [ref=f29e597] [cursor=pointer]:
+                                - /url: https://docs.github.com/
+                        - listitem [ref=f29e598]:
+                            - link "Contact" [ref=f29e599] [cursor=pointer]:
+                                - /url: https://support.github.com?tags=dotcom-footer
+                        - listitem [ref=f29e600]:
+                            - button "Manage cookies" [ref=f29e602] [cursor=pointer]
+                        - listitem [ref=f29e603]:
+                            - button "Do not share my personal information" [ref=f29e605] [cursor=pointer]
+    - alert [ref=f29e608]

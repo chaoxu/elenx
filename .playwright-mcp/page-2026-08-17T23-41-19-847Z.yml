@@ -1,0 +1,158 @@
+- generic [ref=f22e2]:
+    - generic [ref=f22e3]:
+        - generic [ref=f22e4]:
+            - link "Home":
+                - /url: /
+                - img "Home" [ref=f22e5] [cursor=pointer]
+            - heading [level=1] [ref=f22e6]:
+                - link "Open Problem Garden" [ref=f22e7] [cursor=pointer]:
+                    - /url: /
+        - list [ref=f22e10]:
+            - listitem [ref=f22e11]:
+                - link "Help" [ref=f22e12] [cursor=pointer]:
+                    - /url: /help
+            - listitem [ref=f22e13]:
+                - link "About" [ref=f22e14] [cursor=pointer]:
+                    - /url: /about
+            - listitem [ref=f22e15]:
+                - link "Contact" [ref=f22e16] [cursor=pointer]:
+                    - /url: /contact
+        - link "login/create account" [ref=f22e22] [cursor=pointer]:
+            - /url: "?q=login-create"
+    - generic [ref=f22e23]:
+        - generic [ref=f22e25]:
+            - heading "Home" [level=1] [ref=f22e26]
+            - generic [ref=f22e27]:
+                - paragraph [ref=f22e28]: "Welcome to the Open Problem Garden, a collection of unsolved problems in mathematics. Here you may:"
+                - list [ref=f22e29]:
+                    - listitem [ref=f22e30]: Read descriptions of open problems.
+                    - listitem [ref=f22e31]: Post comments on them.
+                    - listitem [ref=f22e32]: Create and edit open problems pages (please contact us and we will set you up an account. Unfortunately, the automatic process is too prone to spammers at this moment.)
+                - paragraph
+                - paragraph [ref=f22e33]:
+                    - text: Help us Grow! We are eager to expand, so we are inviting contributions both large and small from all areas of mathematics. Many thanks to
+                    - link "our contributors" [ref=f22e34] [cursor=pointer]:
+                        - /url: "?q=userlist/content/content_op"
+                    - text: "!"
+                - paragraph [ref=f22e35]: More about the Garden
+                - list [ref=f22e36]:
+                    - listitem [ref=f22e37]:
+                        - link "Structure" [ref=f22e38] [cursor=pointer]:
+                            - /url: "?q=structure"
+                    - listitem [ref=f22e39]:
+                        - link "Purpose" [ref=f22e40] [cursor=pointer]:
+                            - /url: "?q=purpose"
+                    - listitem [ref=f22e41]:
+                        - link "Editorial Policy" [ref=f22e42] [cursor=pointer]:
+                            - /url: "?q=editorial_policy"
+                    - listitem [ref=f22e43]:
+                        - link "RSS feeds" [ref=f22e44] [cursor=pointer]:
+                            - /url: "?q=help/rss_feeds"
+                        - text: (get what you want delivered to you!)
+                - paragraph
+                - link [ref=f22e45] [cursor=pointer]:
+                    - /url: "?q=container/area/feed"
+        - generic [ref=f22e48]:
+            - generic [ref=f22e51]:
+                - textbox "Enter the terms you wish to search for." [ref=f22e53]
+                - button "Search" [ref=f22e54]
+            - generic [ref=f22e56]:
+                - heading "Navigate" [level=2] [ref=f22e57]
+                - list [ref=f22e59]:
+                    - listitem [ref=f22e60]:
+                        - link "Subject" [ref=f22e61] [cursor=pointer]:
+                            - /url: /container/area
+                        - list [ref=f22e62]:
+                            - listitem [ref=f22e63]:
+                                - link "Algebra" [ref=f22e64] [cursor=pointer]:
+                                    - /url: /category/algebra
+                                - text: (298)
+                            - listitem [ref=f22e65]:
+                                - link "Analysis" [ref=f22e66] [cursor=pointer]:
+                                    - /url: /category/analysis
+                                - text: (5)
+                            - listitem [ref=f22e67]:
+                                - link "Combinatorics" [ref=f22e68] [cursor=pointer]:
+                                    - /url: /category/combinatorics
+                                - text: (35)
+                            - listitem [ref=f22e69]:
+                                - link "Geometry" [ref=f22e70] [cursor=pointer]:
+                                    - /url: /category/geometry
+                                - text: (29)
+                            - listitem [ref=f22e71]:
+                                - link "Graph Theory" [ref=f22e72] [cursor=pointer]:
+                                    - /url: /category/graph_theory
+                                - text: (228)
+                            - listitem [ref=f22e73]:
+                                - link "Group Theory" [ref=f22e74] [cursor=pointer]:
+                                    - /url: /category/group_theory
+                                - text: (5)
+                            - listitem [ref=f22e75]:
+                                - link "Logic" [ref=f22e76] [cursor=pointer]:
+                                    - /url: /category/logic
+                                - text: (10)
+                            - listitem [ref=f22e77]:
+                                - link "Number Theory" [ref=f22e78] [cursor=pointer]:
+                                    - /url: /category/number_theory_0
+                                - text: (49)
+                            - listitem [ref=f22e79]:
+                                - link "PDEs" [ref=f22e80] [cursor=pointer]:
+                                    - /url: /category/pdes
+                                - text: (0)
+                            - listitem [ref=f22e81]:
+                                - link "Probability" [ref=f22e82] [cursor=pointer]:
+                                    - /url: /category/probability
+                                - text: (1)
+                            - listitem [ref=f22e83]:
+                                - link "Theoretical Comp. Sci." [ref=f22e84] [cursor=pointer]:
+                                    - /url: /category/theoretical_computer_science
+                                - text: (13)
+                            - listitem [ref=f22e85]:
+                                - link "Topology" [ref=f22e86] [cursor=pointer]:
+                                    - /url: /topology
+                                - text: (40)
+                            - listitem [ref=f22e87]:
+                                - link "Unsorted" [ref=f22e88] [cursor=pointer]:
+                                    - /url: /category/unsorted
+                                - text: (1)
+                    - listitem [ref=f22e89]:
+                        - link "Author index" [ref=f22e90] [cursor=pointer]:
+                            - /url: /author
+                    - listitem [ref=f22e91]:
+                        - link "Keyword index" [ref=f22e92] [cursor=pointer]:
+                            - /url: /keywords
+                    - link "more" [ref=f22e94] [cursor=pointer]:
+                        - /url: /other_pages
+            - generic [ref=f22e96]:
+                - heading "Recent Activity" [level=2] [ref=f22e97]
+                - generic [ref=f22e100]:
+                    - list [ref=f22e103]:
+                        - listitem [ref=f22e104]:
+                            - link "Is Dragon Ball Legends Safe? Account Security Guide — Avoid Bans, Scams & Hacks (2026)" [ref=f22e107] [cursor=pointer]:
+                                - /url: /op/is_dragon_ball_legends_safe_account_security_guide_avoid_bans_scams_hacks_2026
+                        - listitem [ref=f22e108]:
+                            - link "Dragon Ball Legends PvP Team Building Guide — Tags, Synergy & Win Conditions (2026)" [ref=f22e111] [cursor=pointer]:
+                                - /url: /op/dragon_ball_legends_pvp_team_building_guide_tags_synergy_win_conditions_2026
+                        - listitem [ref=f22e112]:
+                            - link "Dragon Ball Legends Free Chrono Crystals — Legit Methods That Actually Work (2026)" [ref=f22e115] [cursor=pointer]:
+                                - /url: /op/dragon_ball_legends_free_chrono_crystals_legit_methods_that_actually_work_2026_0
+                        - listitem [ref=f22e116]:
+                            - link "Dragon Ball Legends Free Chrono Crystals — Legit Methods That Actually Work (2026)" [ref=f22e119] [cursor=pointer]:
+                                - /url: /op/dragon_ball_legends_free_chrono_crystals_legit_methods_that_actually_work_2026
+                        - listitem [ref=f22e120]:
+                            - link "Nowhere-zero flows" [ref=f22e123] [cursor=pointer]:
+                                - /url: /op/nowhere_zero_flows
+                    - link "more" [ref=f22e125] [cursor=pointer]:
+                        - /url: /recent_activity
+    - generic [ref=f22e126]:
+        - text: Powered by
+        - link "Drupal" [ref=f22e127] [cursor=pointer]:
+            - /url: http://www.drupal.org
+        - text: Hosted by
+        - link "CSI of Charles University" [ref=f22e129] [cursor=pointer]:
+            - /url: http://iuuk.mff.cuni.cz
+        - text: Content distributed under
+        - link [ref=f22e131] [cursor=pointer]:
+            - /url: http://www.gnu.org/copyleft/fdl.html
+        - link "Disclaimer" [ref=f22e133] [cursor=pointer]:
+            - /url: "?q=disclaimer"

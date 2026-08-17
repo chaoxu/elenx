@@ -1,0 +1,4 @@
+[    2204ms] [WARNING] useTranslation: DISMISS is not available @ https://duckduckgo.com/dist/wpm.main.9ed3c9ce3ffe85cbcbcd.js:0
+[    2207ms] [WARNING] useTranslation: DISMISS is not available @ https://duckduckgo.com/dist/wpm.main.9ed3c9ce3ffe85cbcbcd.js:0
+[    2208ms] [WARNING] useTranslation: DISMISS is not available @ https://duckduckgo.com/dist/wpm.main.9ed3c9ce3ffe85cbcbcd.js:0
+[    3878ms] [ERROR] Failed to load resource: the server responded with a status of 404 () @ https://external-content.duckduckgo.com/ip3/dev.aimath.org.ico:0

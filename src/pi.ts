@@ -74,6 +74,7 @@ type PiOutcome = PiOutcomeBase &
         readonly state: "failed";
         readonly error: string;
         readonly providerRetryable: boolean;
+        readonly truncated: boolean;
       }
     | { readonly state: "cancelled"; readonly error: string }
   );
@@ -264,6 +265,7 @@ export const piStoredResult = z.discriminatedUnion("state", [
     state: z.literal("failed"),
     error: z.string(),
     providerRetryable: z.boolean().default(false),
+    truncated: z.boolean().default(false),
     ...storedResultBase,
   }),
   z.object({
@@ -555,6 +557,14 @@ function result(
         final !== undefined &&
         !isContextOverflow(final, contextWindow) &&
         isRetryableAssistantError(final),
+      // A response cut at the per-response output limit with real output; an
+      // overflow-shaped length stop deterministically repeats and is not
+      // truncation.
+      truncated:
+        final !== undefined &&
+        final.stopReason === "length" &&
+        !isContextOverflow(final, contextWindow) &&
+        final.usage.output > 0,
       error:
         final?.errorMessage ??
         (final === undefined

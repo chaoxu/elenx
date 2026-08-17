@@ -1,0 +1,117 @@
+- generic [active] [ref=e1]:
+    - generic [ref=e2]:
+        - generic [ref=e3]:
+            - link [ref=e5] [cursor=pointer]:
+                - /url: /
+                - img "Logo" [ref=e6]
+            - generic [ref=e7]:
+                - link "Forum" [ref=e8] [cursor=pointer]:
+                    - /url: /forum
+                - link "Inbox" [ref=e9] [cursor=pointer]:
+                    - /url: /dm
+                - link "Favourites" [ref=e10] [cursor=pointer]:
+                    - /url: /favourites
+                - link "Tags" [ref=e11] [cursor=pointer]:
+                    - /url: /tags
+                - link "More" [ref=e13] [cursor=pointer]:
+                    - /url: javascript:void(0)
+        - generic [ref=e14]:
+            - generic [ref=e16]:
+                - textbox "Enter either a single integer or a space-separated list of numbers/ranges, optionally ending with 'open' or 'solved'." [ref=e17]:
+                    - /placeholder: "# (or range #-#)"
+                - button "Go" [ref=e18] [cursor=pointer]
+            - generic [ref=e20]:
+                - textbox "Search all problems." [ref=e21]:
+                    - /placeholder: Search
+                - button "Go" [ref=e22] [cursor=pointer]
+        - generic [ref=e23]:
+            - link "Dual View" [ref=e24] [cursor=pointer]:
+                - /url: "#"
+            - link "Random Solved" [ref=e25] [cursor=pointer]:
+                - /url: /random_solved
+            - link "Random Open" [ref=e26] [cursor=pointer]:
+                - /url: /random_open
+    - generic [ref=e27]:
+        - generic [ref=e28]:
+            - generic [ref=e29]:
+                - text: Problems have always been an essential part of my mathematical life. A well-chosen problem can isolate an essential difficulty in a particular area, serving as a benchmark against which progress in this area can be measured. It might be like a 'marshmallow', serving as a tasty tidbit supplying a few moments of fleeting enjoyment. Or it might be like an 'acorn', requiring deep and subtle new insights from which a mighty oak can develop. […]
+                - paragraph [ref=e30]: In this note I would like to describe a variety of my problems which I would classify as my favorites. Of course, I can't guarantee that they are all 'acorns', but because many have thwarted the efforts of the best mathematicians for many decades (and have often acquired a cash reward for their solutions), it may indicate that new ideas will be needed, which can, in turn, lead to more general results, and naturally, to further new problems.
+                - paragraph [ref=e31]: In this way, the cycle of life in mathematics continues forever.
+                - generic [ref=e32]: Paul Erdős, Some of my favorite problems and results, 1997
+            - generic [ref=e33]: There are 1217 problems in the database of which 565 (46%) have been solved.
+        - generic [ref=e35]:
+            - generic [ref=e36]:
+                - generic [ref=e37]: BLOG POSTS
+                - link "Show all" [ref=e39] [cursor=pointer]:
+                    - /url: "#"
+                - list [ref=e40]:
+                    - listitem [ref=e41]:
+                        - link "Erdős, aliens, and evil spirits" [ref=e43] [cursor=pointer]:
+                            - /url: /forum/thread/blog:7
+                        - generic [ref=e44]:
+                            - text: by
+                            - link "Thomas Bloom" [ref=e45] [cursor=pointer]:
+                                - /url: /forum/user/TFBloom
+                            - text: on 15 Jun 2026
+                    - listitem [ref=e46]:
+                        - link "Sum-product, unit distances, and number fields" [ref=e48] [cursor=pointer]:
+                            - /url: /forum/thread/blog:6
+                        - generic [ref=e49]:
+                            - text: by
+                            - link "Thomas Bloom" [ref=e50] [cursor=pointer]:
+                                - /url: /forum/user/TFBloom
+                            - text: on 31 May 2026
+                    - listitem [ref=e51]:
+                        - link "Top 10 Erdős Problems" [ref=e53] [cursor=pointer]:
+                            - /url: /forum/thread/blog:5
+                        - generic [ref=e54]:
+                            - text: by
+                            - link "Thomas Bloom" [ref=e55] [cursor=pointer]:
+                                - /url: /forum/user/TFBloom
+                            - text: on 16 Apr 2026
+                    - listitem [ref=e56]:
+                        - link "Paul Erdős and irrationality problems for series" [ref=e58] [cursor=pointer]:
+                            - /url: /forum/thread/blog:4
+                        - generic [ref=e59]:
+                            - text: by
+                            - link "Vjeko_Kovac" [ref=e60] [cursor=pointer]:
+                                - /url: /forum/user/Vjeko_Kovac
+                            - text: on 2 Feb 2026
+                    - listitem [ref=e61]:
+                        - link "Problem 570 and its solution" [ref=e63] [cursor=pointer]:
+                            - /url: /forum/thread/blog:3
+                        - generic [ref=e64]:
+                            - text: by
+                            - link "StijnC" [ref=e65] [cursor=pointer]:
+                                - /url: /forum/user/StijnC
+                            - text: on 30 Jan 2026
+            - generic [ref=e66]:
+                - generic [ref=e67]: OPEN -> SOLVED
+                - paragraph [ref=e68]: This is not intended as a record of when the solutions actually happened, or how quickly problems are being solved - they may have been solved weeks, months, or decades earlier, but it took time to verify or just be notified about the solution. This is just when their status was changed on this site, and has no meaning beyond that.
+                - link "Show all" [ref=e70] [cursor=pointer]:
+                    - /url: "#"
+                - list [ref=e71]:
+                    - listitem [ref=e72]:
+                        - link "920" [ref=e73] [cursor=pointer]:
+                            - /url: /920
+                        - text: (25/07/26)
+                    - listitem [ref=e74]:
+                        - link "119" [ref=e75] [cursor=pointer]:
+                            - /url: /119
+                        - text: (19/07/26)
+                    - listitem [ref=e76]:
+                        - link "123" [ref=e77] [cursor=pointer]:
+                            - /url: /123
+                        - text: (17/07/26)
+                    - listitem [ref=e78]:
+                        - link "320" [ref=e79] [cursor=pointer]:
+                            - /url: /320
+                        - link "321" [ref=e80] [cursor=pointer]:
+                            - /url: /321
+                        - text: (16/07/26)
+                    - listitem [ref=e81]:
+                        - link "750" [ref=e82] [cursor=pointer]:
+                            - /url: /750
+                        - link "793" [ref=e83] [cursor=pointer]:
+                            - /url: /793
+                        - text: (14/07/26)

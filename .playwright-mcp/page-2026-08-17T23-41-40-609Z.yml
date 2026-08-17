@@ -1,0 +1,424 @@
+- generic [active] [ref=f23e1]:
+    - generic [ref=f23e2]:
+        - generic [ref=f23e4]:
+            - generic [ref=f23e5]:
+                - generic [ref=f23e6]:
+                    - link "DuckDuckGo home" [ref=f23e7] [cursor=pointer]:
+                        - /url: /
+                        - generic [ref=f23e8]: DuckDuckGo
+                    - generic [ref=f23e15]:
+                        - combobox "Search privately" [ref=f23e17]: SIAM Review Problems and Solutions official
+                        - button "search" [ref=f23e19] [cursor=pointer]
+                - generic [ref=f23e22]:
+                    - link "Protection. Privacy. Peace of mind." [ref=f23e24] [cursor=pointer]:
+                        - /url: /compare-privacy
+                    - button "Open menu" [ref=f23e25] [cursor=pointer]
+            - navigation [ref=f23e33]:
+                - list [ref=f23e34]:
+                    - listitem [ref=f23e35]:
+                        - link "All" [ref=f23e36] [cursor=pointer]:
+                            - /url: /?q=SIAM+Review+Problems+and+Solutions+official&ia=web
+                    - listitem [ref=f23e39]:
+                        - link "Images" [ref=f23e40] [cursor=pointer]:
+                            - /url: /?q=SIAM+Review+Problems+and+Solutions+official&ia=images&iax=images
+                    - listitem [ref=f23e41]:
+                        - link "Videos" [ref=f23e42] [cursor=pointer]:
+                            - /url: /?q=SIAM+Review+Problems+and+Solutions+official&ia=videos&iax=videos
+                    - listitem [ref=f23e43]:
+                        - link "News" [ref=f23e44] [cursor=pointer]:
+                            - /url: /?q=SIAM+Review+Problems+and+Solutions+official&ia=news&iar=news
+                    - listitem [ref=f23e45]:
+                        - generic [ref=f23e46]:
+                            - generic [ref=f23e47] [cursor=pointer]:
+                                - generic [ref=f23e48]: More
+                                - img [ref=f23e50]: ▼
+                            - generic:
+                                - generic:
+                                    - generic:
+                                        - generic:
+                                            - generic:
+                                                - link "Maps":
+                                                    - /url: /?q=SIAM+Review+Problems+and+Solutions+official&iaxm=maps
+                                    - generic:
+                                        - generic:
+                                            - generic:
+                                                - link "Shopping":
+                                                    - /url: /?q=SIAM+Review+Problems+and+Solutions+official&ia=shopping&iax=shopping
+                - list [ref=f23e52]:
+                    - listitem [ref=f23e53]:
+                        - link "Search Assist" [ref=f23e56] [cursor=pointer]:
+                            - /url: /?q=SIAM+Review+Problems+and+Solutions+official&ia=web&assist=true
+                    - listitem [ref=f23e61]:
+                        - link "Duck.ai" [ref=f23e63] [cursor=pointer]:
+                            - /url: /?q=SIAM+Review+Problems+and+Solutions+official&ia=chat
+                    - listitem [ref=f23e67]:
+                        - button "Search Settings ✀" [ref=f23e69] [cursor=pointer]:
+                            - generic [ref=f23e72]: Search Settings
+                            - generic [ref=f23e73]: ✀
+        - generic [ref=f23e80]:
+            - navigation [ref=f23e82]:
+                - generic [ref=f23e85] [cursor=pointer]:
+                    - generic [ref=f23e86]: Protected
+                    - img [ref=f23e94]: ▼
+                - generic [ref=f23e98] [cursor=pointer]:
+                    - generic [ref=f23e99]: All regions
+                    - img [ref=f23e103]: ▼
+                - generic [ref=f23e107] [cursor=pointer]:
+                    - generic [ref=f23e108]: "Safe search: moderate"
+                    - img [ref=f23e109]: ▼
+                - generic [ref=f23e113] [cursor=pointer]:
+                    - generic [ref=f23e114]: Any time
+                    - img [ref=f23e115]: ▼
+            - generic [ref=f23e118]:
+                - list [ref=f23e119]:
+                    - listitem [ref=f23e120]:
+                        - article [ref=f23e121] [cursor=pointer]:
+                            - button [ref=f23e123]
+                            - generic [ref=f23e128]:
+                                - link "Search domain epubs.siam.org" [ref=f23e130]:
+                                    - /url: /?q=SIAM%20Review%20Problems%20and%20Solutions%20official+site:epubs.siam.org
+                                - generic [ref=f23e133]:
+                                    - paragraph [ref=f23e134]: SIAM Publications Library
+                                    - link "https://epubs.siam.org › journal › siread" [ref=f23e135]:
+                                        - /url: https://epubs.siam.org/journal/siread
+                                        - paragraph [ref=f23e137]:
+                                            - generic [ref=f23e138]: https://epubs.siam.org
+                                            - generic [ref=f23e139]: › journal › siread
+                            - heading [level=2] [ref=f23e141]:
+                                - link "SIAM Review - Journal Homepage" [ref=f23e142]:
+                                    - /url: https://epubs.siam.org/journal/siread
+                            - generic [ref=f23e144]: "Book Review: Computational Methods in Optimal Control: Theory and Practice Iguer L. D. Santos"
+                    - listitem [ref=f23e149]:
+                        - article [ref=f23e150] [cursor=pointer]:
+                            - button [ref=f23e152]
+                            - generic [ref=f23e157]:
+                                - link "Search domain siam.org" [ref=f23e159]:
+                                    - /url: /?q=SIAM%20Review%20Problems%20and%20Solutions%20official+site:www.siam.org
+                                - generic [ref=f23e162]:
+                                    - paragraph [ref=f23e163]: SIAM
+                                    - link "https://www.siam.org › publications › siam-journals › siam-review" [ref=f23e164]:
+                                        - /url: https://www.siam.org/publications/siam-journals/siam-review/
+                                        - paragraph [ref=f23e166]:
+                                            - generic [ref=f23e167]: https://www.siam.org
+                                            - generic [ref=f23e168]: › publications › siam-journals › siam-review
+                            - heading [level=2] [ref=f23e170]:
+                                - link "SIAM Review | SIAM" [ref=f23e171]:
+                                    - /url: https://www.siam.org/publications/siam-journals/siam-review/
+                            - generic [ref=f23e173]: SIAM Review (SIREV) is SIAM's flagship journal and includes articles of broad interest to the community, including book reviews and papers on novel topics.
+                    - listitem [ref=f23e178]:
+                        - article [ref=f23e179] [cursor=pointer]:
+                            - button [ref=f23e181]
+                            - generic [ref=f23e186]:
+                                - link "Search domain epubs.siam.org" [ref=f23e188]:
+                                    - /url: /?q=SIAM%20Review%20Problems%20and%20Solutions%20official+site:epubs.siam.org
+                                - generic [ref=f23e191]:
+                                    - paragraph [ref=f23e192]: SIAM Publications Library
+                                    - link "https://epubs.siam.org › doi › 10.1137 › SIREAD000039000001000123000001" [ref=f23e193]:
+                                        - /url: https://epubs.siam.org/doi/10.1137/SIREAD000039000001000123000001
+                                        - paragraph [ref=f23e195]:
+                                            - generic [ref=f23e196]: https://epubs.siam.org
+                                            - generic [ref=f23e197]: › doi › 10.1137 › SIREAD000039000001000123000001
+                            - heading [level=2] [ref=f23e199]:
+                                - link "Problems and Solutions | SIAM Review" [ref=f23e200]:
+                                    - /url: https://epubs.siam.org/doi/10.1137/SIREAD000039000001000123000001
+                            - generic [ref=f23e202]: ProblemsAn Inequality (Problem 97-1) Horst Alzer and Joel Benner p. 123 An Integral for Valuation of Spread Options (Problem 97-2) P. Krishnarao p. 123 Composition Formulae for Boundary Operators (Problem 97-3) Christian Constanda pp. 124-125 Existence and Uniqueness for a Varitional Problem (Problem 97-4) Yongji Wang pp.125-126 A Laguerre Polynomial Indentity (Problem 97-5) C. C. Grosjean and ...
+                    - listitem [ref=f23e207]:
+                        - article [ref=f23e208] [cursor=pointer]:
+                            - button [ref=f23e210]
+                            - generic [ref=f23e215]:
+                                - link "Search domain dl.acm.org" [ref=f23e217]:
+                                    - /url: /?q=SIAM%20Review%20Problems%20and%20Solutions%20official+site:dl.acm.org
+                                - generic [ref=f23e220]:
+                                    - paragraph [ref=f23e221]: ACM Digital Library
+                                    - link "https://dl.acm.org › doi › 10.1137 › SIREAD000040000001000118000001" [ref=f23e222]:
+                                        - /url: https://dl.acm.org/doi/10.1137/SIREAD000040000001000118000001
+                                        - paragraph [ref=f23e224]:
+                                            - generic [ref=f23e225]: https://dl.acm.org
+                                            - generic [ref=f23e226]: › doi › 10.1137 › SIREAD000040000001000118000001
+                            - heading [level=2] [ref=f23e228]:
+                                - link "Problems and Solutions | SIAM Review - ACM Digital Library" [ref=f23e229]:
+                                    - /url: https://dl.acm.org/doi/10.1137/SIREAD000040000001000118000001
+                            - generic [ref=f23e231]: Home Browse by Title Periodicals SIAM Review Vol. 40, No. 1 Problems and Solutions article
+                    - listitem [ref=f23e236]:
+                        - article [ref=f23e237] [cursor=pointer]:
+                            - button [ref=f23e239]
+                            - generic [ref=f23e244]:
+                                - link "Search domain dl.acm.org" [ref=f23e246]:
+                                    - /url: /?q=SIAM%20Review%20Problems%20and%20Solutions%20official+site:dl.acm.org
+                                - generic [ref=f23e249]:
+                                    - paragraph [ref=f23e250]: ACM Digital Library
+                                    - link "https://dl.acm.org › doi › 10.1137 › SIREAD000039000001000123000001" [ref=f23e251]:
+                                        - /url: https://dl.acm.org/doi/10.1137/SIREAD000039000001000123000001
+                                        - paragraph [ref=f23e253]:
+                                            - generic [ref=f23e254]: https://dl.acm.org
+                                            - generic [ref=f23e255]: › doi › 10.1137 › SIREAD000039000001000123000001
+                            - heading [level=2] [ref=f23e257]:
+                                - link "Problems and Solutions | SIAM Review - ACM Digital Library" [ref=f23e258]:
+                                    - /url: https://dl.acm.org/doi/10.1137/SIREAD000039000001000123000001
+                            - generic [ref=f23e260]: Problems An Inequality (Problem 97-1) Horst Alzer and Joel Benner p. 123 An Integral for Valuation of Spread Options (Problem 97-2) P. Krishnarao p. 123 Composition Formulae for Boundary Operators (Problem 97-3) Christian Constanda pp. 124-125 Existence ...
+                    - listitem [ref=f23e265]:
+                        - article [ref=f23e266] [cursor=pointer]:
+                            - button [ref=f23e268]
+                            - generic [ref=f23e273]:
+                                - link "Search domain siam.org" [ref=f23e275]:
+                                    - /url: /?q=SIAM%20Review%20Problems%20and%20Solutions%20official+site:www.siam.org
+                                - generic [ref=f23e278]:
+                                    - paragraph [ref=f23e279]: SIAM
+                                    - link "https://www.siam.org › publications › siam-news › articles › looking-back-at-60-volumes-of-siam-review" [ref=f23e280]:
+                                        - /url: https://www.siam.org/publications/siam-news/articles/looking-back-at-60-volumes-of-siam-review/
+                                        - paragraph [ref=f23e282]:
+                                            - generic [ref=f23e283]: https://www.siam.org
+                                            - generic [ref=f23e284]: › publications › siam-news › articles › looking-back-at-60-volumes-of-siam-review
+                            - heading [level=2] [ref=f23e286]:
+                                - link "Looking Back at 60 Volumes of SIAM Review | SIAM" [ref=f23e287]:
+                                    - /url: https://www.siam.org/publications/siam-news/articles/looking-back-at-60-volumes-of-siam-review/
+                            - generic [ref=f23e289]: SIAM Review 's first 60 volumes are a microcosm of applied mathematics and computational science from 1959 until now. As such, they provide a valuable historical record, both in the technical content and the news items about early SIAM activities.
+                    - listitem [ref=f23e294]:
+                        - article [ref=f23e295] [cursor=pointer]:
+                            - button [ref=f23e297]
+                            - generic [ref=f23e302]:
+                                - link "Search domain dlnext.acm.org" [ref=f23e304]:
+                                    - /url: /?q=SIAM%20Review%20Problems%20and%20Solutions%20official+site:dlnext.acm.org
+                                - generic [ref=f23e307]:
+                                    - paragraph [ref=f23e308]: ACM Digital Library
+                                    - link "https://dlnext.acm.org › journal › sirev" [ref=f23e309]:
+                                        - /url: https://dlnext.acm.org/journal/sirev
+                                        - paragraph [ref=f23e311]:
+                                            - generic [ref=f23e312]: https://dlnext.acm.org
+                                            - generic [ref=f23e313]: › journal › sirev
+                            - heading [level=2] [ref=f23e315]:
+                                - link "SIAM REVIEW Home" [ref=f23e316]:
+                                    - /url: https://dlnext.acm.org/journal/sirev
+                            - generic [ref=f23e318]: Society for Industrial and Applied Mathematics 3600 University City Science Center Philadelphia, PA United States
+                    - listitem [ref=f23e322]:
+                        - article [ref=f23e323] [cursor=pointer]:
+                            - button [ref=f23e325]
+                            - generic [ref=f23e330]:
+                                - link "Search domain ftp.math.utah.edu" [ref=f23e332]:
+                                    - /url: /?q=SIAM%20Review%20Problems%20and%20Solutions%20official+site:ftp.math.utah.edu
+                                - generic [ref=f23e335]:
+                                    - paragraph [ref=f23e336]: Utah Math FTP
+                                    - link "https://ftp.math.utah.edu › pub › tex › bib › toc › siamreview.html" [ref=f23e337]:
+                                        - /url: https://ftp.math.utah.edu/pub/tex/bib/toc/siamreview.html
+                                        - paragraph [ref=f23e339]:
+                                            - generic [ref=f23e340]: https://ftp.math.utah.edu
+                                            - generic [ref=f23e341]: › pub › tex › bib › toc › siamreview.html
+                            - heading [level=2] [ref=f23e343]:
+                                - link "SIAM Review - University of Utah" [ref=f23e344]:
+                                    - /url: https://ftp.math.utah.edu/pub/tex/bib/toc/siamreview.html
+                            - generic [ref=f23e346]: SIAM Review Volume 2, Number 1, 1960 D. L. Thomsen, Jr. Report of the President for 1959 . . . . 1--2 R. E. Gaskell Professional Mathematicians in Government and ...
+                    - listitem [ref=f23e351]:
+                        - article [ref=f23e352] [cursor=pointer]:
+                            - button [ref=f23e354]
+                            - generic [ref=f23e359]:
+                                - link "Search domain jstor.org" [ref=f23e361]:
+                                    - /url: /?q=SIAM%20Review%20Problems%20and%20Solutions%20official+site:www.jstor.org
+                                - generic [ref=f23e364]:
+                                    - paragraph [ref=f23e365]: JSTOR
+                                    - link "https://www.jstor.org › journal › siamreview" [ref=f23e366]:
+                                        - /url: https://www.jstor.org/journal/siamreview
+                                        - paragraph [ref=f23e368]:
+                                            - generic [ref=f23e369]: https://www.jstor.org
+                                            - generic [ref=f23e370]: › journal › siamreview
+                            - heading [level=2] [ref=f23e372]:
+                                - link "SIAM Review | JSTOR" [ref=f23e373]:
+                                    - /url: https://www.jstor.org/journal/siamreview
+                            - generic [ref=f23e375]: Articles include expository or survey papers focusing on important advances in applied or computational mathematics, or papers outlining the mathematical and computational challenges in scientific or engineering applications. Other features include essays, book reviews, case studies from industry, classroom notes, and problems and solutions.
+                    - listitem [ref=f23e380]:
+                        - article [ref=f23e381] [cursor=pointer]:
+                            - button [ref=f23e383]
+                            - generic [ref=f23e388]:
+                                - link "Search domain jstor.org" [ref=f23e390]:
+                                    - /url: /?q=SIAM%20Review%20Problems%20and%20Solutions%20official+site:www.jstor.org
+                                - generic [ref=f23e393]:
+                                    - paragraph [ref=f23e394]: JSTOR
+                                    - link "https://www.jstor.org › stable › 2029428" [ref=f23e395]:
+                                        - /url: https://www.jstor.org/stable/2029428
+                                        - paragraph [ref=f23e397]:
+                                            - generic [ref=f23e398]: https://www.jstor.org
+                                            - generic [ref=f23e399]: › stable › 2029428
+                            - heading [level=2] [ref=f23e401]:
+                                - link "Front Matter - JSTOR" [ref=f23e402]:
+                                    - /url: https://www.jstor.org/stable/2029428
+                            - generic [ref=f23e404]: SIAM REVIEW applied mathematicians are also welcomed. Other features are problems and solutions, book reviews, and the chronicle. Published quarterly. Subscription $52.00. THEORY OF A translation of the Russian journal Teoriya Veroyatnostei i ee Primeneniya, published by SIAM.
+                    - listitem [ref=f23e409]:
+                        - generic [ref=f23e417]:
+                            - generic [ref=f23e418]:
+                                - generic [ref=f23e420]:
+                                    - text: Generate answer for
+                                    - strong [ref=f23e421]: SIAM Review Problems and Solutions official
+                                - generic [ref=f23e422]:
+                                    - button "Learn More About Assist" [ref=f23e423] [cursor=pointer]
+                                    - button "Assist Settings" [ref=f23e427] [cursor=pointer]
+                            - button "Assist" [ref=f23e430] [cursor=pointer]: Search Assist
+                    - listitem [ref=f23e434]:
+                        - generic [ref=f23e436]:
+                            - paragraph [ref=f23e437]: Searches related to SIAM Review Problems and Solutions official
+                            - generic [ref=f23e438]:
+                                - list [ref=f23e439]:
+                                    - listitem [ref=f23e440]:
+                                        - link "siam journal reviews" [ref=f23e441] [cursor=pointer]:
+                                            - /url: "?q=siam%20journal%20reviews&origin=related"
+                                    - listitem [ref=f23e444]:
+                                        - link "siam book review" [ref=f23e445] [cursor=pointer]:
+                                            - /url: "?q=siam%20book%20review&origin=related"
+                                    - listitem [ref=f23e448]:
+                                        - link "siam journal articles" [ref=f23e449] [cursor=pointer]:
+                                            - /url: "?q=siam%20journal%20articles&origin=related"
+                                - list [ref=f23e452]:
+                                    - listitem [ref=f23e453]:
+                                        - link "siam reviews" [ref=f23e454] [cursor=pointer]:
+                                            - /url: "?q=siam%20reviews&origin=related"
+                                    - listitem [ref=f23e457]:
+                                        - link "siam volume 67" [ref=f23e458] [cursor=pointer]:
+                                            - /url: "?q=siam%20volume%2067&origin=related"
+                                    - listitem [ref=f23e461]:
+                                        - link "siam journal" [ref=f23e462] [cursor=pointer]:
+                                            - /url: "?q=siam%20journal&origin=related"
+                - button "More results" [ref=f23e467] [cursor=pointer]
+        - list [ref=f23e470]:
+            - button "Close menu" [ref=f23e471] [cursor=pointer]
+            - list [ref=f23e475]:
+                - listitem [ref=f23e476]: Search
+                - listitem [ref=f23e477]:
+                    - link "Homepage" [ref=f23e478] [cursor=pointer]:
+                        - /url: https://start.duckduckgo.com/
+                - listitem [ref=f23e479]:
+                    - link "Themes" [ref=f23e480] [cursor=pointer]:
+                        - /url: /settings#appearance
+                - listitem [ref=f23e481]:
+                    - link "Settings" [ref=f23e482] [cursor=pointer]:
+                        - /url: /settings
+            - list [ref=f23e483]:
+                - listitem [ref=f23e484]: Share Feedback
+                - listitem [ref=f23e485]:
+                    - generic [ref=f23e488]:
+                        - button "Positive feedback" [ref=f23e489] [cursor=pointer]
+                        - button "Negative feedback" [ref=f23e493] [cursor=pointer]
+            - list [ref=f23e497]:
+                - listitem [ref=f23e498]: Downloads
+                - listitem [ref=f23e499]:
+                    - link "iOS Browser" [ref=f23e500] [cursor=pointer]:
+                        - /url: https://apps.apple.com/app/duckduckgo-private-browser/id663592361?platform=iphone&pt=866401&mt=8&ct=serp-atb-serp
+                - listitem [ref=f23e501]:
+                    - link "Android Browser" [ref=f23e502] [cursor=pointer]:
+                        - /url: https://play.google.com/store/apps/details?id=com.duckduckgo.mobile.android&referrer=utm_campaign%3Dserp-atb-serp%26origin%3Dfunnel_playstore_searchresults
+                - listitem [ref=f23e503]:
+                    - link "Mac Browser" [ref=f23e504] [cursor=pointer]:
+                        - /url: /mac?origin=funnel_browser_searchresults
+                - listitem [ref=f23e505]:
+                    - link "Windows Browser" [ref=f23e506] [cursor=pointer]:
+                        - /url: /windows?origin=funnel_browser_searchresults
+                - listitem [ref=f23e507]: Browser Extensions
+            - list [ref=f23e508]:
+                - listitem [ref=f23e509]: More From DuckDuckGo
+                - listitem [ref=f23e510]:
+                    - generic [ref=f23e513]:
+                        - button "Dismiss promotion" [ref=f23e514] [cursor=pointer]
+                        - generic [ref=f23e517]:
+                            - paragraph [ref=f23e519]: Upgrade to our Private Browser
+                            - paragraph [ref=f23e531]: Fast. Secure. Free.
+                        - link "Install Mac Browser" [ref=f23e532] [cursor=pointer]:
+                            - /url: /mac
+                - listitem [ref=f23e535]:
+                    - link "DuckDuckGo Subscription" [ref=f23e536] [cursor=pointer]:
+                        - /url: /pro?origin=funnel_pro_searchresults
+                - listitem [ref=f23e537]:
+                    - link "Duck.ai" [ref=f23e538] [cursor=pointer]:
+                        - /url: https://duck.ai
+                - listitem [ref=f23e539]:
+                    - link "Email Protection" [ref=f23e540] [cursor=pointer]:
+                        - /url: /email
+                - listitem [ref=f23e541]:
+                    - link "Newsletter" [ref=f23e542] [cursor=pointer]:
+                        - /url: /newsletter
+                - listitem [ref=f23e543]:
+                    - link "Blog" [ref=f23e544] [cursor=pointer]:
+                        - /url: /blog
+                - listitem [ref=f23e545]:
+                    - link "Podcast" [ref=f23e546] [cursor=pointer]:
+                        - /url: https://insideduckduckgo.substack.com/?showWelcome=true
+                - listitem [ref=f23e547]:
+                    - link "Collaborations" [ref=f23e548] [cursor=pointer]:
+                        - /url: /collaborations
+            - list [ref=f23e549]:
+                - listitem [ref=f23e550]: Learn More
+                - listitem [ref=f23e551]:
+                    - link "What’s New" [ref=f23e552] [cursor=pointer]:
+                        - /url: /updates
+                - listitem [ref=f23e553]:
+                    - link "Compare Privacy" [ref=f23e554] [cursor=pointer]:
+                        - /url: /compare-privacy
+                - listitem [ref=f23e555]:
+                    - link "About Our Browser" [ref=f23e556] [cursor=pointer]:
+                        - /url: /app
+                - listitem [ref=f23e557]:
+                    - link "About DuckDuckGo" [ref=f23e558] [cursor=pointer]:
+                        - /url: /about
+            - list [ref=f23e559]:
+                - listitem [ref=f23e560]: Other Resources
+                - listitem [ref=f23e561]:
+                    - link "Help" [ref=f23e562] [cursor=pointer]:
+                        - /url: /duckduckgo-help-pages
+                - listitem [ref=f23e563]:
+                    - link "Community" [ref=f23e564] [cursor=pointer]:
+                        - /url: https://www.reddit.com/r/duckduckgo/
+                - listitem [ref=f23e565]:
+                    - link "Careers" [ref=f23e566] [cursor=pointer]:
+                        - /url: /careers
+                - listitem [ref=f23e567]:
+                    - link "Privacy Policy" [ref=f23e568] [cursor=pointer]:
+                        - /url: /privacy
+                - listitem [ref=f23e569]:
+                    - link "Terms of Service" [ref=f23e570] [cursor=pointer]:
+                        - /url: /terms
+                - listitem [ref=f23e571]:
+                    - link "Press Kit" [ref=f23e572] [cursor=pointer]:
+                        - /url: /press
+                - listitem [ref=f23e573]:
+                    - link "Advertise on Search" [ref=f23e574] [cursor=pointer]:
+                        - /url: /duckduckgo-help-pages/company/advertise-on-duckduckgo-search
+    - generic [ref=f23e578]:
+        - generic [ref=f23e580]:
+            - generic [ref=f23e597]:
+                - heading "Get Our Mac Browser" [level=3] [ref=f23e598]
+                - paragraph [ref=f23e599]: Protect your data as you search, browse, and use AI.
+            - link "Download" [ref=f23e600] [cursor=pointer]:
+                - /url: https://duckduckgo.com/mac?origin=funnel_browser_searchresults__footercard
+        - generic [ref=f23e604]:
+            - generic [ref=f23e605]:
+                - heading "Learn More" [level=3] [ref=f23e606]
+                - list [ref=f23e607]:
+                    - listitem [ref=f23e608]:
+                        - link "What's New" [ref=f23e609] [cursor=pointer]:
+                            - /url: https://duckduckgo.com/updates
+                    - listitem [ref=f23e610]:
+                        - link "About Browser" [ref=f23e611] [cursor=pointer]:
+                            - /url: https://duckduckgo.com/app
+                    - listitem [ref=f23e612]:
+                        - link "Compare Privacy" [ref=f23e613] [cursor=pointer]:
+                            - /url: https://duckduckgo.com/compare-privacy
+                    - listitem [ref=f23e614]:
+                        - link "Help Pages" [ref=f23e615] [cursor=pointer]:
+                            - /url: https://duckduckgo.com/duckduckgo-help-pages/
+            - generic [ref=f23e616]:
+                - heading "Get More" [level=3] [ref=f23e617]
+                - list [ref=f23e618]:
+                    - listitem [ref=f23e619]:
+                        - link "Subscription" [ref=f23e620] [cursor=pointer]:
+                            - /url: https://duckduckgo.com/pro
+                    - listitem [ref=f23e621]:
+                        - link "Email Protection" [ref=f23e622] [cursor=pointer]:
+                            - /url: https://duckduckgo.com/email
+                    - listitem [ref=f23e623]:
+                        - generic [ref=f23e624]:
+                            - link "Podcast" [ref=f23e626] [cursor=pointer]:
+                                - /url: https://insideduckduckgo.substack.com/?showWelcome=true
+                            - generic [ref=f23e627]:
+                                - text: "&"
+                                - link "Newsletter" [ref=f23e628] [cursor=pointer]:
+                                    - /url: https://duckduckgo.com/newsletter
+                    - listitem [ref=f23e629]:
+                        - link "Collaborations" [ref=f23e630] [cursor=pointer]:
+                            - /url: https://duckduckgo.com/collaborations
+    - button "Share Feedback" [ref=f23e635] [cursor=pointer]

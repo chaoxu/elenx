@@ -1,0 +1,408 @@
+- generic [active] [ref=f17e1]:
+    - generic [ref=f17e2]:
+        - generic [ref=f17e4]:
+            - generic [ref=f17e5]:
+                - generic [ref=f17e6]:
+                    - link "DuckDuckGo home" [ref=f17e7] [cursor=pointer]:
+                        - /url: /
+                        - generic [ref=f17e8]: DuckDuckGo
+                    - generic [ref=f17e15]:
+                        - combobox "Search privately" [ref=f17e17]: site:drops.dagstuhl.de Dagstuhl Reports
+                        - button "search" [ref=f17e19] [cursor=pointer]
+                - button "Open menu" [ref=f17e23] [cursor=pointer]
+            - navigation [ref=f17e31]:
+                - list [ref=f17e32]:
+                    - listitem [ref=f17e33]:
+                        - link "All" [ref=f17e34] [cursor=pointer]:
+                            - /url: /?q=site%3Adrops.dagstuhl.de+Dagstuhl+Reports&ia=web
+                    - listitem [ref=f17e37]:
+                        - link "Images" [ref=f17e38] [cursor=pointer]:
+                            - /url: /?q=site%3Adrops.dagstuhl.de+Dagstuhl+Reports&ia=images&iax=images
+                    - listitem [ref=f17e39]:
+                        - link "Videos" [ref=f17e40] [cursor=pointer]:
+                            - /url: /?q=site%3Adrops.dagstuhl.de+Dagstuhl+Reports&ia=videos&iax=videos
+                    - listitem [ref=f17e41]:
+                        - link "News" [ref=f17e42] [cursor=pointer]:
+                            - /url: /?q=site%3Adrops.dagstuhl.de+Dagstuhl+Reports&ia=news&iar=news
+                    - listitem [ref=f17e43]:
+                        - generic [ref=f17e44]:
+                            - generic [ref=f17e45] [cursor=pointer]:
+                                - generic [ref=f17e46]: More
+                                - img [ref=f17e48]: ▼
+                            - generic:
+                                - generic:
+                                    - generic:
+                                        - generic:
+                                            - generic:
+                                                - link "Maps":
+                                                    - /url: /?q=site%3Adrops.dagstuhl.de+Dagstuhl+Reports&iaxm=maps
+                                    - generic:
+                                        - generic:
+                                            - generic:
+                                                - link "Shopping":
+                                                    - /url: /?q=site%3Adrops.dagstuhl.de+Dagstuhl+Reports&ia=shopping&iax=shopping
+                - list [ref=f17e50]:
+                    - listitem [ref=f17e51]:
+                        - link "Duck.ai" [ref=f17e53] [cursor=pointer]:
+                            - /url: /?q=site%3Adrops.dagstuhl.de+Dagstuhl+Reports&ia=chat
+                    - listitem [ref=f17e57]:
+                        - button "Search Settings ✀" [ref=f17e59] [cursor=pointer]:
+                            - generic [ref=f17e62]: Search Settings
+                            - generic [ref=f17e63]: ✀
+        - generic [ref=f17e70]:
+            - navigation [ref=f17e72]:
+                - generic [ref=f17e75] [cursor=pointer]:
+                    - generic [ref=f17e76]: Protected
+                    - img [ref=f17e84]: ▼
+                - generic [ref=f17e88] [cursor=pointer]:
+                    - generic [ref=f17e89]: All regions
+                    - img [ref=f17e93]: ▼
+                - generic [ref=f17e97] [cursor=pointer]:
+                    - generic [ref=f17e98]: "Safe search: moderate"
+                    - img [ref=f17e99]: ▼
+                - generic [ref=f17e103] [cursor=pointer]:
+                    - generic [ref=f17e104]: Any time
+                    - img [ref=f17e105]: ▼
+            - generic [ref=f17e108]:
+                - list [ref=f17e109]:
+                    - listitem [ref=f17e110]:
+                        - generic [ref=f17e111]:
+                            - generic [ref=f17e114]:
+                                - text: Only showing results from
+                                - generic [ref=f17e115]: drops.dagstuhl.de
+                            - button "Show all results" [ref=f17e117] [cursor=pointer]
+                    - listitem [ref=f17e118]:
+                        - article [ref=f17e119] [cursor=pointer]:
+                            - button [ref=f17e121]
+                            - generic [ref=f17e126]:
+                                - link "Search domain drops.dagstuhl.de" [ref=f17e128]:
+                                    - /url: /?q=site%3Adrops.dagstuhl.de%20Dagstuhl%20Reports
+                                - generic [ref=f17e131]:
+                                    - paragraph [ref=f17e132]: DROPS
+                                    - link "https://drops.dagstuhl.de › entities › journal › DagRep" [ref=f17e133]:
+                                        - /url: https://drops.dagstuhl.de/entities/journal/DagRep
+                                        - paragraph [ref=f17e135]:
+                                            - generic [ref=f17e136]: https://drops.dagstuhl.de
+                                            - generic [ref=f17e137]: › entities › journal › DagRep
+                            - heading [level=2] [ref=f17e139]:
+                                - link "Dagstuhl Reports" [ref=f17e140]:
+                                    - /url: https://drops.dagstuhl.de/entities/journal/DagRep
+                            - generic [ref=f17e142]: "The periodical Dagstuhl Reports documents the program and the results of Dagstuhl Seminars and Dagstuhl Perspectives Workshops. In principle, for each Dagstuhl Seminar or Dagstuhl Perspectives Workshop a report is published that contains the following: an executive summary of the seminar program and the fundamental results, an overview of the talks given during the seminar (summarized as talk ..."
+                    - listitem [ref=f17e147]:
+                        - article [ref=f17e148] [cursor=pointer]:
+                            - button [ref=f17e150]
+                            - generic [ref=f17e155]:
+                                - link "Search domain drops.dagstuhl.de" [ref=f17e157]:
+                                    - /url: /?q=site%3Adrops.dagstuhl.de%20Dagstuhl%20Reports
+                                - generic [ref=f17e160]:
+                                    - paragraph [ref=f17e161]: DROPS
+                                    - link "https://drops.dagstuhl.de › entities › volume › DagRep-volume-13" [ref=f17e162]:
+                                        - /url: https://drops.dagstuhl.de/entities/volume/DagRep-volume-13
+                                        - paragraph [ref=f17e164]:
+                                            - generic [ref=f17e165]: https://drops.dagstuhl.de
+                                            - generic [ref=f17e166]: › entities › volume › DagRep-volume-13
+                            - heading [level=2] [ref=f17e168]:
+                                - link "Dagstuhl Reports, Volume 13" [ref=f17e169]:
+                                    - /url: https://drops.dagstuhl.de/entities/volume/DagRep-volume-13
+                            - generic [ref=f17e171]: Dagstuhl Seminars and Workshops, January 2023 Dagstuhl Reports, Volume 13, Issue 1 Dagstuhl Seminars 23021, 23022, 23031, 23041, 23042, 23051
+                    - listitem [ref=f17e176]:
+                        - article [ref=f17e177] [cursor=pointer]:
+                            - button [ref=f17e179]
+                            - generic [ref=f17e184]:
+                                - link "Search domain drops.dagstuhl.de" [ref=f17e186]:
+                                    - /url: /?q=site%3Adrops.dagstuhl.de%20Dagstuhl%20Reports
+                                - generic [ref=f17e189]:
+                                    - paragraph [ref=f17e190]: DROPS
+                                    - link "https://drops.dagstuhl.de › entities › volume › DagRep-volume-15" [ref=f17e191]:
+                                        - /url: https://drops.dagstuhl.de/entities/volume/DagRep-volume-15
+                                        - paragraph [ref=f17e193]:
+                                            - generic [ref=f17e194]: https://drops.dagstuhl.de
+                                            - generic [ref=f17e195]: › entities › volume › DagRep-volume-15
+                            - heading [level=2] [ref=f17e197]:
+                                - link "Dagstuhl Reports, Volume 15" [ref=f17e198]:
+                                    - /url: https://drops.dagstuhl.de/entities/volume/DagRep-volume-15
+                            - generic [ref=f17e200]: Dagstuhl Reports, Volume 15, Issue 3 Dagstuhl Seminars 25101, 25102 (Perspectives Workshop), 25111, 25112, 25121, 25122 (Perspectives Workshop), 25131, 25132, 25141, 25142
+                    - listitem [ref=f17e205]:
+                        - article [ref=f17e206] [cursor=pointer]:
+                            - button [ref=f17e208]
+                            - generic [ref=f17e213]:
+                                - link "Search domain drops.dagstuhl.de" [ref=f17e215]:
+                                    - /url: /?q=site%3Adrops.dagstuhl.de%20Dagstuhl%20Reports
+                                - generic [ref=f17e218]:
+                                    - paragraph [ref=f17e219]: DROPS
+                                    - link "https://drops.dagstuhl.de › storage › 04dagstuhl-reports › volume15 › issue02 › DagRep.15.2.i › DagRep.15.2.i.pdf" [ref=f17e220]:
+                                        - /url: https://drops.dagstuhl.de/storage/04dagstuhl-reports/volume15/issue02/DagRep.15.2.i/DagRep.15.2.i.pdf
+                                        - paragraph [ref=f17e222]:
+                                            - generic [ref=f17e223]: https://drops.dagstuhl.de
+                                            - generic [ref=f17e224]: › storage › 04dagstuhl-reports › volume15 › issue02 › DagRep.15.2.i › DagRep.15.2.i.pdf
+                            - heading [level=2] [ref=f17e226]:
+                                - link "PDF Dagstuhl Reports, Vol. , Issue ," [ref=f17e227]:
+                                    - /url: https://drops.dagstuhl.de/storage/04dagstuhl-reports/volume15/issue02/DagRep.15.2.i/DagRep.15.2.i.pdf
+                                    - generic [ref=f17e228]:
+                                        - generic [ref=f17e229]: PDF
+                                        - text: Dagstuhl Reports, Vol. , Issue ,
+                            - generic [ref=f17e230]: "In principal, for each Dagstuhl Seminar or Dagstuhl Perspectives Workshop a report is published that contains the following: an executive summary of the seminar program and the fundamental results, an overview of the talks given during the seminar (summarized as talk abstracts), and summaries from working groups (if applicable)."
+                    - listitem [ref=f17e235]:
+                        - article [ref=f17e236] [cursor=pointer]:
+                            - button [ref=f17e238]
+                            - generic [ref=f17e243]:
+                                - link "Search domain drops.dagstuhl.de" [ref=f17e245]:
+                                    - /url: /?q=site%3Adrops.dagstuhl.de%20Dagstuhl%20Reports
+                                - generic [ref=f17e248]:
+                                    - paragraph [ref=f17e249]: DROPS
+                                    - link "https://drops.dagstuhl.de › entities › issue › DagRep-volume-13-issue-6" [ref=f17e250]:
+                                        - /url: https://drops.dagstuhl.de/entities/issue/DagRep-volume-13-issue-6
+                                        - paragraph [ref=f17e252]:
+                                            - generic [ref=f17e253]: https://drops.dagstuhl.de
+                                            - generic [ref=f17e254]: › entities › issue › DagRep-volume-13-issue-6
+                            - heading [level=2] [ref=f17e256]:
+                                - link "Dagstuhl Reports, Volume 13, Issue 6" [ref=f17e257]:
+                                    - /url: https://drops.dagstuhl.de/entities/issue/DagRep-volume-13-issue-6
+                            - generic [ref=f17e259]: This report documents the program and the outcomes of Dagstuhl Seminar 23241 "Scalable Analysis of Probabilistic Models and Programs". The seminar brought together researchers from probabilistic graphical models, verification of probabilistic programming languages, and probabilistic planning. The communities bring vastly different perspectives on the methods and goals of inference under ...
+                    - listitem [ref=f17e264]:
+                        - article [ref=f17e265] [cursor=pointer]:
+                            - button [ref=f17e267]
+                            - generic [ref=f17e272]:
+                                - link "Search domain drops.dagstuhl.de" [ref=f17e274]:
+                                    - /url: /?q=site%3Adrops.dagstuhl.de%20Dagstuhl%20Reports
+                                - generic [ref=f17e277]:
+                                    - paragraph [ref=f17e278]: DROPS
+                                    - link "https://drops.dagstuhl.de › entities › issue › DagRep-volume-12-issue-12" [ref=f17e279]:
+                                        - /url: https://drops.dagstuhl.de/entities/issue/DagRep-volume-12-issue-12
+                                        - paragraph [ref=f17e281]:
+                                            - generic [ref=f17e282]: https://drops.dagstuhl.de
+                                            - generic [ref=f17e283]: › entities › issue › DagRep-volume-12-issue-12
+                            - heading [level=2] [ref=f17e285]:
+                                - link "Dagstuhl Reports, Volume 12, Issue 12" [ref=f17e286]:
+                                    - /url: https://drops.dagstuhl.de/entities/issue/DagRep-volume-12-issue-12
+                            - generic [ref=f17e288]: Dagstuhl Reports, Volume 12, Issue 12, pp. 1-75, Schloss Dagstuhl - Leibniz-Zentrum für Informatik (2023)
+                    - listitem [ref=f17e293]:
+                        - article [ref=f17e294] [cursor=pointer]:
+                            - button [ref=f17e296]
+                            - generic [ref=f17e301]:
+                                - link "Search domain drops.dagstuhl.de" [ref=f17e303]:
+                                    - /url: /?q=site%3Adrops.dagstuhl.de%20Dagstuhl%20Reports
+                                - generic [ref=f17e306]:
+                                    - paragraph [ref=f17e307]: DROPS
+                                    - link "https://drops.dagstuhl.de" [ref=f17e308]:
+                                        - /url: https://drops.dagstuhl.de/
+                                        - paragraph [ref=f17e310]:
+                                            - generic [ref=f17e311]: https://drops.dagstuhl.de
+                            - heading [level=2] [ref=f17e313]:
+                                - link "Dagstuhl - DROPS" [ref=f17e314]:
+                                    - /url: https://drops.dagstuhl.de/
+                            - generic [ref=f17e316]: "Editors: Fernando Batista, Eugénio Ribeiro, Ricardo Ribeiro, and André L. Santos Dagstuhl Seminars and Workshops, December 2025 Dagstuhl Reports, Volume 15, Issue 12 Dagstuhl Seminar 25511 Dagstuhl Seminars and Workshops, November 2025 Dagstuhl Reports, Volume 15, Issue 11 Dagstuhl Seminars 25451, 25452, 25461, 25471, 25491, 25492"
+                    - listitem [ref=f17e321]:
+                        - article [ref=f17e322] [cursor=pointer]:
+                            - button [ref=f17e324]
+                            - generic [ref=f17e329]:
+                                - link "Search domain drops.dagstuhl.de" [ref=f17e331]:
+                                    - /url: /?q=site%3Adrops.dagstuhl.de%20Dagstuhl%20Reports
+                                - generic [ref=f17e334]:
+                                    - paragraph [ref=f17e335]: DROPS
+                                    - link "https://drops.dagstuhl.de › entities › volume › DagRep-volume-14" [ref=f17e336]:
+                                        - /url: https://drops.dagstuhl.de/entities/volume/DagRep-volume-14
+                                        - paragraph [ref=f17e338]:
+                                            - generic [ref=f17e339]: https://drops.dagstuhl.de
+                                            - generic [ref=f17e340]: › entities › volume › DagRep-volume-14
+                            - heading [level=2] [ref=f17e342]:
+                                - link "Dagstuhl Reports, Volume 14" [ref=f17e343]:
+                                    - /url: https://drops.dagstuhl.de/entities/volume/DagRep-volume-14
+                            - generic [ref=f17e345]: Dagstuhl Seminars and Workshops, January 2024 Dagstuhl Reports, Volume 14, Issue 1 Dagstuhl Seminars 24021, 24031, 24032, 24041, 24042, 24051, 24052
+                    - listitem [ref=f17e350]:
+                        - article [ref=f17e351] [cursor=pointer]:
+                            - button [ref=f17e353]
+                            - generic [ref=f17e358]:
+                                - link "Search domain drops.dagstuhl.de" [ref=f17e360]:
+                                    - /url: /?q=site%3Adrops.dagstuhl.de%20Dagstuhl%20Reports
+                                - generic [ref=f17e363]:
+                                    - paragraph [ref=f17e364]: DROPS
+                                    - link "https://drops.dagstuhl.de › entities › issue › DagRep-volume-14-issue-7" [ref=f17e365]:
+                                        - /url: https://drops.dagstuhl.de/entities/issue/DagRep-volume-14-issue-7
+                                        - paragraph [ref=f17e367]:
+                                            - generic [ref=f17e368]: https://drops.dagstuhl.de
+                                            - generic [ref=f17e369]: › entities › issue › DagRep-volume-14-issue-7
+                            - heading [level=2] [ref=f17e371]:
+                                - link "Dagstuhl Reports, Volume 14, Issue 7" [ref=f17e372]:
+                                    - /url: https://drops.dagstuhl.de/entities/issue/DagRep-volume-14-issue-7
+                            - generic [ref=f17e377]:
+                                - text: Feb 14, 2025·
+                                - generic [ref=f17e378]: Dagstuhl Reports, Volume 14, Issue 7, July 2024, Complete Issue Dagstuhl Reports, Volume 14, Issue 7, July 2024, Complete Issue Dagstuhl Reports, Volume 14, Issue 7, pp. 1-209, Schloss Dagstuhl - Leibniz-Zentrum für Informatik (2025) Copy BibTex To Clipboard
+                    - listitem [ref=f17e379]:
+                        - article [ref=f17e380] [cursor=pointer]:
+                            - button [ref=f17e382]
+                            - generic [ref=f17e387]:
+                                - link "Search domain drops.dagstuhl.de" [ref=f17e389]:
+                                    - /url: /?q=site%3Adrops.dagstuhl.de%20Dagstuhl%20Reports
+                                - generic [ref=f17e392]:
+                                    - paragraph [ref=f17e393]: DROPS
+                                    - link "https://drops.dagstuhl.de › entities › document › 10.4230 › DagRep.12.9.150" [ref=f17e394]:
+                                        - /url: https://drops.dagstuhl.de/entities/document/10.4230/DagRep.12.9.150
+                                        - paragraph [ref=f17e396]:
+                                            - generic [ref=f17e397]: https://drops.dagstuhl.de
+                                            - generic [ref=f17e398]: › entities › document › 10.4230 › DagRep.12.9.150
+                            - heading [level=2] [ref=f17e400]:
+                                - 'link "Machine Learning for Science: Bridging Data-Driven and ... - Dagstuhl" [ref=f17e401]':
+                                    - /url: https://drops.dagstuhl.de/entities/document/10.4230/DagRep.12.9.150
+                            - generic [ref=f17e403]: 'This report documents the programme and the outcomes of Dagstuhl Seminar 22382 "Machine Learning for Science: Bridging Data-Driven and Mechanistic Modelling". Today''s scientific challenges are characterised by complexity. Interconnected natural, technological, and human systems are influenced by forces acting across time- and spatial-scales, resulting in complex interactions and emergent ...'
+                - button "More results" [ref=f17e410] [cursor=pointer]
+        - list [ref=f17e413]:
+            - button "Close menu" [ref=f17e414] [cursor=pointer]
+            - list [ref=f17e418]:
+                - listitem [ref=f17e419]: Search
+                - listitem [ref=f17e420]:
+                    - link "Homepage" [ref=f17e421] [cursor=pointer]:
+                        - /url: https://start.duckduckgo.com/
+                - listitem [ref=f17e422]:
+                    - link "Themes" [ref=f17e423] [cursor=pointer]:
+                        - /url: /settings#appearance
+                - listitem [ref=f17e424]:
+                    - link "Settings" [ref=f17e425] [cursor=pointer]:
+                        - /url: /settings
+            - list [ref=f17e426]:
+                - listitem [ref=f17e427]: Share Feedback
+                - listitem [ref=f17e428]:
+                    - generic [ref=f17e431]:
+                        - button "Positive feedback" [ref=f17e432] [cursor=pointer]
+                        - button "Negative feedback" [ref=f17e436] [cursor=pointer]
+            - list [ref=f17e440]:
+                - listitem [ref=f17e441]: Downloads
+                - listitem [ref=f17e442]:
+                    - link "iOS Browser" [ref=f17e443] [cursor=pointer]:
+                        - /url: https://apps.apple.com/app/duckduckgo-private-browser/id663592361?platform=iphone&pt=866401&mt=8&ct=serp-atb-serp
+                - listitem [ref=f17e444]:
+                    - link "Android Browser" [ref=f17e445] [cursor=pointer]:
+                        - /url: https://play.google.com/store/apps/details?id=com.duckduckgo.mobile.android&referrer=utm_campaign%3Dserp-atb-serp%26origin%3Dfunnel_playstore_searchresults
+                - listitem [ref=f17e446]:
+                    - link "Mac Browser" [ref=f17e447] [cursor=pointer]:
+                        - /url: /mac?origin=funnel_browser_searchresults
+                - listitem [ref=f17e448]:
+                    - link "Windows Browser" [ref=f17e449] [cursor=pointer]:
+                        - /url: /windows?origin=funnel_browser_searchresults
+                - listitem [ref=f17e450]: Browser Extensions
+            - list [ref=f17e451]:
+                - listitem [ref=f17e452]: More From DuckDuckGo
+                - listitem [ref=f17e453]:
+                    - generic [ref=f17e456]:
+                        - button "Dismiss promotion" [ref=f17e457] [cursor=pointer]
+                        - generic [ref=f17e460]:
+                            - paragraph [ref=f17e462]: Upgrade to our Private Browser
+                            - paragraph [ref=f17e474]: Fast. Secure. Free.
+                        - link "Install Mac Browser" [ref=f17e475] [cursor=pointer]:
+                            - /url: /mac
+                - listitem [ref=f17e478]:
+                    - link "DuckDuckGo Subscription" [ref=f17e479] [cursor=pointer]:
+                        - /url: /pro?origin=funnel_pro_searchresults
+                - listitem [ref=f17e480]:
+                    - link "Duck.ai" [ref=f17e481] [cursor=pointer]:
+                        - /url: https://duck.ai
+                - listitem [ref=f17e482]:
+                    - link "Email Protection" [ref=f17e483] [cursor=pointer]:
+                        - /url: /email
+                - listitem [ref=f17e484]:
+                    - link "Newsletter" [ref=f17e485] [cursor=pointer]:
+                        - /url: /newsletter
+                - listitem [ref=f17e486]:
+                    - link "Blog" [ref=f17e487] [cursor=pointer]:
+                        - /url: /blog
+                - listitem [ref=f17e488]:
+                    - link "Podcast" [ref=f17e489] [cursor=pointer]:
+                        - /url: https://insideduckduckgo.substack.com/?showWelcome=true
+                - listitem [ref=f17e490]:
+                    - link "Collaborations" [ref=f17e491] [cursor=pointer]:
+                        - /url: /collaborations
+            - list [ref=f17e492]:
+                - listitem [ref=f17e493]: Learn More
+                - listitem [ref=f17e494]:
+                    - link "What’s New" [ref=f17e495] [cursor=pointer]:
+                        - /url: /updates
+                - listitem [ref=f17e496]:
+                    - link "Compare Privacy" [ref=f17e497] [cursor=pointer]:
+                        - /url: /compare-privacy
+                - listitem [ref=f17e498]:
+                    - link "About Our Browser" [ref=f17e499] [cursor=pointer]:
+                        - /url: /app
+                - listitem [ref=f17e500]:
+                    - link "About DuckDuckGo" [ref=f17e501] [cursor=pointer]:
+                        - /url: /about
+            - list [ref=f17e502]:
+                - listitem [ref=f17e503]: Other Resources
+                - listitem [ref=f17e504]:
+                    - link "Help" [ref=f17e505] [cursor=pointer]:
+                        - /url: /duckduckgo-help-pages
+                - listitem [ref=f17e506]:
+                    - link "Community" [ref=f17e507] [cursor=pointer]:
+                        - /url: https://www.reddit.com/r/duckduckgo/
+                - listitem [ref=f17e508]:
+                    - link "Careers" [ref=f17e509] [cursor=pointer]:
+                        - /url: /careers
+                - listitem [ref=f17e510]:
+                    - link "Privacy Policy" [ref=f17e511] [cursor=pointer]:
+                        - /url: /privacy
+                - listitem [ref=f17e512]:
+                    - link "Terms of Service" [ref=f17e513] [cursor=pointer]:
+                        - /url: /terms
+                - listitem [ref=f17e514]:
+                    - link "Press Kit" [ref=f17e515] [cursor=pointer]:
+                        - /url: /press
+                - listitem [ref=f17e516]:
+                    - link "Advertise on Search" [ref=f17e517] [cursor=pointer]:
+                        - /url: /duckduckgo-help-pages/company/advertise-on-duckduckgo-search
+    - generic [ref=f17e521]:
+        - generic [ref=f17e523]:
+            - generic [ref=f17e540]:
+                - heading "Get Our Mac Browser" [level=3] [ref=f17e541]
+                - paragraph [ref=f17e542]: Protect your data as you search, browse, and use AI.
+            - link "Download" [ref=f17e543] [cursor=pointer]:
+                - /url: https://duckduckgo.com/mac?origin=funnel_browser_searchresults__footercard
+        - generic [ref=f17e547]:
+            - generic [ref=f17e548]:
+                - heading "Learn More" [level=3] [ref=f17e549]
+                - list [ref=f17e550]:
+                    - listitem [ref=f17e551]:
+                        - link "What's New" [ref=f17e552] [cursor=pointer]:
+                            - /url: https://duckduckgo.com/updates
+                    - listitem [ref=f17e553]:
+                        - link "About Browser" [ref=f17e554] [cursor=pointer]:
+                            - /url: https://duckduckgo.com/app
+                    - listitem [ref=f17e555]:
+                        - link "Compare Privacy" [ref=f17e556] [cursor=pointer]:
+                            - /url: https://duckduckgo.com/compare-privacy
+                    - listitem [ref=f17e557]:
+                        - link "Help Pages" [ref=f17e558] [cursor=pointer]:
+                            - /url: https://duckduckgo.com/duckduckgo-help-pages/
+            - generic [ref=f17e559]:
+                - heading "Get More" [level=3] [ref=f17e560]
+                - list [ref=f17e561]:
+                    - listitem [ref=f17e562]:
+                        - link "Subscription" [ref=f17e563] [cursor=pointer]:
+                            - /url: https://duckduckgo.com/pro
+                    - listitem [ref=f17e564]:
+                        - link "Email Protection" [ref=f17e565] [cursor=pointer]:
+                            - /url: https://duckduckgo.com/email
+                    - listitem [ref=f17e566]:
+                        - generic [ref=f17e567]:
+                            - link "Podcast" [ref=f17e569] [cursor=pointer]:
+                                - /url: https://insideduckduckgo.substack.com/?showWelcome=true
+                            - generic [ref=f17e570]:
+                                - text: "&"
+                                - link "Newsletter" [ref=f17e571] [cursor=pointer]:
+                                    - /url: https://duckduckgo.com/newsletter
+                    - listitem [ref=f17e572]:
+                        - link "Collaborations" [ref=f17e573] [cursor=pointer]:
+                            - /url: https://duckduckgo.com/collaborations
+    - button "Share Feedback" [ref=f17e578] [cursor=pointer]
+    - generic [ref=f17e579]:
+        - generic [ref=f17e581]:
+            - banner [ref=f17e582]:
+                - paragraph [ref=f17e584]: Upgrade to our browser.
+            - generic [ref=f17e585]:
+                - paragraph [ref=f17e588]:
+                    - generic [ref=f17e589]:
+                        - text: Get the free DuckDuckGo Browser
+                        - strong [ref=f17e590]: to block ads on YouTube.
+                - link "Download Browser" [ref=f17e591] [cursor=pointer]:
+                    - /url: https://duckduckgo.com/mac?origin=funnel_browser_searchresults_adblockingb_popover
+            - paragraph [ref=f17e597]:
+                - generic [ref=f17e598]: Free
+        - button [ref=f17e600] [cursor=pointer]

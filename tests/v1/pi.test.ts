@@ -1001,6 +1001,7 @@ describe("thin Pi runner", () => {
     expect(result).toMatchObject({
       state: "failed",
       providerRetryable: false,
+      truncated: false,
       error: "Pi stopped with length",
     });
   });
@@ -1115,6 +1116,7 @@ describe("thin Pi runner", () => {
     });
     expect(result).toMatchObject({
       state: "failed",
+      truncated: true,
       error: "Pi stopped with length",
     });
   });
@@ -1219,6 +1221,7 @@ describe("thin Pi runner", () => {
       text: "",
       error: "legacy failure",
       providerRetryable: false,
+      truncated: false,
     });
   });
 });

@@ -1,0 +1,14 @@
+- generic [ref=f5e2]:
+    - separator [ref=f5e3]
+    - iframe [ref=f5e8]:
+        - generic [ref=f6e2]:
+            - generic [ref=f6e3]:
+                - checkbox "I'm not a robot" [ref=f6e7]
+                - generic [ref=f6e9]: I'm not a robot
+            - generic [ref=f6e12]: reCAPTCHA
+    - separator [ref=f5e9]
+    - generic [ref=f5e10]:
+        - text: About this page Our systems have detected unusual traffic from your computer network. This page checks to see if it's really you sending the requests, and not a robot.
+        - link "Why did this happen?" [ref=f5e11] [cursor=pointer]:
+            - /url: "#"
+        - generic [ref=f5e12]: "IP address: 64.186.228.196Time: 2026-08-17T23:40:18ZURL: https://www.google.com/search?q=AIM+problem+lists+American+Institute+of+Mathematics&sei=4ZuDatLTLb3BkPIPysaeYQ"

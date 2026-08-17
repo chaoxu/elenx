@@ -9,7 +9,7 @@ Elenx deliberately excludes orchestration. Routes, context gathering, blind reco
 The v1 kernel contract requires Bun 1.3.13 or newer. Applications define tool schemas with Zod, so install both packages:
 
 ```sh
-bun add git+https://gitea.lab/chaoxu/elenx.git#v0.7.10 zod@4.4.3
+bun add git+https://gitea.lab/chaoxu/elenx.git#v0.7.11 zod@4.4.3
 ```
 
 Elenx exposes Pi's types directly. Keep TypeScript's `skipLibCheck` enabled while Pi's provider SDK declarations require it.

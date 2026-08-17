@@ -1,0 +1,73 @@
+- generic [active] [ref=f25e1]:
+    - banner [ref=f25e2]:
+        - link [ref=f25e4] [cursor=pointer]:
+            - /url: https://www.namecheap.com/?utm_source=parkingpage&utm_medium=referral&utm_campaign=nc_market
+            - img "Namecheap Logo" [ref=f25e5]
+        - generic [ref=f25e6]:
+            - heading "kourovka-notebook.org" [level=1] [ref=f25e8]
+            - generic [ref=f25e9]:
+                - heading "Domain registration has expired." [level=2] [ref=f25e10]
+                - generic [ref=f25e11]:
+                    - generic [ref=f25e12]:
+                        - heading "Renewal instructions" [level=3] [ref=f25e13]
+                        - paragraph [ref=f25e14]: "If you own kourovka-notebook.org, you may still be able to renew it through your Namecheap account. To renew: sign in, open Domain List, select kourovka-notebook.org, and choose Renew."
+                        - paragraph [ref=f25e15]:
+                            - link "Sign in" [ref=f25e16] [cursor=pointer]:
+                                - /url: https://www.namecheap.com/myaccount/login/?utm_source=parkingpage&utm_medium=referral&utm_campaign=nc_market
+                            - text: ·
+                            - link "Renewal help" [ref=f25e17] [cursor=pointer]:
+                                - /url: https://www.namecheap.com/support/knowledgebase/article.aspx/239/2201/how-can-i-renew-my-domain/?utm_source=parkingpage&utm_medium=referral&utm_campaign=nc_market
+                            - text: ·
+                            - link "Renewal and redemption fees" [ref=f25e18] [cursor=pointer]:
+                                - /url: https://www.namecheap.com/support/knowledgebase/article.aspx/242/2207/what-is-the-domain-redemption-grace-period/?utm_source=parkingpage&utm_medium=referral&utm_campaign=nc_market
+                    - link "Renew this domain" [ref=f25e19] [cursor=pointer]:
+                        - /url: https://ap.www.namecheap.com/?utm_source=parkingpage&utm_medium=referral&utm_campaign=nc_market
+    - main [ref=f25e20]:
+        - generic [ref=f25e21]:
+            - generic [ref=f25e22]:
+                - heading "Want a domain name like this?" [level=2] [ref=f25e23]
+                - paragraph [ref=f25e24]: Discover domains on auction now
+                - link "See all auctions" [ref=f25e25] [cursor=pointer]:
+                    - /url: https://www.namecheap.com/market/?utm_source=parkingpage&utm_medium=referral&utm_campaign=nc_market
+            - table [ref=f25e27]:
+                - rowgroup [ref=f25e28]:
+                    - row [ref=f25e29] [cursor=pointer]:
+                        - cell "xycj.com" [ref=f25e30]
+                        - cell "$125" [ref=f25e31]
+                        - cell "Ends in 1d 15h" [ref=f25e32]
+                        - cell [ref=f25e33]:
+                            - link "Bid now" [ref=f25e34]:
+                                - /url: https://www.namecheap.com/market/xycj.com/?utm_source=parkingpage&utm_medium=referral&utm_campaign=nc_market
+                    - row [ref=f25e35] [cursor=pointer]:
+                        - cell "anon.ai" [ref=f25e36]
+                        - cell "$6,400" [ref=f25e37]
+                        - cell "Ends in 15h" [ref=f25e38]
+                        - cell [ref=f25e39]:
+                            - link "Bid now" [ref=f25e40]:
+                                - /url: https://www.namecheap.com/market/anon.ai/?utm_source=parkingpage&utm_medium=referral&utm_campaign=nc_market
+                    - row [ref=f25e41] [cursor=pointer]:
+                        - cell "saellondon.com" [ref=f25e42]
+                        - cell "$1,691" [ref=f25e43]
+                        - cell "Ends in 1d 15h" [ref=f25e44]
+                        - cell [ref=f25e45]:
+                            - link "Bid now" [ref=f25e46]:
+                                - /url: https://www.namecheap.com/market/saellondon.com/?utm_source=parkingpage&utm_medium=referral&utm_campaign=nc_market
+                    - row [ref=f25e47] [cursor=pointer]:
+                        - cell "doramasflix.to" [ref=f25e48]
+                        - cell "$15" [ref=f25e49]
+                        - cell "Ends in 15h" [ref=f25e50]
+                        - cell [ref=f25e51]:
+                            - link "Bid now" [ref=f25e52]:
+                                - /url: https://www.namecheap.com/market/doramasflix.to/?utm_source=parkingpage&utm_medium=referral&utm_campaign=nc_market
+    - contentinfo [ref=f25e53]:
+        - heading "Download the Namecheap Auctions app" [level=2] [ref=f25e54]
+        - paragraph [ref=f25e55]: Take auctions with you wherever you go
+        - list [ref=f25e56]:
+            - listitem [ref=f25e57]:
+                - link [ref=f25e58] [cursor=pointer]:
+                    - /url: https://apps.apple.com/us/app/namecheap-auctions/id6743634772?itscg=30200&itsct=apps_box_badge&mttnsubad=6743634772
+                    - img "Download on the App Store" [ref=f25e59]
+            - listitem [ref=f25e60]:
+                - link [ref=f25e61] [cursor=pointer]:
+                    - /url: https://play.google.com/store/apps/details?id=marketplace.com.namecheap
+                    - img "Get it on Google Play" [ref=f25e62]

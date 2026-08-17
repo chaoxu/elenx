@@ -1,0 +1,144 @@
+- generic [active] [ref=f16e1]:
+    - navigation [ref=f16e2]:
+        - generic [ref=f16e3]:
+            - link [ref=f16e4] [cursor=pointer]:
+                - /url: https://www.dagstuhl.de
+                - img "Schloss Dagstuhl - LZI - Logo" [ref=f16e5]
+            - generic [ref=f16e6]:
+                - list [ref=f16e7]:
+                    - listitem [ref=f16e8]:
+                        - link "" [ref=f16e9] [cursor=pointer]:
+                            - /url: https://drops.dagstuhl.de
+                    - listitem [ref=f16e11]:
+                        - button [ref=f16e12] [cursor=pointer]:
+                            - img "Dagstuhl Publishing Logo" [ref=f16e13]
+                            - text: Dagstuhl Publishing
+                    - listitem [ref=f16e14]:
+                        - button " Series" [ref=f16e15] [cursor=pointer]:
+                            - generic [ref=f16e16]: 
+                            - text: Series
+                    - listitem [ref=f16e17]:
+                        - button " Journals" [ref=f16e18] [cursor=pointer]:
+                            - generic [ref=f16e19]: 
+                            - text: Journals
+                    - listitem [ref=f16e20]:
+                        - button " Conferences" [ref=f16e21] [cursor=pointer]:
+                            - generic [ref=f16e22]: 
+                            - text: Conferences
+                    - listitem [ref=f16e23]:
+                        - button " Artifacts" [ref=f16e24] [cursor=pointer]:
+                            - generic [ref=f16e25]: 
+                            - text: Artifacts
+                - generic [ref=f16e27]:
+                    - searchbox "Search" [ref=f16e28]
+                    - button "" [ref=f16e29] [cursor=pointer]
+                - list [ref=f16e31]:
+                    - listitem [ref=f16e32]:
+                        - button "" [ref=f16e33] [cursor=pointer]
+    - generic [ref=f16e35]:
+        - generic [ref=f16e36] [cursor=pointer]: 
+        - generic [ref=f16e39]:
+            - generic [ref=f16e40]:
+                - heading "Welcome to DROPS" [level=1] [ref=f16e41]
+                - heading "The Dagstuhl Research Online Publication Server" [level=2] [ref=f16e42]
+            - img "Dagstuhl Publishing Logo" [ref=f16e44]
+        - generic [ref=f16e45]: ERROR The resource you requested does not exist on the server!
+        - generic [ref=f16e47]:
+            - textbox "Search DROPS" [ref=f16e48]:
+                - /placeholder: Search All Entities in DROPS
+            - button "" [ref=f16e49] [cursor=pointer]
+    - generic [ref=f16e51] [cursor=pointer]:
+        - text: 
+        - generic [ref=f16e52]: 
+        - link "Any Issues?" [ref=f16e54]:
+            - /url: "#"
+    - text: 
+    - contentinfo [ref=f16e55]:
+        - generic [ref=f16e56]:
+            - heading "About DROPS" [level=5] [ref=f16e57]
+            - paragraph [ref=f16e58]: "Schloss Dagstuhl - Leibniz Center for Informatics has been operating the Dagstuhl Research Online Publication Server (short: DROPS) since 2004. DROPS enables publication of the latest research findings in a fast, uncomplicated manner, in addition to providing unimpeded, open access to them. All the requisite metadata on each publication is administered in accordance with general guidelines pertaining to online publications (cf. Dublin Core). This enables the online publications to be authorized for citation and made accessible to a wide readership on a permanent basis. Access is free of charge for readers following the open access idea which fosters unimpeded access to scientific publications."
+            - list [ref=f16e59]:
+                - listitem [ref=f16e60]:
+                    - link "More about DROPS" [ref=f16e61] [cursor=pointer]:
+                        - /url: https://drops.dagstuhl.de/docs/about
+        - generic [ref=f16e63]:
+            - generic [ref=f16e64]:
+                - heading "Instructions for Authors" [level=5] [ref=f16e65]
+                - generic [ref=f16e66]:
+                    - generic [ref=f16e67]:
+                        - text: Dagstuhl Series
+                        - list [ref=f16e68]:
+                            - listitem [ref=f16e69]:
+                                - link "LIPIcs" [ref=f16e70] [cursor=pointer]:
+                                    - /url: https://submission.dagstuhl.de/series/details/lipics#author
+                            - listitem [ref=f16e71]:
+                                - link "OASIcs" [ref=f16e72] [cursor=pointer]:
+                                    - /url: https://submission.dagstuhl.de/series/details/oasics#author
+                            - listitem [ref=f16e73]:
+                                - link "Dagstuhl Follow-Ups" [ref=f16e74] [cursor=pointer]:
+                                    - /url: https://submission.dagstuhl.de/series/details/dfu#author
+                    - generic [ref=f16e75]:
+                        - text: Dagstuhl Journals
+                        - list [ref=f16e76]:
+                            - listitem [ref=f16e77]:
+                                - link "DARTS – Dagstuhl Artifacts Series" [ref=f16e78] [cursor=pointer]:
+                                    - /url: https://submission.dagstuhl.de/series/details/darts#author
+                            - listitem [ref=f16e79]:
+                                - link "Dagstuhl Reports" [ref=f16e80] [cursor=pointer]:
+                                    - /url: https://submission.dagstuhl.de/series/details/dagrep#author
+                            - listitem [ref=f16e81]:
+                                - link "Dagstuhl Manifestos" [ref=f16e82] [cursor=pointer]:
+                                    - /url: https://submission.dagstuhl.de/series/details/dagman#author
+                            - listitem [ref=f16e83]:
+                                - link "LITES" [ref=f16e84] [cursor=pointer]:
+                                    - /url: https://submission.dagstuhl.de/series/details/lites#author
+                            - listitem [ref=f16e85]:
+                                - link "TGDK – Transactions on Graph Data and Knowledge" [ref=f16e86] [cursor=pointer]:
+                                    - /url: https://submission.dagstuhl.de/series/details/tgdk#author
+            - generic [ref=f16e87]:
+                - heading "Instructions for Editors" [level=5] [ref=f16e88]
+                - generic [ref=f16e89]:
+                    - generic [ref=f16e90]:
+                        - text: Dagstuhl Series
+                        - list [ref=f16e91]:
+                            - listitem [ref=f16e92]:
+                                - link "LIPIcs" [ref=f16e93] [cursor=pointer]:
+                                    - /url: https://submission.dagstuhl.de/series/details/lipics#editor
+                            - listitem [ref=f16e94]:
+                                - link "OASIcs" [ref=f16e95] [cursor=pointer]:
+                                    - /url: https://submission.dagstuhl.de/series/details/oasics#editor
+                            - listitem [ref=f16e96]:
+                                - link "Dagstuhl Follow-Ups" [ref=f16e97] [cursor=pointer]:
+                                    - /url: https://submission.dagstuhl.de/series/details/dfu#editor
+                    - generic [ref=f16e98]:
+                        - text: Dagstuhl Journals
+                        - list [ref=f16e99]:
+                            - listitem [ref=f16e100]:
+                                - link "DARTS – Dagstuhl Artifacts Series" [ref=f16e101] [cursor=pointer]:
+                                    - /url: https://submission.dagstuhl.de/series/details/darts#editor
+                            - listitem [ref=f16e102]:
+                                - link "Dagstuhl Reports" [ref=f16e103] [cursor=pointer]:
+                                    - /url: https://submission.dagstuhl.de/series/details/dagrep#editor
+                            - listitem [ref=f16e104]:
+                                - link "Dagstuhl Manifestos" [ref=f16e105] [cursor=pointer]:
+                                    - /url: https://submission.dagstuhl.de/series/details/dagman#editor
+                            - listitem [ref=f16e106]:
+                                - link "LITES" [ref=f16e107] [cursor=pointer]:
+                                    - /url: https://submission.dagstuhl.de/series/details/lites#editor
+                            - listitem [ref=f16e108]:
+                                - link "TGDK – Transactions on Graph Data and Knowledge" [ref=f16e109] [cursor=pointer]:
+                                    - /url: https://submission.dagstuhl.de/series/details/tgdk#editor
+    - generic [ref=f16e110]:
+        - text: © 2023-2026
+        - link "Schloss Dagstuhl – LZI GmbH" [ref=f16e111] [cursor=pointer]:
+            - /url: https://www.dagstuhl.de
+        - link "Schloss Dagstuhl – LZI GmbH" [ref=f16e112] [cursor=pointer]:
+            - /url: https://www.dagstuhl.de
+        - link "About DROPS" [ref=f16e113] [cursor=pointer]:
+            - /url: https://drops.dagstuhl.de/docs/about
+        - link "Imprint" [ref=f16e114] [cursor=pointer]:
+            - /url: https://drops.dagstuhl.de/docs/imprint
+        - link "Privacy" [ref=f16e115] [cursor=pointer]:
+            - /url: https://drops.dagstuhl.de/docs/privacy
+        - link "Contact" [ref=f16e116] [cursor=pointer]:
+            - /url: https://www.dagstuhl.de/en/publishing/team
