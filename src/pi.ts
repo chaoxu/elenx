@@ -58,6 +58,7 @@ export interface PiRunOptions {
   readonly candidate?: EntryId;
   readonly tools?: readonly Tool[];
   readonly stopAfterToolResult?: true;
+  readonly continueOnLength?: number;
   readonly signal?: AbortSignal;
 }
 
@@ -191,7 +192,16 @@ export const piRequest = z.strictObject({
   prompt: z.string(),
   reasoning: piReasoning.optional(),
   stopAfterToolResult: z.literal(true).optional(),
+  continueOnLength: z.number().int().min(1).max(64).optional(),
 });
+
+// A pure-reasoning response cut off at the provider's per-response output
+// limit ends the agent loop with a "length" stop. With continueOnLength set,
+// the run re-enters the loop carrying the full transcript (thinking blocks
+// keep their signatures), so one logical call can span multiple provider
+// requests the way interactive agent harnesses do.
+const lengthContinuation =
+  "The previous response was cut off at the provider's per-response output limit. Continue exactly where you left off; do not restart or repeat completed work.";
 
 const piRequestLabel = "elenx/pi-request";
 const piRequestAttempt = z.strictObject({
@@ -503,7 +513,22 @@ function result(
   const final = messages.findLast(
     (message): message is AssistantMessage => message.role === "assistant",
   );
-  const text = final === undefined ? "" : contentText(final.content);
+  // A continued run's answer spans every length-cut segment, joined across
+  // the continuation prompts; a plain run keeps final-message semantics.
+  const parts = final === undefined ? [] : [contentText(final.content)];
+  for (let at = messages.lastIndexOf(final as AgentMessage); at >= 2; at -= 2) {
+    const bridge = messages[at - 1];
+    const previous = messages[at - 2];
+    if (
+      bridge?.role !== "user" ||
+      bridge.content !== lengthContinuation ||
+      previous?.role !== "assistant" ||
+      previous.stopReason !== "length"
+    )
+      break;
+    parts.unshift(contentText(previous.content));
+  }
+  const text = parts.join("");
   if (signal?.aborted || final?.stopReason === "aborted") {
     return {
       state: "cancelled",
@@ -690,6 +715,9 @@ export async function runPi(
     ...(options.stopAfterToolResult === true
       ? { stopAfterToolResult: true as const }
       : {}),
+    ...(options.continueOnLength === undefined
+      ? {}
+      : { continueOnLength: options.continueOnLength }),
   });
   const request = copyJson(parsed);
   const receipt = await campaign.call(
@@ -720,32 +748,56 @@ export async function runPi(
             : { "elenx.pi.reasoning.requested": exact.reasoning }),
         },
         async (span) => {
-          const messages = await runAgentLoop(
-            [{ role: "user", content: exact.prompt, timestamp: Date.now() }],
-            {
-              systemPrompt: exact.system ?? "",
-              messages: [],
-              ...(tools.length === 0
-                ? {}
-                : {
-                    tools: tools.map((tool) =>
-                      piTool(tool, exact.stopAfterToolResult === true),
-                    ),
-                  }),
-            },
-            {
-              model: options.model,
-              convertToLlm,
-              toolExecution: "sequential",
-              telemetryContext: span,
-              ...(exact.reasoning === undefined
-                ? {}
-                : { reasoning: exact.reasoning }),
-            },
-            () => {},
-            signal,
-            measuredStream(campaign, call, options.models),
-          );
+          const loop = (
+            content: string,
+            prior: readonly AgentMessage[],
+          ): Promise<AgentMessage[]> =>
+            runAgentLoop(
+              [{ role: "user", content, timestamp: Date.now() }],
+              {
+                systemPrompt: exact.system ?? "",
+                messages: [...prior],
+                ...(tools.length === 0
+                  ? {}
+                  : {
+                      tools: tools.map((tool) =>
+                        piTool(tool, exact.stopAfterToolResult === true),
+                      ),
+                    }),
+              },
+              {
+                model: options.model,
+                convertToLlm,
+                toolExecution: "sequential",
+                telemetryContext: span,
+                ...(exact.reasoning === undefined
+                  ? {}
+                  : { reasoning: exact.reasoning }),
+              },
+              () => {},
+              signal,
+              measuredStream(campaign, call, options.models),
+            );
+          let messages = await loop(exact.prompt, []);
+          for (let used = 0; used < (exact.continueOnLength ?? 0); used++) {
+            const final = messages.findLast(
+              (message): message is AssistantMessage =>
+                message.role === "assistant",
+            );
+            if (
+              final?.stopReason !== "length" ||
+              signal?.aborted ||
+              // An overflow-shaped length stop (truncated input filling the
+              // window, zero output) can only length-stop again; continuing
+              // would buy futile full-window-priced requests.
+              isContextOverflow(final, options.model.contextWindow)
+            )
+              break;
+            messages = [
+              ...messages,
+              ...(await loop(lengthContinuation, messages)),
+            ];
+          }
           const outcome = result(
             messages,
             exact.stopAfterToolResult === true,

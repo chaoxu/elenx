@@ -947,6 +947,82 @@ describe("thin Pi runner", () => {
     }
   });
 
+  test("continues a length-stopped response within one logical call", async () => {
+    const store = campaign();
+    const observed: Context[] = [];
+    const result = await runPi(store, {
+      models: models(
+        [
+          assistant([{ type: "text", text: "The proof begins" }], "length"),
+          assistant([{ type: "text", text: " and concludes." }], "stop"),
+        ],
+        (context) => observed.push(context),
+      ),
+      model,
+      label: "audit/v1",
+      prompt: "Audit",
+      continueOnLength: 2,
+    });
+    expect(result).toMatchObject({
+      state: "succeeded",
+      text: "The proof begins and concludes.",
+    });
+    const roles = (
+      result.transcript as readonly { role?: string; content?: unknown }[]
+    ).map(({ role }) => role);
+    expect(roles).toEqual(["user", "assistant", "user", "assistant"]);
+    const continuation = (
+      result.transcript as readonly { role?: string; content?: unknown }[]
+    )[2];
+    expect(String(continuation?.content)).toContain("cut off");
+    expect(observed[1]?.messages.map(({ role }) => role)).toEqual([
+      "user",
+      "assistant",
+      "user",
+    ]);
+  });
+
+  test("does not continue an overflow-shaped length stop", async () => {
+    const store = campaign();
+    const overflowed = assistant([], "length");
+    overflowed.usage = {
+      ...overflowed.usage,
+      input: 9_950,
+      output: 0,
+      cacheRead: 0,
+    };
+    const result = await runPi(store, {
+      models: models([overflowed]),
+      model,
+      label: "audit/v1",
+      prompt: "Audit",
+      continueOnLength: 3,
+    });
+    expect(result).toMatchObject({
+      state: "failed",
+      providerRetryable: false,
+      error: "Pi stopped with length",
+    });
+  });
+
+  test("fails after exhausting length continuations", async () => {
+    const store = campaign();
+    const result = await runPi(store, {
+      models: models([
+        assistant([{ type: "text", text: "partial" }], "length"),
+        assistant([{ type: "text", text: "more partial" }], "length"),
+      ]),
+      model,
+      label: "audit/v1",
+      prompt: "Audit",
+      continueOnLength: 1,
+    });
+    expect(result).toMatchObject({
+      state: "failed",
+      error: "Pi stopped with length",
+    });
+  });
+
   test("preserves Pi failure and cancellation states", async () => {
     const failedCampaign = campaign();
     const failed = await runPi(failedCampaign, {
