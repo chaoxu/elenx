@@ -204,6 +204,12 @@ export const piRequest = z.strictObject({
 const lengthContinuation =
   "The previous response was interrupted before completion. Continue exactly where you left off; do not restart or repeat completed work.";
 
+// Reverse-proxy error phrases Pi's classifier misses: Caddy reports
+// "Bad Gateway"/"Gateway Timeout" as text, without the numeric status Pi's
+// patterns match. Exported so applications classifying provider errors for
+// their own retry policy share one pattern with the kernel's continuation.
+export const gatewayTransientError = /bad.?gateway|gateway.?time.?out/i;
+
 const piRequestLabel = "elenx/pi-request";
 const piRequestAttempt = z.strictObject({
   protocol: z.literal("pi"),
@@ -812,12 +818,7 @@ export async function runPi(
                 ? !isContextOverflow(final, options.model.contextWindow)
                 : final.stopReason === "error" &&
                   (isRetryableAssistantError(final) ||
-                    // Reverse-proxy error phrases Pi's classifier misses:
-                    // Caddy reports "Bad Gateway"/"Gateway Timeout" as text,
-                    // without the numeric status Pi's patterns match.
-                    /bad.?gateway|gateway.?time.?out/i.test(
-                      final.errorMessage ?? "",
-                    )));
+                    gatewayTransientError.test(final.errorMessage ?? "")));
             if (!interrupted) break;
             messages = [
               ...messages,
