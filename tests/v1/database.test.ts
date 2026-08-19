@@ -264,8 +264,8 @@ describe("campaign database", () => {
     database.run("PRAGMA journal_mode = WAL");
     database.run("PRAGMA wal_checkpoint(TRUNCATE)");
     database.close(true);
-    rmSync(`${path}-wal`);
-    rmSync(`${path}-shm`);
+    rmSync(`${path}-wal`, { force: true });
+    rmSync(`${path}-shm`, { force: true });
     const before = readFileSync(path);
     expect([before[18], before[19]]).toEqual([2, 2]);
     for (const opener of [openReader, openCampaign]) {
