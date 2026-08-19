@@ -1,5 +1,7 @@
 # Elenx system review — 2026-08-19
 
+Historical scope: this review audits the pinned Workflow 15 stack listed below. `elenx-solve` main now uses the smaller Workflow 16 `model-first-v1` coordinator; revision `9808e5f` preserves the audited solver for old campaigns. The kernel findings remain current, while Workflow 15's assurance, repair, transport, progress, and supervisor findings describe an optional retired application rather than the active solver.
+
 ## Goal and truth boundary
 
 Elenx exists to help turn sustained model reasoning into correct, auditable mathematical resolutions. It should make it harder to change the problem, hide a proof obligation, reuse an unrelated judgment, or mistake an interrupted call for evidence. It cannot make an LLM verdict true: all model verifiers may be wrong and may fail in correlated ways. A candidate marked `verified` has satisfied the frozen workflow's durable admission rules, not acquired a known probability of mathematical correctness.
