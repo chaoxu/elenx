@@ -2,6 +2,8 @@
 
 This study examines six Pi packages as possible sources of mechanisms for Elenx. It is pinned to the published packages and source revisions below on 2026-08-15; package behavior outside those revisions is not covered.
 
+Current status: Elenx has since implemented a generic returned-tool-submission projection and settled Pi spend projection. Evidence binding and supplemental provenance remain application concerns; the historical findings below describe the pinned revision and are not a current roadmap.
+
 | package | published revision | license and runtime |
 |---|---|---|
 | [`pi-subagents@0.50.0`](https://www.npmjs.com/package/pi-subagents/v/0.50.0) | [`c091da1`](https://github.com/nicobailon/pi-subagents/tree/c091da1d9b660c1940ef5dc78cfeeace1aecd435) | MIT; Earendil Pi peers, `pi-ai >=0.80.0` |
@@ -79,7 +81,7 @@ Application validation should require each referenced tool call to precede the v
 
 ### Structured verdict ownership
 
-The coordinator currently passes `verdict` and `evidence` to `recordVerdict`. A small application helper should instead derive both from exactly one schema-admitted terminal submission stored under the verifier call. This prevents the coordinator from turning a verifier's `FAIL` into `PASS`. It can remain an application convention until more than one application needs the same rule.
+At the pinned revision, the coordinator passed `verdict` and `evidence` to `recordVerdict`. The later `returnedToolSubmission` projection lets an application require one settled schema-admitted submission under the verifier call, then derive both values from its durable input instead of accepting coordinator replacements.
 
 ### Assurance observations
 
@@ -181,7 +183,7 @@ This package recognizes an important distinction: execution, receipt integrity, 
 
 Four mechanisms transfer:
 
-1. [`parseReviewerOwnedVerdict`](https://github.com/MinhDuyDEV/pi-subagents/blob/6df61535ec2f9d580c2a687014cfb585eb7e44bf/src/orchestration/review.ts#L35-L70) derives a verdict from canonical reviewer output instead of trusting a coordinator-supplied value. Elenx should implement this first as the structured-verdict application helper described above.
+1. [`parseReviewerOwnedVerdict`](https://github.com/MinhDuyDEV/pi-subagents/blob/6df61535ec2f9d580c2a687014cfb585eb7e44bf/src/orchestration/review.ts#L35-L70) derives a verdict from canonical reviewer output instead of trusting a coordinator-supplied value. This motivated Elenx's generic returned-tool-submission projection.
 2. [`SemanticAttestationV1`](https://github.com/MinhDuyDEV/pi-subagents/blob/6df61535ec2f9d580c2a687014cfb585eb7e44bf/src/orchestration/run-store.ts#L94-L104) binds claims, evidence, reviewer identity, reviewer output, and subject. Elenx should replace path receipts with campaign record sequences.
 3. A derived verifier view should distinguish `not-run`, `interrupted`, `call-failed`, `inconclusive`, `passed`, and `failed`; process success and semantic verification must remain visibly different.
 4. [`renderContextPackForPrompt`](https://github.com/MinhDuyDEV/pi-subagents/blob/6df61535ec2f9d580c2a687014cfb585eb7e44bf/src/orchestration/context.ts#L182-L272) supports blind-first disclosure and keeps acceptance claims away from producers. Elenx applications should realize blind phases as separate recorded calls rather than mutable Context Packs.
@@ -271,13 +273,13 @@ A calibration artifact must freeze the target population, code revision, ordered
 
 Seven focused test files and 76 tests passed. They did not cover missing-label exclusion, end-to-end split isolation, exact feature order, artifact-owned zero floors, or runtime isotonic monotonicity. The npm tarball also excludes the advertised training scripts and tests, so the installed package cannot execute its documented retraining commands.
 
-## Extraction plan
+## Extraction recommendations and current status
 
-### 1. Add application contracts before dependencies
+### 1. Application contracts
 
-Create application-owned Zod schemas and helpers for `verifier-run/v1`, `evidence-binding/v1`, structured terminal verdict ownership, and the derived per-verifier lifecycle view. Store them in existing call requests and verdict evidence. This yields most of the useful assurance structure without touching the Elenx schema or status rule.
+The study recommended application-owned Zod schemas and helpers for `verifier-run/v1`, `evidence-binding/v1`, structured terminal verdict ownership, and the derived per-verifier lifecycle view, stored in existing call requests and verdict evidence. The generic returned-tool-submission projection now supports structured terminal ownership; evidence binding and the lifecycle projection remain application work. None requires a new Elenx record kind or status rule.
 
-The first hostile tests should prove:
+The proposed hostile matrix included:
 
 - a coordinator cannot record a verdict different from the stored terminal submission;
 - evidence references reject missing, unsettled, later, unrelated, or duplicate tool calls;
@@ -285,25 +287,25 @@ The first hostile tests should prove:
 - `INCONCLUSIVE` and infrastructure failure never become PASS through absence or defaulting;
 - resubmitting identical bytes creates a distinct cache and attempt namespace.
 
-### 2. Build one frozen formal-oracle adapter
+### 2. Frozen formal-oracle adapter
 
-Implement a small checker adapter around a single pinned formal environment before importing a general workflow engine. Use the native Landstrip sidecar only beneath this semantic adapter. The spike must include policy-resolution checks, an empty environment allowlist with only explicit additions, no network, immutable candidate input, disposable tool-call-keyed scratch, output and process limits, executable metadata checks, and digest-complete receipts.
+The study recommended a small checker adapter around one pinned formal environment before any general workflow engine. The native Landstrip sidecar would sit beneath that semantic adapter. The proposed spike included policy-resolution checks, an empty environment allowlist with only explicit additions, no network, immutable candidate input, disposable tool-call-keyed scratch, output and process limits, executable metadata checks, and digest-complete receipts. This adapter has not been built.
 
-The hostile matrix should include theorem/template mutation, zero or multiple holes, `sorry`/new axioms/import changes, stale receipts, digest mismatch, missing checker, timeout, crash, disk full, escaped descendants, filesystem and network probes, secret-environment probes, and repeated replay of an identical bundle. Every infrastructure case must end as `INCONCLUSIVE` or an unsettled call.
+The proposed hostile matrix included theorem/template mutation, zero or multiple holes, `sorry`/new axioms/import changes, stale receipts, digest mismatch, missing checker, timeout, crash, disk full, escaped descendants, filesystem and network probes, secret-environment probes, and repeated replay of an identical bundle. Every infrastructure case was required to end as `INCONCLUSIVE` or an unsettled call.
 
-### 3. Keep orchestration thin until it becomes a measured problem
+### 3. Thin orchestration
 
-Use ordinary application code for proposal, candidate submission, named verifier fanout, reconciliation, and status derivation. Copy deterministic branch naming and exact launch snapshots from the workflow packages. Do not add a second journal merely to obtain a DAG.
+The study recommended ordinary application code for proposal, candidate submission, named verifier fanout, reconciliation, and status derivation, with deterministic branch naming and exact launch snapshots borrowed from the workflow packages. It rejected a second journal added merely to obtain a DAG.
 
-If Pi-host visibility becomes useful, project Elenx work through `pi-subagents`' display-only `external-runs` API. If advisory scouts are useful, permit them as non-required calls. Required verifier calls should continue through `runPi` or direct `campaign.call` adapters so Elenx retains exact tools, transcripts, model identities, request checkpoints, and provider-operation usage.
+The study reserved `pi-subagents`' display-only `external-runs` API for future Pi-host visibility and non-required calls for any advisory scouts. Required verifier calls were to remain on `runPi` or direct `campaign.call` adapters so Elenx retained exact tools, transcripts, model identities, request checkpoints, and provider-operation usage.
 
-Adopt a workflow package only after the application needs durable branching that is costly to maintain locally. Before doing so, require an unknown-effect protocol, implementation digests in cache identities, candidate-bound verifier cache keys, a shell-disabled mode, and authoritative reconciliation outside the workflow journal.
+A workflow package was to be adopted only after durable branching became costly to maintain locally, and only with an unknown-effect protocol, implementation digests in cache identities, candidate-bound verifier cache keys, a shell-disabled mode, and authoritative reconciliation outside the workflow journal.
 
-### 4. Collect assurance data in shadow mode
+### 4. Shadow assurance data
 
-Export `assurance-observation/v1` rows from completed campaign facts and add truth adjudications only when an independent authority later resolves the candidate. Record dependence groups from the start; they cannot be reconstructed reliably after the fact.
+The study recommended exporting `assurance-observation/v1` rows from completed campaign facts and adding truth adjudications only when an independent authority later resolved the candidate. Dependence groups had to be recorded from the start because they could not be reconstructed reliably afterward. The export and adjudication layers remain unimplemented.
 
-The first model should remain shadow-only. It may recommend another checker, an independent formalization review, or human escalation. It may not satisfy a required verifier, erase a FAIL, publish a candidate, or report a probability without a valid calibration artifact and explicit support state.
+Any first model was to remain shadow-only. It could recommend another checker, an independent formalization review, or human escalation, but could not satisfy a required verifier, erase a FAIL, publish a candidate, or report a probability without a valid calibration artifact and explicit support state.
 
 ## What not to mine
 

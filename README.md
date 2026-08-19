@@ -14,12 +14,12 @@ bun add git+https://gitea.lab/chaoxu/elenx.git#v0.7.11 zod@4.4.3
 
 Elenx exposes Pi's types directly. Keep TypeScript's `skipLibCheck` enabled while Pi's provider SDK declarations require it.
 
-Elenx is an experimental harness. Its API and campaign schema may change directly; there are no migrations or compatibility aliases. Campaign files are accepted only when their schema matches the running package. Delete and rerun stale campaigns.
+Elenx is an experimental harness. Its API and campaign schema may change directly; there are no migrations or compatibility aliases. Campaign files are accepted only when their schema matches the running package. Preserve an old campaign with its matching tagged package, and write any rerun to a new artifact.
 
-Contributors run `bun install --frozen-lockfile` and `bun run check`. The check includes formatting, strict TypeScript, a clean-consumer compile, the configured source-size ceiling, the complete test suite, and a package dry run.
+Contributors run `bun install --frozen-lockfile` and `bun run check`. The check includes formatting, strict TypeScript, a consumer compile against the checkout, the complete test suite, and an independent typecheck and runtime smoke installed from the produced tarball.
 
 - [`SPEC.md`](SPEC.md) is the normative v1 contract.
 - [`docs/application-author.md`](docs/application-author.md) shows the public API and tool boundary.
 - [The Pi package mining study](https://gitea.lab/chaoxu/elenx/src/branch/main/docs/pi-package-mining-study.md) records which Pi ecosystem mechanisms fit outside that boundary.
-- [`examples/v1/hostile-audit.ts`](examples/v1/hostile-audit.ts) is the smallest Coverify-shaped slice.
-- [`examples/v1/pi-smoke.ts`](examples/v1/pi-smoke.ts) runs that slice through a real Pi model.
+- [`examples/v1/scripted-verifier.ts`](examples/v1/scripted-verifier.ts) is a deterministic adapter and persistence slice.
+- [`examples/v1/pi-smoke.ts`](examples/v1/pi-smoke.ts) independently exercises the LLM-verdict path with a real Pi model.

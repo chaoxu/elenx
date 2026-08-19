@@ -1,11 +1,7 @@
 export { createCampaign, openCampaign, openReader } from "./campaign";
 export { entryId as entryIdSchema, verdict as verdictSchema } from "./schemas";
 export { defineTool } from "./types";
-export {
-  deriveCandidateStatus,
-  finalizeVerdict,
-  submitVerdictTool,
-} from "./verification";
+export { deriveCandidateStatus, returnedToolSubmission } from "./verification";
 export type {
   AuditedTool,
   CallContext,

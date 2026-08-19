@@ -261,9 +261,8 @@ export function createCampaign(
   application: string,
   config: Json,
 ): Campaign {
-  return new CampaignWriter(
-    Journal.create(path, z.string().min(1).parse(application), config),
-  );
+  const checked = z.string().min(1).parse(application);
+  return new CampaignWriter(Journal.create(path, checked, copyJson(config)));
 }
 
 export function openCampaign(path: string): Campaign {

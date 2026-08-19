@@ -3,10 +3,13 @@ import { Database } from "bun:sqlite";
 import {
   copyFileSync,
   existsSync,
+  lstatSync,
   mkdtempSync,
   readFileSync,
   rmSync,
   statSync,
+  symlinkSync,
+  writeFileSync,
 } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
@@ -124,6 +127,23 @@ describe("campaign database", () => {
     expect(campaign.records()).toHaveLength(1);
   });
 
+  test("preserves pre-existing auxiliary files", () => {
+    const path = temporaryPath();
+    writeFileSync(`${path}-journal`, "not ours");
+    expect(() => createCampaign(path, "test", null)).toThrow(
+      "auxiliary file already exists",
+    );
+    expect(readFileSync(`${path}-journal`, "utf8")).toBe("not ours");
+    expect(existsSync(path)).toBe(false);
+
+    const dangling = temporaryPath("dangling.db");
+    symlinkSync("missing-target", `${dangling}-journal`);
+    expect(() => createCampaign(dangling, "test", null)).toThrow(
+      "auxiliary file already exists",
+    );
+    expect(lstatSync(`${dangling}-journal`).isSymbolicLink()).toBe(true);
+  });
+
   test("rejects SQLite URI and auxiliary filenames", () => {
     for (const path of [
       "file:campaign.db",
@@ -158,6 +178,120 @@ describe("campaign database", () => {
     database.run("PRAGMA user_version = 3");
     database.close(true);
     expect(() => openReader(path)).toThrow("unsupported campaign schema: 3");
+  });
+
+  test("does not reconfigure an unsupported writer", () => {
+    const path = temporaryPath();
+    const database = new Database(path, { create: true });
+    database.run("PRAGMA user_version = 999");
+    database.close(true);
+    const before = readFileSync(path);
+    expect(() => openCampaign(path)).toThrow(
+      "unsupported campaign schema: 999",
+    );
+    expect(readFileSync(path)).toEqual(before);
+  });
+
+  test("does not recover an unsupported database", async () => {
+    const path = temporaryPath();
+    const marker = join(dirname(path), "unsupported-ready");
+    createCampaign(path, "test", null).close();
+    const database = new Database(path, { create: false, readwrite: true });
+    database.run("PRAGMA user_version = 999");
+    database.close(true);
+    const child = Bun.spawn(
+      [
+        process.execPath,
+        resolve("tests/v1/fixtures/hot-journal.ts"),
+        path,
+        marker,
+      ],
+      { stdout: "pipe", stderr: "pipe" },
+    );
+    for (let attempt = 0; !existsSync(marker) && attempt < 1_000; attempt += 1)
+      await Bun.sleep(5);
+    if (!existsSync(marker)) {
+      child.kill(9);
+      await child.exited;
+      throw new Error("hot-journal fixture did not start");
+    }
+    child.kill(9);
+    await child.exited;
+    const databaseBefore = readFileSync(path);
+    const journalBefore = readFileSync(`${path}-journal`);
+    expect(() => openCampaign(path)).toThrow(
+      "unsupported campaign schema: 999",
+    );
+    expect(readFileSync(path)).toEqual(databaseBefore);
+    expect(readFileSync(`${path}-journal`)).toEqual(journalBefore);
+  });
+
+  test("rejects committed WAL state without changing its files", async () => {
+    const path = temporaryPath();
+    const marker = join(dirname(path), "wal-ready");
+    createCampaign(path, "test", null).close();
+    const child = Bun.spawn(
+      [
+        process.execPath,
+        resolve("tests/v1/fixtures/wal-schema.ts"),
+        path,
+        marker,
+      ],
+      { stdout: "pipe", stderr: "pipe" },
+    );
+    for (let attempt = 0; !existsSync(marker) && attempt < 1_000; attempt += 1)
+      await Bun.sleep(5);
+    if (!existsSync(marker)) {
+      child.kill(9);
+      await child.exited;
+      throw new Error("WAL fixture did not start");
+    }
+    child.kill(9);
+    await child.exited;
+    const files = [path, `${path}-wal`, `${path}-shm`];
+    expect(files.every(existsSync)).toBe(true);
+    const before = files.map((file) => readFileSync(file));
+    for (const opener of [openReader, openCampaign]) {
+      expect(() => opener(path)).toThrow("unsupported campaign WAL state");
+      expect(files.map((file) => readFileSync(file))).toEqual(before);
+    }
+  });
+
+  test("rejects a clean WAL-format header without changing it", () => {
+    const path = temporaryPath();
+    createCampaign(path, "test", null).close();
+    const database = new Database(path, { create: false, readwrite: true });
+    database.run("PRAGMA journal_mode = WAL");
+    database.run("PRAGMA wal_checkpoint(TRUNCATE)");
+    database.close(true);
+    rmSync(`${path}-wal`);
+    rmSync(`${path}-shm`);
+    const before = readFileSync(path);
+    expect([before[18], before[19]]).toEqual([2, 2]);
+    for (const opener of [openReader, openCampaign]) {
+      expect(() => opener(path)).toThrow("unsupported campaign WAL mode");
+      expect(readFileSync(path)).toEqual(before);
+    }
+  });
+
+  test("preserves normal and dangling WAL auxiliary entries on open", () => {
+    for (const suffix of ["-wal", "-shm"]) {
+      const normal = temporaryPath(`normal${suffix}.db`);
+      createCampaign(normal, "test", null).close();
+      writeFileSync(normal + suffix, "not ours");
+      expect(() => openReader(normal)).toThrow(
+        "unsupported campaign WAL state",
+      );
+      expect(readFileSync(normal + suffix, "utf8")).toBe("not ours");
+
+      const dangling = temporaryPath(`dangling${suffix}.db`);
+      createCampaign(dangling, "test", null).close();
+      symlinkSync("missing-target", dangling + suffix);
+      expect(() => openCampaign(dangling)).toThrow(
+        "unsupported campaign WAL state",
+      );
+      expect(lstatSync(dangling + suffix).isSymbolicLink()).toBe(true);
+    }
   });
 
   test("refuses an artifact without its campaign identity", () => {

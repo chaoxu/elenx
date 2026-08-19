@@ -3,9 +3,8 @@ import {
   defineTool,
   deriveCandidateStatus,
   entryIdSchema,
-  finalizeVerdict,
   openCampaign,
-  submitVerdictTool,
+  returnedToolSubmission,
   type CallReceipt,
   type Campaign,
 } from "elenx";
@@ -51,8 +50,7 @@ void openCampaign;
 void entryIdSchema.parse(1);
 void deriveCandidateStatus(campaign.records(), 1);
 void derivePiSpend(campaign.records());
-void finalizeVerdict;
-void submitVerdictTool;
+void returnedToolSubmission;
 void (undefined as unknown as CallReceipt);
 void result;
 void credentialModels;

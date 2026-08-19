@@ -14,7 +14,13 @@ import {
 } from "@earendil-works/pi-ai";
 import { streamSimple as streamSimpleOpenAIResponses } from "@earendil-works/pi-ai/api/openai-responses";
 
-import { createCampaign, defineTool, openReader, type Entry } from "../../src";
+import {
+  createCampaign,
+  defineTool,
+  deriveCandidateStatus,
+  openReader,
+  type Entry,
+} from "../../src";
 import {
   PI_TELEMETRY_SCHEMA_VERSIONS,
   derivePiSpend,
@@ -40,6 +46,18 @@ const model: Model<"openai-responses"> = {
   contextWindow: 10_000,
   maxTokens: 1_000,
 };
+const submitVerdict = defineTool({
+  name: "submit_verdict",
+  description: "Submit a verdict",
+  input: z.strictObject({
+    verdict: z.enum(["PASS", "FAIL", "INCONCLUSIVE"]),
+    evidence: z.json(),
+  }),
+  replay: "safe",
+  async run() {
+    return null;
+  },
+});
 
 const directories: string[] = [];
 
@@ -73,6 +91,7 @@ function spendEntries(
       kind: "call",
       label: "test/v1",
       request: {
+        protocol: "elenx/pi-run/v1",
         model: { provider: "fake", id: "test-v1", api: "openai-responses" },
         prompt: "test",
       },
@@ -306,6 +325,39 @@ describe("thin Pi runner", () => {
     ).toThrow("either call or candidate");
   });
 
+  test("ignores an ordinary call with the old Pi-shaped request", () => {
+    const entries = spendEntries({
+      "pi.ai.provider": "fake",
+      "pi.ai.model": "test-v1",
+      "pi.ai.api": "openai-responses",
+    }).map((entry) =>
+      entry.kind === "call"
+        ? {
+            ...entry,
+            request: {
+              model: {
+                provider: "fake",
+                id: "test-v1",
+                api: "openai-responses",
+              },
+              prompt: "ordinary application request",
+            },
+          }
+        : entry,
+    );
+
+    expect(derivePiSpend(entries)).toEqual({
+      calls: [],
+      unaccountedCalls: [],
+      potentialRequests: [],
+      summary: {
+        logicalProviderRequests: 0,
+        requestErrors: 0,
+        unmeasuredRequests: 0,
+      },
+    });
+  });
+
   test("runs a fresh Pi loop and stores its native transcript", async () => {
     const store = campaign();
     const requests: (SimpleStreamOptions | undefined)[] = [];
@@ -390,8 +442,17 @@ describe("thin Pi runner", () => {
     expect(piStoredResult.parse(terminal.output)).toMatchObject({
       state: "succeeded",
       text: "answer",
+      transcript: [{ role: "user" }, { role: "assistant" }],
       telemetry: result.telemetry,
     });
+    expect(
+      piStoredResult.safeParse({
+        state: "succeeded",
+        text: "answer",
+        transcript: [],
+        unknown: true,
+      }).success,
+    ).toBe(false);
     expect(piTelemetry.safeParse(result.telemetry).success).toBe(true);
     const spend = derivePiSpend(records, { candidate });
     expect(spend).toMatchObject({
@@ -720,6 +781,10 @@ describe("thin Pi runner", () => {
 
   test("projects completed and unsettled request attempts", async () => {
     const store = campaign();
+    await store.call(
+      { label: "elenx/pi-request", request: null },
+      async () => null,
+    );
     let release!: () => void;
     let observed: ReturnType<typeof piRequestAttempts> = [];
     const blocked = new Promise<void>((resolve) => {
@@ -729,28 +794,27 @@ describe("thin Pi runner", () => {
       {
         label: "owner",
         request: {
+          protocol: "elenx/pi-run/v1",
           model: { provider: model.provider, id: model.id, api: model.api },
           prompt: "test",
         },
       },
       async ({ call }) => {
         const request = {
-          protocol: "pi" as const,
+          protocol: "elenx/pi-request/v1" as const,
           parent: call,
           model: { provider: model.provider, id: model.id, api: model.api },
           payload: { input: "test" },
         };
-        await store.call(
-          { label: "elenx/pi-request", request },
-          async () => null,
-        );
-        const pending = store.call(
-          { label: "elenx/pi-request", request },
-          async () => {
-            await blocked;
-            return null;
-          },
-        );
+        const internalRequest = {
+          label: "elenx/pi-request",
+          request,
+        };
+        await store.call(internalRequest, async () => null);
+        const pending = store.call(internalRequest, async () => {
+          await blocked;
+          return null;
+        });
         await Promise.resolve();
         observed = piRequestAttempts(store.records(), call);
         release();
@@ -961,7 +1025,7 @@ describe("thin Pi runner", () => {
       model,
       label: "audit/v1",
       prompt: "Audit",
-      continueOnLength: 2,
+      maxRecoveries: 2,
     });
     expect(result).toMatchObject({
       state: "succeeded",
@@ -996,40 +1060,45 @@ describe("thin Pi runner", () => {
       model,
       label: "audit/v1",
       prompt: "Audit",
-      continueOnLength: 3,
+      maxRecoveries: 3,
     });
     expect(result).toMatchObject({
       state: "failed",
       providerRetryable: false,
       truncated: false,
-      error: "Pi stopped with length",
+      error: "Pi exceeded its context window",
     });
   });
 
-  test("continues after a provider-retryable error stop", async () => {
+  test("retries a provider error without preserving unseen partial text", async () => {
     const store = campaign();
+    const observed: Context[] = [];
     const interrupted = assistant(
       [{ type: "text", text: "half the proof" }],
       "error",
     );
     interrupted.errorMessage = "Codex error: 502 upstream server error";
     const result = await runPi(store, {
-      models: models([
-        interrupted,
-        assistant([{ type: "text", text: " and the rest." }], "stop"),
-      ]),
+      models: models(
+        [
+          interrupted,
+          assistant([{ type: "text", text: "complete retry" }], "stop"),
+        ],
+        (context) => observed.push(context),
+      ),
       model,
       label: "audit/v1",
       prompt: "Audit",
-      continueOnLength: 2,
+      maxRecoveries: 2,
     });
     expect(result).toMatchObject({
       state: "succeeded",
-      text: "half the proof and the rest.",
+      text: "complete retry",
     });
+    expect(observed[1]?.messages.map(({ role }) => role)).toEqual(["user"]);
   });
 
-  test("continues after a gateway-phrase error stop", async () => {
+  test("continues after an application-classified retryable error", async () => {
     const store = campaign();
     const dropped = assistant([{ type: "text", text: "before drop" }], "error");
     dropped.errorMessage = "Bad Gateway";
@@ -1041,11 +1110,12 @@ describe("thin Pi runner", () => {
       model,
       label: "audit/v1",
       prompt: "Audit",
-      continueOnLength: 2,
+      maxRecoveries: 2,
+      isRetryableError: (message) => /bad gateway/i.test(message),
     });
     expect(result).toMatchObject({
       state: "succeeded",
-      text: "before drop after drop.",
+      text: " after drop.",
     });
   });
 
@@ -1058,10 +1128,27 @@ describe("thin Pi runner", () => {
       model,
       label: "audit/v1",
       prompt: "Audit",
-      continueOnLength: 3,
+      maxRecoveries: 3,
     });
     expect(result).toMatchObject({ state: "failed" });
     expect(result.state === "failed" && result.providerRetryable).toBe(false);
+  });
+
+  test("preserves an application retry classification in the final result", async () => {
+    const dropped = assistant([], "error");
+    dropped.errorMessage = "pool websocket dropped";
+    const result = await runPi(campaign(), {
+      models: models([dropped]),
+      model,
+      label: "audit/v1",
+      prompt: "Audit",
+      isRetryableError: (message) => message.includes("websocket dropped"),
+    });
+
+    expect(result).toMatchObject({
+      state: "failed",
+      providerRetryable: true,
+    });
   });
 
   test("caps one request loop at thirty-two turns", async () => {
@@ -1102,6 +1189,130 @@ describe("thin Pi runner", () => {
     expect(assistants).toHaveLength(32);
   });
 
+  test("shares the thirty-two-turn cap across recovery loops", async () => {
+    const echo = defineTool({
+      name: "echo",
+      description: "Echo",
+      input: z.strictObject({ value: z.string() }),
+      replay: "safe",
+      async run({ value }) {
+        return { value };
+      },
+    });
+    const replies = [
+      assistant([{ type: "text", text: "partial" }], "length"),
+      ...Array.from({ length: 40 }, (_, index) =>
+        assistant(
+          [
+            {
+              type: "toolCall" as const,
+              id: `recovered-echo-${index}`,
+              name: "echo",
+              arguments: { value: "again" },
+            },
+          ],
+          "toolUse",
+        ),
+      ),
+    ];
+    const result = await runPi(campaign(), {
+      models: models(replies),
+      model,
+      label: "audit/v1",
+      prompt: "Audit",
+      tools: [echo],
+      maxRecoveries: 1,
+    });
+
+    expect(result.state).toBe("failed");
+    expect(
+      (result.transcript as readonly { role?: string }[]).filter(
+        ({ role }) => role === "assistant",
+      ),
+    ).toHaveLength(32);
+  });
+
+  test("does not accept a mixed terminal tool batch at the turn cap", async () => {
+    const store = campaign();
+    const candidate = store.submitCandidate(new TextEncoder().encode("claim"), [
+      "audit/v1",
+    ]);
+    const invalid = (id: string) => ({
+      type: "toolCall" as const,
+      id,
+      name: submitVerdict.name,
+      arguments: { verdict: "INVALID", evidence: null },
+    });
+    const replies = Array.from({ length: 31 }, (_, index) =>
+      assistant([invalid(`invalid-${index}`)], "toolUse"),
+    );
+    replies.push(
+      assistant(
+        [
+          invalid("invalid-final"),
+          {
+            type: "toolCall",
+            id: "valid-final",
+            name: submitVerdict.name,
+            arguments: { verdict: "PASS", evidence: null },
+          },
+        ],
+        "toolUse",
+      ),
+    );
+    const result = await runPi(store, {
+      models: models(replies),
+      model,
+      label: "audit/v1",
+      candidate,
+      prompt: "Audit",
+      tools: [submitVerdict],
+      stopAfterToolResult: true,
+    });
+    expect(result.state).toBe("failed");
+    expect(() => store.recordVerdict(result.call, "PASS", null)).toThrow(
+      "fresh successful verifier call",
+    );
+    expect(deriveCandidateStatus(store.records(), candidate).verified).toBe(
+      false,
+    );
+  });
+
+  test("keeps interrupted text when a continuation uses tools", async () => {
+    const echo = defineTool({
+      name: "echo",
+      description: "Echo",
+      input: z.strictObject({ value: z.string() }),
+      replay: "safe",
+      async run({ value }) {
+        return { value };
+      },
+    });
+    const result = await runPi(campaign(), {
+      models: models([
+        assistant([{ type: "text", text: "partial " }], "length"),
+        assistant(
+          [
+            {
+              type: "toolCall",
+              id: "echo",
+              name: "echo",
+              arguments: { value: "continue" },
+            },
+          ],
+          "toolUse",
+        ),
+        assistant([{ type: "text", text: "done" }], "stop"),
+      ]),
+      model,
+      label: "audit/v1",
+      prompt: "Audit",
+      tools: [echo],
+      maxRecoveries: 1,
+    });
+    expect(result).toMatchObject({ state: "succeeded", text: "partial done" });
+  });
+
   test("fails after exhausting length continuations", async () => {
     const store = campaign();
     const result = await runPi(store, {
@@ -1112,7 +1323,7 @@ describe("thin Pi runner", () => {
       model,
       label: "audit/v1",
       prompt: "Audit",
-      continueOnLength: 1,
+      maxRecoveries: 1,
     });
     expect(result).toMatchObject({
       state: "failed",
@@ -1195,20 +1406,38 @@ describe("thin Pi runner", () => {
   });
 
   test("does not classify context overflow or old failed results as retryable", async () => {
+    let requests = 0;
     const overflow = await runPi(campaign(), {
-      models: models([
-        {
-          ...assistant([], "error", undefined, false),
-          errorMessage: "500 internal error: context_length_exceeded",
-        },
-      ]),
+      models: models(
+        [
+          {
+            ...assistant([], "error", undefined, false),
+            errorMessage: "500 internal error: context_length_exceeded",
+          },
+          assistant([{ type: "text", text: "must not run" }], "stop"),
+        ],
+        () => (requests += 1),
+      ),
       model,
       label: "overflow/v1",
       prompt: "Overflow",
+      maxRecoveries: 1,
     });
     expect(overflow).toMatchObject({
       state: "failed",
       providerRetryable: false,
+    });
+    expect(requests).toBe(1);
+    const silentOverflow = await runPi(campaign(), {
+      models: models([assistant([{ type: "text", text: "answer" }], "stop")]),
+      model: { ...model, contextWindow: 10 },
+      label: "silent-overflow/v1",
+      prompt: "Overflow",
+    });
+    expect(silentOverflow).toMatchObject({
+      state: "failed",
+      providerRetryable: false,
+      error: "Pi exceeded its context window",
     });
     expect(
       piStoredResult.parse({

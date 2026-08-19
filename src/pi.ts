@@ -58,7 +58,8 @@ export interface PiRunOptions {
   readonly candidate?: EntryId;
   readonly tools?: readonly Tool[];
   readonly stopAfterToolResult?: true;
-  readonly continueOnLength?: number;
+  readonly maxRecoveries?: number;
+  readonly isRetryableError?: (message: string) => boolean;
   readonly signal?: AbortSignal;
 }
 
@@ -188,31 +189,21 @@ const piModel = z.strictObject({
 });
 
 export const piRequest = z.strictObject({
+  protocol: z.literal("elenx/pi-run/v1"),
   model: piModel,
   system: z.string().optional(),
   prompt: z.string(),
   reasoning: piReasoning.optional(),
   stopAfterToolResult: z.literal(true).optional(),
-  continueOnLength: z.number().int().min(1).max(64).optional(),
+  maxRecoveries: z.number().int().min(1).max(31).optional(),
 });
 
-// A pure-reasoning response cut off at the provider's per-response output
-// limit ends the agent loop with a "length" stop. With continueOnLength set,
-// the run re-enters the loop carrying the full transcript (thinking blocks
-// keep their signatures), so one logical call can span multiple provider
-// requests the way interactive agent harnesses do.
 const lengthContinuation =
   "The previous response was interrupted before completion. Continue exactly where you left off; do not restart or repeat completed work.";
 
-// Reverse-proxy error phrases Pi's classifier misses: Caddy reports
-// "Bad Gateway"/"Gateway Timeout" as text, without the numeric status Pi's
-// patterns match. Exported so applications classifying provider errors for
-// their own retry policy share one pattern with the kernel's continuation.
-export const gatewayTransientError = /bad.?gateway|gateway.?time.?out/i;
-
 const piRequestLabel = "elenx/pi-request";
 const piRequestAttempt = z.strictObject({
-  protocol: z.literal("pi"),
+  protocol: z.literal("elenx/pi-request/v1"),
   parent: entryId,
   model: piModel.extend({ baseUrl: z.string().min(1).optional() }),
   payload: json,
@@ -261,20 +252,21 @@ export function piRequestAttempts(
 }
 
 const storedResultBase = {
+  transcript: z.array(json).readonly().optional(),
   text: z.string(),
   telemetry: piTelemetry.optional(),
 };
 
 export const piStoredResult = z.discriminatedUnion("state", [
-  z.object({ state: z.literal("succeeded"), ...storedResultBase }),
-  z.object({
+  z.strictObject({ state: z.literal("succeeded"), ...storedResultBase }),
+  z.strictObject({
     state: z.literal("failed"),
     error: z.string(),
     providerRetryable: z.boolean().default(false),
     truncated: z.boolean().default(false),
     ...storedResultBase,
   }),
-  z.object({
+  z.strictObject({
     state: z.literal("cancelled"),
     error: z.string(),
     ...storedResultBase,
@@ -516,26 +508,22 @@ function result(
   stopAfterToolResult: boolean,
   signal: AbortSignal | undefined,
   contextWindow: number,
+  isRetryableError: PiRunOptions["isRetryableError"],
 ): PiOutcome {
   const stored = jsonSnapshot(messages) as readonly Json[];
   const final = messages.findLast(
     (message): message is AssistantMessage => message.role === "assistant",
   );
-  // A continued run's answer spans every length-cut segment, joined across
-  // the continuation prompts; a plain run keeps final-message semantics.
-  const parts = final === undefined ? [] : [contentText(final.content)];
-  for (let at = messages.lastIndexOf(final as AgentMessage); at >= 2; at -= 2) {
-    const bridge = messages[at - 1];
-    const previous = messages[at - 2];
-    if (
-      bridge?.role !== "user" ||
-      bridge.content !== lengthContinuation ||
-      previous?.role !== "assistant" ||
-      (previous.stopReason !== "length" && previous.stopReason !== "error")
-    )
-      break;
-    parts.unshift(contentText(previous.content));
-  }
+  const parts = messages.flatMap((message, at) => {
+    if (message.role !== "assistant") return [];
+    const bridge = messages[at + 1];
+    const interrupted =
+      bridge?.role === "user" &&
+      bridge.content === lengthContinuation &&
+      message.stopReason === "length";
+    if (message === final || interrupted) return [contentText(message.content)];
+    return [];
+  });
   const text = parts.join("");
   if (signal?.aborted || final?.stopReason === "aborted") {
     return {
@@ -545,14 +533,21 @@ function result(
       error: final?.errorMessage ?? "Pi call was cancelled",
     };
   }
-  const last = messages.at(-1);
+  const afterFinal = messages.slice(
+    messages.lastIndexOf(final as AgentMessage) + 1,
+  );
   const stoppedAfterTool =
     stopAfterToolResult &&
     final?.stopReason === "toolUse" &&
-    last?.role === "toolResult" &&
-    !last.isError;
+    afterFinal.length > 0 &&
+    afterFinal.every(
+      (message) => message.role === "toolResult" && !message.isError,
+    );
+  const overflow =
+    final !== undefined && isContextOverflow(final, contextWindow);
   if (
     final === undefined ||
+    overflow ||
     (final.stopReason !== "stop" && !stoppedAfterTool)
   ) {
     return {
@@ -561,21 +556,21 @@ function result(
       transcript: stored,
       providerRetryable:
         final !== undefined &&
-        !isContextOverflow(final, contextWindow) &&
-        isRetryableAssistantError(final),
-      // A response cut at the per-response output limit with real output; an
-      // overflow-shaped length stop deterministically repeats and is not
-      // truncation.
+        !overflow &&
+        (isRetryableAssistantError(final) ||
+          isRetryableError?.(final.errorMessage ?? "") === true),
       truncated:
         final !== undefined &&
         final.stopReason === "length" &&
-        !isContextOverflow(final, contextWindow) &&
+        !overflow &&
         final.usage.output > 0,
       error:
         final?.errorMessage ??
         (final === undefined
           ? "Pi returned no assistant message"
-          : `Pi stopped with ${final.stopReason}`),
+          : overflow
+            ? "Pi exceeded its context window"
+            : `Pi stopped with ${final.stopReason}`),
     };
   }
   return { state: "succeeded", text, transcript: stored };
@@ -589,7 +584,7 @@ function telemetryStopReason(
 }
 
 function measuredStream(
-  campaign: Campaign,
+  writeCall: Campaign["call"],
   parent: EntryId,
   models: PiModels,
 ): StreamFn {
@@ -624,25 +619,23 @@ function measuredStream(
             );
             const effective = replacement === undefined ? payload : replacement;
             const snapshot = jsonSnapshot(effective);
-            await campaign.call(
-              {
-                label: piRequestLabel,
-                request: {
-                  protocol: "pi",
-                  parent,
-                  model: {
-                    provider: requestModel.provider,
-                    id: requestModel.id,
-                    api: requestModel.api,
-                    ...(requestModel.baseUrl
-                      ? { baseUrl: requestModel.baseUrl }
-                      : {}),
-                  },
-                  payload: snapshot,
+            const checkpoint = {
+              label: piRequestLabel,
+              request: {
+                protocol: "elenx/pi-request/v1",
+                parent,
+                model: {
+                  provider: requestModel.provider,
+                  id: requestModel.id,
+                  api: requestModel.api,
+                  ...(requestModel.baseUrl
+                    ? { baseUrl: requestModel.baseUrl }
+                    : {}),
                 },
+                payload: snapshot,
               },
-              async () => null,
-            );
+            };
+            await writeCall(checkpoint, async () => null);
             checkpointed = true;
             return effective;
           },
@@ -718,6 +711,7 @@ export async function runPi(
     throw new TypeError("Pi models must provide streamSimple");
   }
   const parsed = piRequest.parse({
+    protocol: "elenx/pi-run/v1",
     model: {
       provider: options.model?.provider,
       id: options.model?.id,
@@ -731,9 +725,9 @@ export async function runPi(
     ...(options.stopAfterToolResult === true
       ? { stopAfterToolResult: true as const }
       : {}),
-    ...(options.continueOnLength === undefined
+    ...(options.maxRecoveries === undefined
       ? {}
-      : { continueOnLength: options.continueOnLength }),
+      : { maxRecoveries: options.maxRecoveries }),
   });
   const request = copyJson(parsed);
   const receipt = await campaign.call(
@@ -764,16 +758,15 @@ export async function runPi(
             : { "elenx.pi.reasoning.requested": exact.reasoning }),
         },
         async (span) => {
+          let turns = 0;
           const loop = (
-            content: string,
+            content: string | undefined,
             prior: readonly AgentMessage[],
           ): Promise<AgentMessage[]> => {
-            // Pi retries truncated tool calls without any bound; cap the
-            // turns of one request loop so a repeatedly cut-off submission
-            // cannot buy unbounded full-context requests.
-            let turns = 0;
             return runAgentLoop(
-              [{ role: "user", content, timestamp: Date.now() }],
+              content === undefined
+                ? []
+                : [{ role: "user", content, timestamp: Date.now() }],
               {
                 systemPrompt: exact.system ?? "",
                 messages: [...prior],
@@ -797,32 +790,35 @@ export async function runPi(
               },
               () => {},
               signal,
-              measuredStream(campaign, call, options.models),
+              measuredStream(
+                campaign.call.bind(campaign),
+                call,
+                options.models,
+              ),
             );
           };
           let messages = await loop(exact.prompt, []);
-          for (let used = 0; used < (exact.continueOnLength ?? 0); used++) {
+          for (let used = 0; used < (exact.maxRecoveries ?? 0); used++) {
             const final = messages.findLast(
               (message): message is AssistantMessage =>
                 message.role === "assistant",
             );
-            // Continue after an output-limit cut or a provider-retryable
-            // error stop (upstream 5xx, dropped stream), carrying the partial
-            // transcript. Overflow-shaped length stops can only repeat
-            // (truncated input filling the window), and non-retryable errors
-            // (quota, policy) or aborts always terminate.
+            const retry =
+              final?.stopReason === "error" &&
+              (isRetryableAssistantError(final) ||
+                options.isRetryableError?.(final.errorMessage ?? "") === true);
             const interrupted =
               final !== undefined &&
               !signal?.aborted &&
-              (final.stopReason === "length"
-                ? !isContextOverflow(final, options.model.contextWindow)
-                : final.stopReason === "error" &&
-                  (isRetryableAssistantError(final) ||
-                    gatewayTransientError.test(final.errorMessage ?? "")));
+              !isContextOverflow(final, options.model.contextWindow) &&
+              (final.stopReason === "length" || retry);
             if (!interrupted) break;
+            const prior = retry
+              ? messages.slice(0, messages.lastIndexOf(final))
+              : messages;
             messages = [
-              ...messages,
-              ...(await loop(lengthContinuation, messages)),
+              ...prior,
+              ...(await loop(retry ? undefined : lengthContinuation, prior)),
             ];
           }
           const outcome = result(
@@ -830,6 +826,7 @@ export async function runPi(
             exact.stopAfterToolResult === true,
             signal,
             options.model.contextWindow,
+            options.isRetryableError,
           );
           span.setAttributes({
             "elenx.pi.outcome": outcome.state,

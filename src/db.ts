@@ -1,6 +1,8 @@
 import { Database, SQLiteError } from "bun:sqlite";
 import { closeSync, constants, existsSync, openSync, rmSync } from "node:fs";
+import { lstatSync, readSync } from "node:fs";
 import { basename } from "node:path";
+import { isUint8Array } from "node:util/types";
 
 import { ENTRY_KINDS, entry as entrySchema, entryId } from "./schemas";
 import type { Entry, EntryDraft, EntryId, Json } from "./types";
@@ -34,13 +36,14 @@ interface EntryRow {
 interface MaterialRow {
   readonly material: Uint8Array;
 }
-interface VersionRow {
-  readonly user_version: number | bigint;
-}
-
 function configure(database: Database): void {
   database.run("PRAGMA synchronous = FULL");
   database.run("PRAGMA journal_mode = DELETE");
+}
+
+function copyBytes(value: Uint8Array): Uint8Array {
+  if (!isUint8Array(value)) throw new TypeError("candidate must be Uint8Array");
+  return new Uint8Array(value);
 }
 
 function validatePath(path: string): void {
@@ -59,10 +62,32 @@ function validatePath(path: string): void {
   }
 }
 
+function storedVersion(path: string): number {
+  for (const suffix of ["-wal", "-shm"])
+    if (lstatSync(path + suffix, { throwIfNoEntry: false }))
+      throw new Error("unsupported campaign WAL state");
+  const descriptor = openSync(path, constants.O_RDONLY);
+  const header = Buffer.alloc(64);
+  try {
+    const invalid =
+      readSync(descriptor, header, 0, header.length, 0) !== header.length ||
+      header.toString("utf8", 0, 16) !== "SQLite format 3\0";
+    if (invalid) throw new Error("invalid campaign artifact");
+    if (header[18] === 2 || header[19] === 2)
+      throw new Error("unsupported campaign WAL mode");
+    return header.readUInt32BE(60);
+  } finally {
+    closeSync(descriptor);
+  }
+}
+
 function open(path: string, create: boolean, readonly = false): Database {
   validatePath(path);
   if (!create && !existsSync(path))
     throw new Error(`campaign does not exist: ${path}`);
+  const version = create ? SCHEMA_VERSION : storedVersion(path);
+  if (version !== SCHEMA_VERSION)
+    throw new Error(`unsupported campaign schema: ${version}`);
   const database = new Database(path, {
     create,
     readonly,
@@ -72,14 +97,6 @@ function open(path: string, create: boolean, readonly = false): Database {
   });
   try {
     database.run("PRAGMA busy_timeout = 5000");
-    if (!readonly) configure(database);
-    const rawVersion = database
-      .query<VersionRow, []>("PRAGMA user_version")
-      .get()?.user_version;
-    const version = rawVersion === undefined ? undefined : Number(rawVersion);
-    if (!create && version !== SCHEMA_VERSION) {
-      throw new Error(`unsupported campaign schema: ${String(version)}`);
-    }
     if (!create) {
       const campaign = database
         .query<{ readonly count: number | bigint }, []>(
@@ -90,6 +107,7 @@ function open(path: string, create: boolean, readonly = false): Database {
         throw new Error("invalid campaign artifact");
       }
     }
+    if (!readonly) configure(database);
     return database;
   } catch (error) {
     database.close(true);
@@ -106,6 +124,11 @@ export class Journal {
 
   static create(path: string, application: string, config: Json): Journal {
     validatePath(path);
+    const sidecars = ["-journal", "-wal", "-shm"].map(
+      (suffix) => path + suffix,
+    );
+    if (sidecars.some((file) => lstatSync(file, { throwIfNoEntry: false })))
+      throw new Error(`campaign auxiliary file already exists: ${path}`);
     let descriptor: number;
     try {
       descriptor = openSync(
@@ -132,9 +155,7 @@ export class Journal {
       return journal;
     } catch (error) {
       database?.close(true);
-      for (const owned of [path, `${path}-journal`]) {
-        rmSync(owned, { force: true });
-      }
+      rmSync(path, { force: true });
       throw error;
     }
   }
@@ -164,8 +185,7 @@ export class Journal {
     delete body.kind;
     delete body.seq;
     delete body.atMs;
-    const storedMaterial =
-      material === undefined ? null : Uint8Array.from(material);
+    const storedMaterial = material === undefined ? null : copyBytes(material);
     const result = this.#database.run(
       "INSERT INTO entries(at_ms, kind, body, material) VALUES (?, ?, ?, ?)",
       [atMs, checked.kind, JSON.stringify(body), storedMaterial],
@@ -200,7 +220,7 @@ export class Journal {
       )
       .get(candidate);
     if (row === null) throw new Error(`candidate not found: ${candidate}`);
-    return Uint8Array.from(row.material);
+    return copyBytes(row.material);
   }
 
   close(): void {

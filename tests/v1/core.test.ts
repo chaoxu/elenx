@@ -8,9 +8,8 @@ import {
   createCampaign,
   defineTool,
   deriveCandidateStatus,
-  finalizeVerdict,
   openReader,
-  submitVerdictTool,
+  returnedToolSubmission,
   type Tool,
   type ToolExecutionContext,
 } from "../../src";
@@ -48,7 +47,18 @@ describe("small kernel", () => {
     const path = database();
     const campaign = createCampaign(path, "test", { version: 1 });
     const material = new TextEncoder().encode("proof");
+    Object.defineProperty(material, Symbol.iterator, {
+      value: function* () {
+        yield 0;
+      },
+    });
+    Object.defineProperty(material, "byteLength", { value: 8 });
     const candidate = campaign.submitCandidate(material, ["audit/v1"]);
+    for (const invalid of ["proof", [1, 2, 3], { 0: 1, length: 1 }]) {
+      expect(() =>
+        campaign.submitCandidate(invalid as never, ["audit/v1"]),
+      ).toThrow("Uint8Array");
+    }
     material.fill(0);
     campaign.close();
 
@@ -57,10 +67,40 @@ describe("small kernel", () => {
       .records()
       .find((entry) => entry.kind === "candidate");
     expect(candidateRecord?.seq).toBe(candidate);
+    expect(
+      reader.records().filter((entry) => entry.kind === "candidate"),
+    ).toHaveLength(1);
     const stored = reader.material(candidate);
     expect(new TextDecoder().decode(stored)).toBe("proof");
     stored.fill(0);
-    expect(new TextDecoder().decode(reader.material(candidate))).toBe("proof");
+    const ownIterator = Object.getOwnPropertyDescriptor(
+      Uint8Array.prototype,
+      Symbol.iterator,
+    );
+    try {
+      Object.defineProperty(Uint8Array.prototype, Symbol.iterator, {
+        configurable: true,
+        value: function* () {
+          yield 0;
+        },
+      });
+      const reread = reader.material(candidate);
+      expect([reread[0], reread[1], reread[2], reread[3], reread[4]]).toEqual([
+        112, 114, 111, 111, 102,
+      ]);
+    } finally {
+      if (ownIterator === undefined) {
+        delete (Uint8Array.prototype as { [Symbol.iterator]?: unknown })[
+          Symbol.iterator
+        ];
+      } else {
+        Object.defineProperty(
+          Uint8Array.prototype,
+          Symbol.iterator,
+          ownIterator,
+        );
+      }
+    }
     reader.close();
   });
 
@@ -100,89 +140,102 @@ describe("small kernel", () => {
     });
   });
 
-  test("records each returned structured verdict exactly", async () => {
-    for (const submitted of ["PASS", "FAIL", "INCONCLUSIVE"] as const) {
-      const campaign = createCampaign(database(), "test", null);
-      const candidate = campaign.submitCandidate(
-        new TextEncoder().encode("claim"),
-        ["audit/v1"],
-      );
-      const audit = await campaign.call(
-        {
-          label: "audit/v1",
-          candidate,
-          request: null,
-          tools: [submitVerdictTool],
-        },
-        async ({ tools }) => {
-          await tools[0]!.execute({
-            verdict: submitted,
-            evidence: { submitted },
-          });
-          return { state: "succeeded" };
-        },
-      );
-      const verdict = finalizeVerdict(campaign, audit.call);
-      expect(
-        campaign.records().find((entry) => entry.seq === verdict),
-      ).toMatchObject({
-        kind: "verdict",
-        verdict: submitted,
-        evidence: { submitted },
-      });
-      expect(
-        deriveCandidateStatus(campaign.records(), candidate).verified,
-      ).toBe(submitted === "PASS");
-    }
-  });
-
-  test("rejects unmatched or duplicate verdict submissions", async () => {
+  test("projects one returned tool submission without constraining its output", async () => {
     const campaign = createCampaign(database(), "test", null);
     const candidate = campaign.submitCandidate(
       new TextEncoder().encode("claim"),
       ["audit/v1"],
     );
-    const mismatched = defineTool({
-      ...submitVerdictTool,
+    const submit = defineTool({
+      name: "submit_verdict",
+      description: "Submit a verdict",
+      input: z.strictObject({
+        verdict: z.enum(["PASS", "FAIL", "INCONCLUSIVE"]),
+        evidence: z.json(),
+      }),
+      replay: "safe",
       async run() {
         return null;
       },
     });
-    const bad = await campaign.call(
+    const audit = await campaign.call(
       {
         label: "audit/v1",
         candidate,
         request: null,
-        tools: [mismatched],
+        tools: [submit],
       },
       async ({ tools }) => {
-        await tools[0]!.execute({ verdict: "PASS", evidence: null });
+        await tools[0]!.execute({
+          verdict: "PASS",
+          evidence: { reason: "checked" },
+        });
         return { state: "succeeded" };
       },
     );
-    expect(() => finalizeVerdict(campaign, bad.call)).toThrow(
-      "matching returned result",
+    const projected = returnedToolSubmission(
+      campaign.records(),
+      audit.call,
+      submit.name,
     );
+    expect(projected).toMatchObject({
+      input: { verdict: "PASS", evidence: { reason: "checked" } },
+      output: null,
+    });
+    expect(projected.toolCall).toBeLessThan(projected.toolResult);
+    const report = z
+      .strictObject({
+        verdict: z.enum(["PASS", "FAIL", "INCONCLUSIVE"]),
+        evidence: z.json(),
+      })
+      .parse(projected.input);
+    campaign.recordVerdict(audit.call, report.verdict, report.evidence);
+    expect(deriveCandidateStatus(campaign.records(), candidate).verified).toBe(
+      true,
+    );
+  });
 
+  test("rejects missing, duplicate, and thrown tool submissions", async () => {
+    const campaign = createCampaign(database(), "test", null);
+    const candidate = campaign.submitCandidate(
+      new TextEncoder().encode("claim"),
+      ["audit/v1"],
+    );
+    const submit = defineTool({
+      name: "submit_verdict",
+      description: "Submit a verdict",
+      input: z.strictObject({ verdict: z.literal("PASS") }),
+      replay: "safe",
+      async run() {
+        return null;
+      },
+    });
+    const empty = await campaign.call(
+      { label: "audit/v1", candidate, request: null, tools: [submit] },
+      async () => ({ state: "succeeded" }),
+    );
+    expect(() =>
+      returnedToolSubmission(campaign.records(), empty.call, submit.name),
+    ).toThrow("exactly one submission");
     const duplicate = await campaign.call(
       {
         label: "audit/v1",
         candidate,
         request: null,
-        tools: [submitVerdictTool],
+        tools: [submit],
       },
       async ({ tools }) => {
-        await tools[0]!.execute({ verdict: "PASS", evidence: null });
-        await tools[0]!.execute({ verdict: "FAIL", evidence: null });
+        await tools[0]!.execute({ verdict: "PASS" });
+        await tools[0]!.execute({ verdict: "PASS" });
         return { state: "succeeded" };
       },
     );
-    expect(() => finalizeVerdict(campaign, duplicate.call)).toThrow(
-      "exactly one submission",
-    );
+    expect(() =>
+      returnedToolSubmission(campaign.records(), duplicate.call, submit.name),
+    ).toThrow("exactly one submission");
 
     const throwing = defineTool({
-      ...submitVerdictTool,
+      ...submit,
       async run() {
         throw new Error("submission failed");
       },
@@ -195,126 +248,15 @@ describe("small kernel", () => {
           request: null,
           tools: [throwing],
         },
-        ({ tools }) => tools[0]!.execute({ verdict: "PASS", evidence: null }),
+        ({ tools }) => tools[0]!.execute({ verdict: "PASS" }),
       ),
     ).rejects.toThrow("submission failed");
     const thrown = campaign
       .records()
       .findLast((entry) => entry.kind === "call")!;
-    expect(() => finalizeVerdict(campaign, thrown.seq)).toThrow(
-      "matching returned result",
-    );
-  });
-
-  test("requires a finished successful verifier call", async () => {
-    const campaign = createCampaign(database(), "test", null);
-    const candidate = campaign.submitCandidate(
-      new TextEncoder().encode("claim"),
-      ["audit/v1"],
-    );
-    const empty = await campaign.call(
-      {
-        label: "audit/v1",
-        candidate,
-        request: null,
-        tools: [submitVerdictTool],
-      },
-      async () => ({ state: "succeeded" }),
-    );
-    expect(() => finalizeVerdict(campaign, empty.call)).toThrow(
-      "exactly one submission",
-    );
-    let release!: () => void;
-    const blocked = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    const delayed = defineTool({
-      ...submitVerdictTool,
-      async run(input) {
-        await blocked;
-        return input;
-      },
-    });
-    const audit = await campaign.call(
-      {
-        label: "audit/v1",
-        candidate,
-        request: null,
-        tools: [delayed],
-      },
-      async ({ call, tools }) => {
-        const pending = tools[0]!.execute({
-          verdict: "PASS",
-          evidence: null,
-        });
-        expect(() => finalizeVerdict(campaign, call)).toThrow(
-          "matching returned result",
-        );
-        release();
-        await pending;
-        expect(() => finalizeVerdict(campaign, call)).toThrow(
-          "fresh successful verifier call",
-        );
-        return { state: "succeeded" };
-      },
-    );
-    finalizeVerdict(campaign, audit.call);
-    expect(() => finalizeVerdict(campaign, audit.call)).toThrow();
-    expect(
-      campaign.records().filter((entry) => entry.kind === "verdict"),
-    ).toHaveLength(1);
-  });
-
-  test("rejects failed, cancelled, and thrown verifier calls", async () => {
-    for (const state of ["failed", "cancelled"] as const) {
-      const campaign = createCampaign(database(), "test", null);
-      const candidate = campaign.submitCandidate(
-        new TextEncoder().encode("claim"),
-        ["audit/v1"],
-      );
-      const audit = await campaign.call(
-        {
-          label: "audit/v1",
-          candidate,
-          request: null,
-          tools: [submitVerdictTool],
-        },
-        async ({ tools }) => {
-          await tools[0]!.execute({ verdict: "PASS", evidence: null });
-          return { state };
-        },
-      );
-      expect(() => finalizeVerdict(campaign, audit.call)).toThrow(
-        "fresh successful verifier call",
-      );
-      expect(campaign.records().some((entry) => entry.kind === "verdict")).toBe(
-        false,
-      );
-    }
-
-    const campaign = createCampaign(database(), "test", null);
-    const candidate = campaign.submitCandidate(
-      new TextEncoder().encode("claim"),
-      ["audit/v1"],
-    );
-    await expect(
-      campaign.call(
-        {
-          label: "audit/v1",
-          candidate,
-          request: null,
-          tools: [submitVerdictTool],
-        },
-        async ({ tools }) => {
-          await tools[0]!.execute({ verdict: "PASS", evidence: null });
-          throw new Error("outer failure");
-        },
-      ),
-    ).rejects.toThrow("outer failure");
-    const call = campaign.records().findLast((entry) => entry.kind === "call")!;
-    expect(() => finalizeVerdict(campaign, call.seq)).toThrow(
-      "fresh successful verifier call",
-    );
+    expect(() =>
+      returnedToolSubmission(campaign.records(), thrown.seq, submit.name),
+    ).toThrow("returned tool result");
   });
 
   test("rejects a call that guessed a future candidate sequence", async () => {
