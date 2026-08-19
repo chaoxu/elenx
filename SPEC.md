@@ -136,7 +136,3 @@ piReasoning, piRequest, piTelemetry, piStoredResult // Zod schemas from elenx/pi
 `piStoredResult` parses the JSON stored in a Pi call result, not the returned `PiResult` wrapper containing `call`. Current results include `transcript`; the field remains optional only so retained schema-4 results written by earlier tagged packages can still be projected. Unknown top-level fields are rejected.
 
 All database methods are synchronous because Bun SQLite is synchronous. Only external execution through `call` and `runPi` is asynchronous.
-
-## Completion criteria
-
-V1 is complete when the full check passes on macOS and Linux, a fresh reader reconstructs a verified candidate from the artifact alone, the scripted deterministic-verifier slice passes, one explicitly requested real-provider Pi smoke passes, and package contents and consumer types are verified.

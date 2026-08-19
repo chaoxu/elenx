@@ -1,8 +1,10 @@
 # Mining Pi packages for Elenx
 
-This study examines six Pi packages as possible sources of mechanisms for Elenx. It is pinned to the published packages and source revisions below on 2026-08-15; package behavior outside those revisions is not covered.
+Status: dated research record, pinned 2026-08-15. This file is not current design or roadmap authority. See [`../design.md`](../design.md) for the design boundary and [`../../SPEC.md`](../../SPEC.md) for the kernel contract.
 
-Current status: Elenx has since implemented a generic returned-tool-submission projection and settled Pi spend projection. Evidence binding and supplemental provenance remain application concerns; the historical findings below describe the pinned revision and are not a current roadmap.
+This study examines six Pi packages as possible sources of mechanisms for Elenx. It is pinned to the published packages and source revisions below; package behavior outside those revisions is not covered.
+
+Elenx later implemented a generic returned-tool-submission projection and settled Pi spend projection. Evidence binding and supplemental provenance remain application concerns. The implementation remarks below describe the pinned study and do not define current work.
 
 | package | published revision | license and runtime |
 |---|---|---|
@@ -273,7 +275,7 @@ A calibration artifact must freeze the target population, code revision, ordered
 
 Seven focused test files and 76 tests passed. They did not cover missing-label exclusion, end-to-end split isolation, exact feature order, artifact-owned zero floors, or runtime isotonic monotonicity. The npm tarball also excludes the advertised training scripts and tests, so the installed package cannot execute its documented retraining commands.
 
-## Extraction recommendations and current status
+## Recommendations and disposition
 
 ### 1. Application contracts
 
@@ -330,7 +332,7 @@ The Landstrip runtime was executed on macOS; Linux and Windows conclusions come 
 
 The reproduced defects are reasons not to reuse the pinned implementations. They are not claims about later releases. Any future adoption requires repeating the audit at the exact proposed version and preserving that version, source revision, policy, and test evidence in the application record.
 
-## Final allocation
+## Study conclusion
 
 The six packages contribute one coherent outer architecture:
 

@@ -11,7 +11,8 @@
     "README.md",
     "SPEC.md",
     "docs/application-author.md",
-    "docs/model-first-harness-hypotheses.md",
+    "docs/design.md",
+    "docs/hypotheses.md",
     "examples/v1"
   ],
   "exports": {

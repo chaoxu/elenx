@@ -1,6 +1,8 @@
 # Model-first harness hypotheses
 
-Status: discussion draft, 2026-08-19.
+Status: experimental research plan, 2026-08-19. This document owns hypotheses and measurement, not current runtime behavior. [`design.md`](design.md) defines the design boundary; `docs/protocol.md` in the companion [`elenx-solve`](https://gitea.lab/chaoxu/elenx-solve) repository defines current solver behavior.
+
+The catalog guides experiments implemented outside the kernel. It adds no task corpus, benchmark problems, evaluation runner, or runtime policy to Elenx.
 
 ## Research question
 
@@ -8,7 +10,7 @@ For a strong reasoning model working on a task that may yield to repeated approa
 
 The model owns epistemic decisions: which route to try, what evidence to seek, when an obstruction matters, and when an old route deserves another look. The harness owns faithful memory, execution boundaries, and measurement. Trust in the model's reasoning does not make its answer or its account of prior work true.
 
-The full execution trace remains immutable for audit. The information shown to the next reasoning episode is a separate, small projection of that trace. The baseline projection is empty. Every nonempty projection is an intervention that must outperform the baseline rather than a feature assumed to be useful.
+The supported API retains an append-only execution trace for audit. The information shown to the next reasoning episode is a separate, small projection of that trace. The baseline projection is empty. Every nonempty projection is an intervention that must outperform the baseline rather than a feature assumed to be useful.
 
 ## Experimental object
 
@@ -66,7 +68,7 @@ The model should not be reminded of information it already has. A memory item ea
 
 | ID | Intervention | Hypothesis | Main failure mode |
 | --- | --- | --- | --- |
-| T1 | Full repeated context versus delta-only context | Sending only new observations and changed obligations preserves quality while reducing input tokens | The model loses a premise that was technically visible but not actually retained |
+| T1 | Full repeated context versus delta-only context | Sending only new observations and changed obligations preserves quality while reducing input tokens | The model loses a premise that was technically visible but not retained |
 | T2 | Raw transcript versus deduplicated strategic projection | A projection containing only decision-changing facts is cheaper and equally effective | Compression deletes a small detail that carries a proof dependency |
 | T3 | Push all selected memory versus model-invoked memory retrieval | Letting the model request old evidence saves context on runs that do not need it | The model fails to request a fact whose relevance it does not yet recognize |
 | T4 | Flat summary versus hierarchical or on-demand summary | A short index plus expandable details preserves rare decisive facts without paying for them every round | Retrieval overhead and extra calls exceed the saved tokens |
@@ -109,16 +111,6 @@ The harness should treat concurrency as a separate resource policy rather than a
 | R7 | One-level delegation versus allowing a sub-agent to delegate | Nested delegation may solve genuinely decomposable tasks, but usually adds handoff and synthesis overhead | Capability versus loss of control |
 
 Sub-agents remain compatible with a simple harness. Their role is to supply a deliberately different observation, criticism, or bounded computation; their execution need not be concurrent. Every sub-agent call is charged, recorded, and evaluated as an intervention.
-
-## Coordinator topology
-
-The default system has one coordinator and at most one active sub-agent. The coordinator is the sole owner of the evolving campaign projection and the only component that advances the episode sequence. It gives a sub-agent a bounded assignment, the minimum context needed for that assignment, and an explicit output contract. The sub-agent returns an observation, critique, calculation, source check, or proposed state update; it does not directly edit authoritative state.
-
-This keeps mathematical judgment centralized without turning the harness into a fixed route scheduler. The coordinator may request a counterexample, proof audit, retrieval check, or second opinion when its current reasoning says that the information is worth the cost. A sub-agent is a temporary capability invoked by the coordinator, not another persistent planner. Its result becomes model-readable evidence only after the coordinator records and interprets it.
-
-“Sub-agent” describes topology, not authority. A verifier, curator, critic, and source checker may all be implemented as subordinate calls, but their outputs retain their declared roles. A verifier observation can affect candidate admission; it does not silently become a route priority. The coordinator remains responsible for deciding which observation to show next.
-
-Nested delegation is not part of the initial design. Permit a sub-agent to invoke a sub-agent only as an explicit later treatment, with a bounded depth, separate cost accounting, and a clear reason that the first sub-agent cannot complete the assignment itself. This preserves the default one-coordinator/one-active-sub-agent topology while leaving room for a demonstrated need.
 
 ## Exploration hypotheses
 
@@ -202,9 +194,9 @@ Run two budget views. The end-to-end policy comparison charges projection genera
 
 Randomize at the problem-by-replicate level, interleave arms to reduce provider drift, freeze exact prompts and task bytes, keep tool access and stopping rules matched, and repeat each arm because model outputs are stochastic. Stratify tasks by one-shot difficulty, need for iterative repair, sensitivity to examples or counterexamples, dependence on retrieval, and availability of exact adjudication. Pilot runs validate instrumentation; held-out tasks support claims.
 
-## Minimal candidate design
+## Experimental platform
 
-Implementation status: `elenx-solve` 0.19.0 realizes the initial discovery baseline as campaign workflow 16 (`model-first-v1`). It has explicit episode, sub-agent, and per-call recovery limits; permits at most one serial sub-agent call at a time; and builds each fresh episode from the enabled `done`, `stop`, `open`, and `next` projection channels. Submitted solutions remain unverified candidates. Workflow 15's four-stage assurance, reconstruction specification, proof-content exclusion, detached supervisor, and provider-specific transport are no longer in the active solver path; Git revision `9808e5f` preserves that application for historical campaigns.
+[`elenx-solve`](https://gitea.lab/chaoxu/elenx-solve) implements the initial discovery baseline. Its protocol document owns the exact runtime behavior; this section describes the switches needed to run the experiments.
 
 The smallest experimental harness needs three pieces:
 
