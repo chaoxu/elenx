@@ -27,12 +27,11 @@ The API and campaign schema are experimental. Campaigns are accepted only when t
 | How do I build an application? | [`docs/application-author.md`](docs/application-author.md) |
 | Which harness interventions should we test? | [`docs/hypotheses.md`](docs/hypotheses.md) |
 
-Dated material is kept outside the current guidance:
+Dated research is kept outside the current guidance:
 
 - `docs/research/pi-package-mining.md` is a pinned research record, not a roadmap.
-- `docs/history/workflow-15-system-review.md` records the retired stack.
 
-These dated records are repository-only; the package contains only maintained consumer documentation.
+This research record is repository-only; the package contains only maintained consumer documentation.
 
 The deterministic verifier example is [`examples/v1/scripted-verifier.ts`](examples/v1/scripted-verifier.ts). [`examples/v1/pi-smoke.ts`](examples/v1/pi-smoke.ts) exercises the LLM-verdict path with a real Pi model.
 
