@@ -23,9 +23,9 @@ The API and campaign schema are experimental. Campaigns are accepted only when t
 | Question | Authority |
 | --- | --- |
 | What does the kernel guarantee? | [`SPEC.md`](SPEC.md) |
-| What is the proposed next solver design and philosophy? | [`docs/design.md`](docs/design.md) |
+| What design and philosophy does `reasoning-v1` follow? | [`docs/design.md`](docs/design.md) |
 | How do I build an application? | [`docs/application-author.md`](docs/application-author.md) |
-| Which proposed solver policies should we test? | [`docs/hypotheses.md`](docs/hypotheses.md) |
+| Which solver policies should we test? | [`docs/hypotheses.md`](docs/hypotheses.md) |
 
 Dated research is kept outside the current guidance:
 
@@ -37,9 +37,9 @@ The deterministic verifier example is [`examples/v1/scripted-verifier.ts`](examp
 
 ## Companion solver
 
-[`elenx-solve`](https://gitea.lab/chaoxu/elenx-solve) supplies the current model-first discovery loop: one bounded serial coordinator, an optional serial sub-agent, and switchable `done`, `stop`, `open`, and `next` projections. Submitted work remains an unverified Elenx candidate until assurance records admitted verdicts such that every required verifier has a `PASS` and none has a `FAIL`.
+[`elenx-solve`](https://gitea.lab/chaoxu/elenx-solve) supplies the current `reasoning-v1` protocol: one user-controlled resumable pure-reasoning campaign with serial reasoner, reviewer, verifier, and coordinator turns. It carries explicit context packages, continues output-limited responses within the same logical turn, and gives the model no campaign-ending action. Every proposed resolution becomes an immutable Elenx candidate whose status follows its frozen verifier set.
 
-The proposed replacement in [`docs/design.md`](docs/design.md) is not implemented. It changes the solver to a user-controlled resumable campaign with serial reasoner, reviewer, and verifier turns, explicit context packages, and no model-selected terminal limit. [`elenx-solve/docs/protocol.md`](https://gitea.lab/chaoxu/elenx-solve/src/branch/main/docs/protocol.md) remains the authority for current solver behavior.
+[`docs/design.md`](docs/design.md) defines the protocol's philosophy and vocabulary. [`elenx-solve/docs/protocol.md`](https://gitea.lab/chaoxu/elenx-solve/src/branch/main/docs/protocol.md) remains the authority for exact runtime behavior, and the solver preserves legacy `model-first-v1` campaigns under their original contract.
 
 ## Development
 

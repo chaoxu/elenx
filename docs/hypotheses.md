@@ -1,6 +1,6 @@
 # Elenx system hypotheses
 
-Status: proposed research plan, 2026-08-19. [`design.md`](design.md) defines the proposed solver V1 mechanism and vocabulary. The companion [`elenx-solve` protocol](https://gitea.lab/chaoxu/elenx-solve/src/branch/main/docs/protocol.md) defines current runtime behavior until it is replaced.
+Status: current research plan, 2026-08-20. [`design.md`](design.md) defines the philosophy and vocabulary of the implemented `reasoning-v1` baseline. The companion [`elenx-solve` protocol](https://gitea.lab/chaoxu/elenx-solve/src/branch/main/docs/protocol.md) defines exact runtime behavior.
 
 This document owns experimental comparisons, not kernel guarantees or current policy. Elenx contains no task corpus, benchmark suite, or evaluation runner.
 
@@ -17,8 +17,8 @@ Experiments vary one policy over the same durable mechanism: serial role turns, 
 | ID | Policy | Hypothesis | Main risk |
 | --- | --- | --- | --- |
 | O0 | Delegated reasoning | A fresh sub-agent with the whole problem and selected evidence uses more of its context for mathematics and escapes coordinator fixation | A strategically shallow coordinator sends the wrong evidence or assignment |
-| O1 | Coordinator reasoning | The coordinator's accumulated object-level understanding improves route choice and integration | Context accumulation and anchoring eventually degrade exploration |
-| O2 | Adaptive reasoning | A strong coordinator can recognize when continuity or a clean-context delegation is more valuable | The routing decision consumes cost and may be systematically wrong |
+| O1 | Coordinator reasoning | Combining the mathematical report and routing decision avoids a lossy handoff and a separate control call | One call may divide attention between exploration and coordination |
+| O2 | Adaptive reasoning | A strong coordinator can recognize when integrated coordinator reasoning or clean-context delegation is more valuable | The routing decision consumes cost and may be systematically wrong |
 
 All three use one active agent at a time. A delegated assignment may be the complete problem. The comparison is about where mathematical reasoning happens, not whether sub-agents are allowed.
 
@@ -42,11 +42,11 @@ Useful reasoning, not token consumption, is the objective. When a proposed resol
 | C3 | Restart with selected evidence | Curated state preserves decision-changing facts at lower input cost | Selection removes a subtle dependency or encodes a bad strategy |
 | C4 | Adaptive continuation | Continue productive contexts and restart when pressure or fixation appears | Context-quality diagnosis is unreliable and itself costs money |
 
-An output-limit continuation is part of the same logical turn and is not one of these policies. Cross-model work always restarts from explicit state. Record the exact supplied context and provider-reported input, cache-read, cache-write, output, and reasoning buckets; caching is not assumed.
+The implemented `reasoning-v1` baseline starts each completed role turn from a fresh Pi root and supplies explicit durable state. An output-limit continuation stays within the same logical turn and is not one of these policies. Exact-transcript continuation after a completed turn and adaptive retention require experimental runtime variants. Cross-model work always restarts from explicit state. Record the exact supplied context and provider-reported input, cache-read, cache-write, output, and reasoning buckets; caching is not assumed.
 
 ## Evidence content
 
-An evidence proposal enters later context only after an assessment. A policy may select no proposals, in which case it pays no intermediate review cost.
+An evidence proposal enters later context only after all requested assessments settle. A policy may select no proposals, in which case it pays no intermediate review cost.
 
 | ID | Selected evidence | Hypothesis | Main risk |
 | --- | --- | --- | --- |
@@ -70,7 +70,7 @@ M2 and M3 are distinct interventions. A failed attempt and a prohibition have di
 | E5 | Review immediately versus at a milestone | Immediate review prevents error propagation; delayed review avoids checking evidence never reused |
 | E6 | Push all selected evidence versus select per context package | Per-turn selection saves context; pushing all evidence prevents omission of a decisive obstruction |
 
-An assessment is a fallible observation. A model review cannot create a runtime-enforced mathematical exclusion. Experiments must retain the exact proposal, disclosure, reviewer profile, method, assessment, and monetary cost.
+An assessment is a fallible observation. A model review cannot create a runtime-enforced mathematical exclusion. The baseline retains the exact source report or checking feedback and proposal, reviewer profile and call provenance, assessment judgment, reasons, optional revision, provider-reported usage, and Pi's cost estimate when available; it reports unmeasured and potentially unknown spend separately. Experiments that vary disclosure or review method must record those added variables explicitly.
 
 ## Failed candidate verification
 
@@ -84,7 +84,7 @@ Starting from the same immutable candidate and verdict history, compare:
 | F3 | Independent reconstruction of the claimed result | Reconstructability supplies stronger assurance and may expose missing premises | The call adds verification cost without advancing discovery |
 | F4 | Withhold objections on the next attempt | Removing verifier anchoring improves global replanning | The same defect is recreated |
 
-The verifier feedback never mutates the candidate. Any correction produces a new candidate and a new frozen verifier contract.
+The verifier feedback never mutates the candidate. Any correction produces a new candidate with the campaign's frozen verifier profiles.
 
 ## Model allocation
 
@@ -106,11 +106,11 @@ Do not infer model independence from a fresh call. Record the model, provider, p
 | S2 | One active sub-agent versus fan-out | Clean-context serial delegation captures most of the benefit without synthesis cost |
 | S3 | Flat delegation versus nested delegation | Nested delegation helps only when a task is genuinely decomposable and the capability gain exceeds extra handoffs |
 
-Parallelism can still improve capability at equal spend by producing diverse routes. That would be a quality effect, not a cost saving supplied by concurrency. Proposed solver V1 keeps it disabled because elapsed time is not an objective.
+Parallelism can still improve capability at equal spend by producing diverse routes. That would be a quality effect, not a cost saving supplied by concurrency. `reasoning-v1` keeps it disabled because elapsed time is not an objective.
 
 ## Pure-reasoning boundary and future capabilities
 
-Proposed solver V1 supplies no external information or execution. Later experiments should add one capability at a time:
+`reasoning-v1` supplies no external information or execution. Later experiments should add one capability at a time:
 
 | ID | Extension | Problem class it may unlock | Cost or assurance risk |
 | --- | --- | --- | --- |
@@ -121,20 +121,20 @@ Proposed solver V1 supplies no external information or execution. Later experime
 | X5 | Indexed evidence retrieval | Campaigns whose selected evidence no longer fits directly in context | The reasoner may fail to retrieve a fact whose relevance it cannot yet see |
 | X6 | Recursive or specialist sub-agents | Problems with many separable technical obligations | Handoffs, duplicated work, and integration failures increase spend |
 
-These extensions should be compared against proposed solver V1, not bundled into a replacement architecture.
+These extensions should be compared against `reasoning-v1`, not bundled into a replacement architecture.
 
 ## Rethlas comparison experiment
 
-Rethlas shows that some omitted capabilities already work in an executable system, not that its full bundle is cost-optimal. A retrieval-critical problem may be easy for Rethlas and impossible in practice for proposed solver V1: once Rethlas's Matlas theorem-retrieval component supplies an obscure theorem, the remaining proof may be short, while proposed solver V1 cannot recover information absent from both its input and the model's internal knowledge. Citation-heavy problems may have the same asymmetry because Rethlas can inspect the referenced statement and proposed solver V1 cannot. Compare one-factor hybrids:
+Rethlas shows that some omitted capabilities already work in an executable system, not that its full bundle is cost-optimal. A retrieval-critical problem may be easy for Rethlas and impossible in practice for `reasoning-v1`: once Rethlas's Matlas theorem-retrieval component supplies an obscure theorem, the remaining proof may be short, while `reasoning-v1` cannot recover information absent from both its input and the model's internal knowledge. Citation-heavy problems may have the same asymmetry because Rethlas can inspect the referenced statement and `reasoning-v1` cannot. Compare one-factor hybrids:
 
-1. Proposed solver V1.
-2. Proposed solver V1 plus controlled theorem retrieval.
-3. Proposed solver V1 plus explicit Rethlas-style exploration skills.
-4. Proposed solver V1 plus indexed working-memory channels.
-5. Proposed solver V1 plus parallel recursive proving.
+1. `reasoning-v1` (implemented, untested).
+2. `reasoning-v1` plus controlled theorem retrieval.
+3. `reasoning-v1` plus explicit Rethlas-style exploration skills.
+4. `reasoning-v1` plus indexed working-memory channels.
+5. `reasoning-v1` plus parallel recursive proving.
 6. Full current Rethlas.
 
-Stratify problems into retrieval-critical, self-contained and tightly coupled, misleading-near-match literature, many-independent-route, overstrong-conjecture, and citation-hypothesis-mismatch groups. The first decisive comparison is proposed solver V1 versus proposed solver V1 plus retrieval on retrieval-critical and misleading-literature problems.
+Stratify problems into retrieval-critical, self-contained and tightly coupled, misleading-near-match literature, many-independent-route, overstrong-conjecture, and citation-hypothesis-mismatch groups. The first decisive comparison is `reasoning-v1` versus `reasoning-v1` plus retrieval on retrieval-critical and misleading-literature problems.
 
 ## Measurement
 
@@ -143,7 +143,7 @@ The primary result is a capability–cost frontier. Report at least:
 - externally adjudicated exact resolutions;
 - proposed resolutions and candidates that fail later assurance;
 - candidates with verified status under their frozen verifier sets but rejected externally;
-- total monetary cost, including coordination, continuation, review, verification, and failed calls;
+- provider-reported or estimated cost for coordination, continuation, review, verification, and failed calls, with unmeasured and potentially unknown spend reported separately;
 - provider-reported token buckets and unknown-spend events;
 - repeated or semantically near-duplicate routes;
 - false or overbroad selected evidence discovered later;
