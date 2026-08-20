@@ -1,10 +1,10 @@
 # Elenx
 
-Elenx is a durable semantic kernel for agent work. It stores exact candidate bytes, records calls and admitted tool effects through an append-only campaign API, binds verdicts to fresh candidate-scoped calls, and derives verification status from the recorded evidence.
+Elenx is a durable semantic kernel for agent work. It stores exact candidate bytes, records calls, tool invocations, settled tool results, and unknown tool outcomes through an append-only campaign API, binds verdicts to fresh candidate-scoped calls, and derives verification status from the recorded evidence.
 
 The bundled Pi runner executes application-selected models and Zod tools. Pi owns provider execution and credentials; Elenx records logical calls, pre-send request checkpoints, and settled telemetry.
 
-The kernel protects identity, durability, capability boundaries, crash semantics, and accounting. The model owns reasoning strategy. Applications own context assembly, tools, budgets, verification methods, and publication. Elenx contains no task corpus, benchmark suite, evaluation runner, or mathematical search policy.
+The kernel enforces identity, durability, crash semantics, and accounting contracts. It records application-selected capabilities but does not sandbox the runner. The model owns reasoning strategy. Applications own context assembly, tools, budgets, verification methods, and publication. Elenx contains no task corpus, benchmark suite, evaluation runner, or mathematical search policy.
 
 ## Install
 
@@ -23,9 +23,9 @@ The API and campaign schema are experimental. Campaigns are accepted only when t
 | Question | Authority |
 | --- | --- |
 | What does the kernel guarantee? | [`SPEC.md`](SPEC.md) |
-| Why is the boundary this small? | [`docs/design.md`](docs/design.md) |
+| What is the proposed next solver design and philosophy? | [`docs/design.md`](docs/design.md) |
 | How do I build an application? | [`docs/application-author.md`](docs/application-author.md) |
-| Which harness interventions should we test? | [`docs/hypotheses.md`](docs/hypotheses.md) |
+| Which proposed solver policies should we test? | [`docs/hypotheses.md`](docs/hypotheses.md) |
 
 Dated research is kept outside the current guidance:
 
@@ -37,7 +37,9 @@ The deterministic verifier example is [`examples/v1/scripted-verifier.ts`](examp
 
 ## Companion solver
 
-[`elenx-solve`](https://gitea.lab/chaoxu/elenx-solve) supplies the current model-first discovery loop: one bounded serial coordinator, an optional serial sub-agent, and switchable `done`, `stop`, `open`, and `next` projections. Submitted work remains an unverified Elenx candidate until a separate assurance treatment records candidate-bound evidence.
+[`elenx-solve`](https://gitea.lab/chaoxu/elenx-solve) supplies the current model-first discovery loop: one bounded serial coordinator, an optional serial sub-agent, and switchable `done`, `stop`, `open`, and `next` projections. Submitted work remains an unverified Elenx candidate until assurance records admitted verdicts such that every required verifier has a `PASS` and none has a `FAIL`.
+
+The proposed replacement in [`docs/design.md`](docs/design.md) is not implemented. It changes the solver to a user-controlled resumable campaign with serial reasoner, reviewer, and verifier turns, explicit context packages, and no model-selected terminal limit. [`elenx-solve/docs/protocol.md`](https://gitea.lab/chaoxu/elenx-solve/src/branch/main/docs/protocol.md) remains the authority for current solver behavior.
 
 ## Development
 
