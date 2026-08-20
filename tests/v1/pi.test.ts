@@ -6,6 +6,7 @@ import { z } from "zod";
 
 import {
   createAssistantMessageEventStream,
+  type Api,
   type AssistantMessage,
   type Context,
   type Model,
@@ -18,12 +19,17 @@ import {
   createCampaign,
   defineTool,
   deriveCandidateStatus,
+  openCampaign,
   openReader,
+  type Campaign,
   type Entry,
+  type Json,
 } from "../../src";
 import {
   PI_TELEMETRY_SCHEMA_VERSIONS,
+  continuePi,
   derivePiSpend,
+  piContinuationRequest,
   piRequest,
   piRequestAttempts,
   piStoredResult,
@@ -71,6 +77,51 @@ function campaign() {
   const directory = mkdtempSync(join(tmpdir(), "elenx-pi-"));
   directories.push(directory);
   return createCampaign(join(directory, "campaign.db"), "pi-test", null);
+}
+
+function recordsView(store: Campaign, records: readonly Entry[]): Campaign {
+  return {
+    records: () => records,
+    material: store.material.bind(store),
+    close: () => {},
+    submitCandidate: store.submitCandidate.bind(store),
+    recordVerdict: store.recordVerdict.bind(store),
+    call: store.call.bind(store),
+  };
+}
+
+function mapRecords(
+  store: Campaign,
+  transform: (entry: Entry) => Entry,
+): Campaign {
+  return recordsView(store, store.records().map(transform));
+}
+
+function replaceTranscript(
+  store: Campaign,
+  parent: number,
+  transform: (transcript: unknown[]) => unknown[],
+): Campaign {
+  return mapRecords(store, (entry): Entry => {
+    if (
+      entry.kind !== "call-result" ||
+      entry.parent !== parent ||
+      entry.state !== "returned"
+    ) {
+      return entry;
+    }
+    const output = piStoredResult.parse(entry.output);
+    if (output.transcript === undefined) throw new Error("missing transcript");
+    return {
+      ...entry,
+      output: JSON.parse(
+        JSON.stringify({
+          ...output,
+          transcript: transform([...output.transcript]),
+        }),
+      ),
+    };
+  });
 }
 
 function spendEntries(
@@ -1452,5 +1503,602 @@ describe("thin Pi runner", () => {
       providerRetryable: false,
       truncated: false,
     });
+  });
+
+  test("continues a durable length-truncated Pi call", async () => {
+    const store = campaign();
+    const first = await runPi(store, {
+      models: models([assistant([{ type: "text", text: "part" }], "length")]),
+      model,
+      label: "reason/v1",
+      system: "Reason carefully.",
+      prompt: "Solve the problem.",
+      reasoning: "max",
+    });
+    expect(first).toMatchObject({
+      state: "failed",
+      truncated: true,
+      text: "part",
+    });
+
+    const continued = await continuePi(store, {
+      parent: first.call,
+      models: models([assistant([{ type: "text", text: "done" }], "stop")]),
+      model,
+    });
+
+    expect(continued).toMatchObject({
+      state: "succeeded",
+      text: "partdone",
+    });
+    const records = store.records();
+    const continuation = records.find(
+      (entry) => entry.kind === "call" && entry.seq === continued.call,
+    );
+    expect(continuation).toMatchObject({
+      label: "reason/v1",
+      request: {
+        protocol: "elenx/pi-continuation/v1",
+        turn: first.call,
+        parent: first.call,
+        model: {
+          provider: model.provider,
+          id: model.id,
+          api: model.api,
+          baseUrl: model.baseUrl,
+        },
+        system: "Reason carefully.",
+        reasoning: "max",
+      },
+    });
+    if (continuation?.kind !== "call") throw new Error("missing continuation");
+    const stored = records.find(
+      (entry) =>
+        entry.kind === "call-result" && entry.parent === continued.call,
+    );
+    if (stored?.kind !== "call-result" || stored.state !== "returned") {
+      throw new Error("missing continuation result");
+    }
+    expect(piStoredResult.parse(stored.output)).toMatchObject({
+      state: "succeeded",
+      text: "partdone",
+      transcript: [
+        { role: "user", content: "Solve the problem." },
+        { role: "assistant", stopReason: "length" },
+        {
+          role: "user",
+          content:
+            "The previous response was interrupted before completion. Continue exactly where you left off; do not restart or repeat completed work.",
+        },
+        { role: "assistant", stopReason: "stop" },
+      ],
+    });
+    expect(piRequestAttempts(records, continued.call)).toHaveLength(1);
+    expect(derivePiSpend(records).summary).toMatchObject({
+      logicalProviderRequests: 2,
+      requestErrors: 0,
+    });
+  });
+
+  test("keeps a continuation chain under one logical turn", async () => {
+    const store = campaign();
+    const first = await runPi(store, {
+      models: models([assistant([{ type: "text", text: "a" }], "length")]),
+      model,
+      label: "chain/v1",
+      prompt: "Continue the proof.",
+    });
+    const second = await continuePi(store, {
+      parent: first.call,
+      models: models([assistant([{ type: "text", text: "b" }], "length")]),
+      model,
+    });
+    expect(second).toMatchObject({
+      state: "failed",
+      truncated: true,
+      text: "ab",
+    });
+    const third = await continuePi(store, {
+      parent: second.call,
+      models: models([assistant([{ type: "text", text: "c" }], "stop")]),
+      model,
+    });
+    expect(third).toMatchObject({ state: "succeeded", text: "abc" });
+    const continuationRequests = store.records().flatMap((entry) => {
+      if (entry.kind !== "call") return [];
+      const parsed = piContinuationRequest.safeParse(entry.request);
+      return parsed.success ? [parsed.data] : [];
+    });
+    expect(continuationRequests.map(({ turn }) => turn)).toEqual([
+      first.call,
+      first.call,
+    ]);
+  });
+
+  test("rejects continuation from a non-truncated parent", async () => {
+    const store = campaign();
+    const succeeded = await runPi(store, {
+      models: models([assistant([{ type: "text", text: "done" }], "stop")]),
+      model,
+      label: "reject/succeeded",
+      prompt: "Question",
+    });
+    await expect(
+      continuePi(store, {
+        parent: succeeded.call,
+        models: models([assistant([{ type: "text", text: "bad" }], "stop")]),
+        model,
+      }),
+    ).rejects.toThrow("continuation lineage contains a non-truncated result");
+  });
+
+  test("rejects continuation model drift before dispatch", async () => {
+    const store = campaign();
+    const first = await runPi(store, {
+      models: models([assistant([{ type: "text", text: "part" }], "length")]),
+      model,
+      label: "drift/v1",
+      prompt: "Question",
+    });
+    const variants = [
+      { ...model, provider: "other-provider" },
+      { ...model, id: "other-model" },
+      { ...model, api: "anthropic-messages" as const },
+      { ...model, baseUrl: "https://other.invalid.test" },
+    ] satisfies readonly Model<Api>[];
+    for (const changed of variants) {
+      let dispatched = false;
+      const noDispatch: PiModels = {
+        streamSimple() {
+          dispatched = true;
+          throw new Error("unexpected dispatch");
+        },
+      };
+      await expect(
+        continuePi(store, {
+          parent: first.call,
+          models: noDispatch,
+          model: changed,
+        }),
+      ).rejects.toThrow("continuation model differs from its root");
+      expect(dispatched).toBe(false);
+    }
+    const profileVariants = [
+      { ...model, reasoning: false },
+      { ...model, thinkingLevelMap: { max: "high" as const } },
+      { ...model, contextWindow: model.contextWindow + 1 },
+      { ...model, maxTokens: model.maxTokens + 1 },
+      { ...model, samplingParams: { temperature: 0.5 } },
+      { ...model, compat: { supportsReasoningEffort: false } },
+    ] satisfies readonly Model<Api>[];
+    for (const changed of profileVariants) {
+      let dispatched = false;
+      const noDispatch: PiModels = {
+        streamSimple() {
+          dispatched = true;
+          throw new Error("unexpected dispatch");
+        },
+      };
+      await expect(
+        continuePi(store, {
+          parent: first.call,
+          models: noDispatch,
+          model: changed,
+        }),
+      ).rejects.toThrow("continuation model profile differs from its root");
+      expect(dispatched).toBe(false);
+    }
+  });
+
+  test("rejects changed tools and provider checkpoints", async () => {
+    const echo = defineTool({
+      name: "echo",
+      description: "Echo a value",
+      input: z.strictObject({ value: z.string() }),
+      replay: "safe",
+      async run(input) {
+        return input;
+      },
+    });
+    const store = campaign();
+    const first = await runPi(store, {
+      models: models([assistant([{ type: "text", text: "part" }], "length")]),
+      model,
+      label: "contract/v1",
+      prompt: "Question",
+      tools: [echo],
+    });
+    await expect(
+      continuePi(store, {
+        parent: first.call,
+        models: models([assistant([{ type: "text", text: "done" }], "stop")]),
+        model,
+      }),
+    ).rejects.toThrow("continuation tools differ from its root");
+
+    const altered = mapRecords(store, (entry) => {
+      if (entry.kind !== "call" || entry.label !== "elenx/pi-request") {
+        return entry;
+      }
+      const request = JSON.parse(JSON.stringify(entry.request)) as {
+        model: { provider: string };
+      };
+      request.model.provider = "changed-provider";
+      return { ...entry, request };
+    });
+    await expect(
+      continuePi(altered, {
+        parent: first.call,
+        models: models([assistant([{ type: "text", text: "done" }], "stop")]),
+        model,
+        tools: [echo],
+      }),
+    ).rejects.toThrow("checkpoint differs from its call");
+  });
+
+  test("rejects changed continuation transcripts", async () => {
+    const store = campaign();
+    const first = await runPi(store, {
+      models: models([assistant([{ type: "text", text: "part" }], "length")]),
+      model,
+      label: "transcript/v1",
+      prompt: "Original question",
+    });
+    const changes: readonly [
+      string,
+      (transcript: unknown[]) => unknown[],
+      string,
+    ][] = [
+      [
+        "root prompt",
+        (transcript) => [
+          {
+            ...(transcript[0] as Record<string, unknown>),
+            content: "Changed question",
+          },
+          ...transcript.slice(1),
+        ],
+        "changed the root prompt",
+      ],
+      [
+        "injected user message",
+        (transcript) => [
+          transcript[0],
+          { role: "user", content: "Injected", timestamp: 1 },
+          ...transcript.slice(1),
+        ],
+        "invalid continuation transcript sequence",
+      ],
+      [
+        "malformed content block",
+        (transcript) => [
+          transcript[0],
+          {
+            ...(transcript[1] as Record<string, unknown>),
+            content: [{ type: "unknown" }],
+          },
+        ],
+        "malformed continuation transcript",
+      ],
+      [
+        "assistant model",
+        (transcript) => [
+          transcript[0],
+          {
+            ...(transcript[1] as Record<string, unknown>),
+            model: "changed-model",
+          },
+        ],
+        "changed model identity",
+      ],
+      [
+        "assistant after a truncated tool call",
+        (transcript) => {
+          const tail = transcript[1] as Record<string, unknown>;
+          return [
+            transcript[0],
+            {
+              ...tail,
+              content: [
+                {
+                  type: "toolCall",
+                  id: "truncated",
+                  name: "tool",
+                  arguments: {},
+                },
+              ],
+            },
+            {
+              role: "toolResult",
+              toolCallId: "truncated",
+              toolName: "tool",
+              content: [{ type: "text", text: "not executed" }],
+              isError: true,
+              timestamp: 1,
+            },
+            tail,
+          ];
+        },
+        "invalid continuation transcript sequence",
+      ],
+    ];
+    for (const [_name, transform, error] of changes) {
+      await expect(
+        continuePi(replaceTranscript(store, first.call, transform), {
+          parent: first.call,
+          models: models([assistant([{ type: "text", text: "done" }], "stop")]),
+          model,
+        }),
+      ).rejects.toThrow(error);
+    }
+  });
+
+  test("rejects altered continuation reasoning", async () => {
+    const store = campaign();
+    const first = await runPi(store, {
+      models: models([assistant([{ type: "text", text: "a" }], "length")]),
+      model,
+      label: "reasoning/v1",
+      prompt: "Question",
+      reasoning: "max",
+    });
+    const second = await continuePi(store, {
+      parent: first.call,
+      models: models([assistant([{ type: "text", text: "b" }], "length")]),
+      model,
+    });
+    const altered = mapRecords(store, (entry) => {
+      if (entry.kind !== "call" || entry.seq !== second.call) return entry;
+      const request = JSON.parse(JSON.stringify(entry.request)) as {
+        reasoning?: string;
+      };
+      request.reasoning = "low";
+      return { ...entry, request };
+    });
+    await expect(
+      continuePi(altered, {
+        parent: second.call,
+        models: models([assistant([{ type: "text", text: "done" }], "stop")]),
+        model,
+      }),
+    ).rejects.toThrow("continuation request differs from its root");
+  });
+
+  test("rejects a continuation transcript that changes its parent prefix", async () => {
+    const store = campaign();
+    const first = await runPi(store, {
+      models: models([assistant([{ type: "text", text: "a" }], "length")]),
+      model,
+      label: "prefix/v1",
+      prompt: "Question",
+    });
+    const second = await continuePi(store, {
+      parent: first.call,
+      models: models([assistant([{ type: "text", text: "b" }], "length")]),
+      model,
+    });
+    const altered = replaceTranscript(store, second.call, (transcript) => [
+      transcript[0],
+      {
+        ...(transcript[1] as Record<string, unknown>),
+        content: [{ type: "text", text: "forged" }],
+      },
+      ...transcript.slice(2),
+    ]);
+    await expect(
+      continuePi(altered, {
+        parent: second.call,
+        models: models([assistant([{ type: "text", text: "done" }], "stop")]),
+        model,
+      }),
+    ).rejects.toThrow("changed its parent prefix");
+  });
+
+  test("blocks duplicate continuation after a hard crash", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "elenx-pi-continuation-"));
+    directories.push(directory);
+    const path = join(directory, "campaign.db");
+    const store = createCampaign(path, "pi-test", null);
+    const first = await runPi(store, {
+      models: models([assistant([{ type: "text", text: "part" }], "length")]),
+      model,
+      label: "crash/v1",
+      prompt: "Question",
+    });
+    store.close();
+
+    const fixture = resolve("tests/v1/fixtures/crash-pi-continuation.ts");
+    const child = Bun.spawnSync(
+      [process.execPath, fixture, path, String(first.call)],
+      { stdout: "pipe", stderr: "pipe" },
+    );
+    expect(child.exitCode).toBe(0);
+    const reopened = openCampaign(path);
+    await expect(
+      continuePi(reopened, {
+        parent: first.call,
+        models: models([assistant([{ type: "text", text: "done" }], "stop")]),
+        model,
+      }),
+    ).rejects.toThrow("continuation parent has an unsettled child");
+    reopened.close();
+  });
+
+  test("retries a parent after a settled cancelled child", async () => {
+    const store = campaign();
+    const first = await runPi(store, {
+      models: models([assistant([{ type: "text", text: "part" }], "length")]),
+      model,
+      label: "cancel-retry/v1",
+      prompt: "Question",
+    });
+    const cancelled = await continuePi(store, {
+      parent: first.call,
+      models: models([assistant([], "aborted", undefined, false)]),
+      model,
+    });
+    expect(cancelled.state).toBe("cancelled");
+    const retried = await continuePi(store, {
+      parent: first.call,
+      models: models([assistant([{ type: "text", text: "done" }], "stop")]),
+      model,
+    });
+    expect(retried).toMatchObject({ state: "succeeded", text: "partdone" });
+  });
+
+  test("retries after a continuation fails before a request checkpoint", async () => {
+    const store = campaign();
+    const first = await runPi(store, {
+      models: models([assistant([{ type: "text", text: "part" }], "length")]),
+      model,
+      label: "preflight-retry/v1",
+      prompt: "Question",
+    });
+    await expect(
+      continuePi(store, {
+        parent: first.call,
+        models: {
+          streamSimple() {
+            throw new Error("provider preflight failed");
+          },
+        },
+        model,
+      }),
+    ).rejects.toThrow("provider preflight failed");
+    const retried = await continuePi(store, {
+      parent: first.call,
+      models: models([assistant([{ type: "text", text: "done" }], "stop")]),
+      model,
+    });
+    expect(retried).toMatchObject({ state: "succeeded", text: "partdone" });
+  });
+
+  test("continues after a truncated tool-call tail", async () => {
+    let executions = 0;
+    const echo = defineTool({
+      name: "echo",
+      description: "Echo a value",
+      input: z.strictObject({ value: z.string() }),
+      replay: "safe",
+      async run(input) {
+        executions += 1;
+        return input;
+      },
+    });
+    const store = campaign();
+    const first = await runPi(store, {
+      models: models([
+        assistant(
+          [
+            { type: "text", text: "partial" },
+            {
+              type: "toolCall",
+              id: "cut-off",
+              name: "echo",
+              arguments: { value: "unsafe" },
+            },
+          ],
+          "length",
+        ),
+      ]),
+      model,
+      label: "tool-tail/v1",
+      prompt: "Question",
+      tools: [echo],
+    });
+    expect(executions).toBe(0);
+    const continued = await continuePi(store, {
+      parent: first.call,
+      models: models([assistant([{ type: "text", text: "done" }], "stop")]),
+      model,
+      tools: [echo],
+    });
+    expect(continued).toMatchObject({
+      state: "succeeded",
+      text: "partialdone",
+    });
+  });
+
+  test("rejects incomplete, overflow-shaped, and legacy continuation roots", async () => {
+    const store = campaign();
+    const first = await runPi(store, {
+      models: models([assistant([{ type: "text", text: "part" }], "length")]),
+      model,
+      label: "invalid-root/v1",
+      prompt: "Question",
+    });
+    const missingTranscript = mapRecords(store, (entry) => {
+      if (
+        entry.kind !== "call-result" ||
+        entry.parent !== first.call ||
+        entry.state !== "returned"
+      ) {
+        return entry;
+      }
+      const { transcript: _transcript, ...output } = piStoredResult.parse(
+        entry.output,
+      );
+      return { ...entry, output: JSON.parse(JSON.stringify(output)) };
+    });
+    await expect(
+      continuePi(missingTranscript, {
+        parent: first.call,
+        models: models([assistant([{ type: "text", text: "done" }], "stop")]),
+        model,
+      }),
+    ).rejects.toThrow("non-truncated result");
+
+    const overflow = replaceTranscript(store, first.call, (transcript) => [
+      transcript[0],
+      {
+        ...(transcript[1] as Record<string, unknown>),
+        usage: {
+          ...(transcript[1] as { usage: Record<string, unknown> }).usage,
+          input: model.contextWindow,
+          cacheRead: 0,
+          output: 0,
+        },
+      },
+    ]);
+    await expect(
+      continuePi(overflow, {
+        parent: first.call,
+        models: models([assistant([{ type: "text", text: "done" }], "stop")]),
+        model,
+      }),
+    ).rejects.toThrow("not length-truncated");
+
+    const legacy = mapRecords(store, (entry) => {
+      if (entry.kind !== "call" || entry.seq !== first.call) return entry;
+      const request = JSON.parse(JSON.stringify(entry.request)) as {
+        model: { baseUrl?: string };
+      };
+      delete request.model.baseUrl;
+      return { ...entry, request };
+    });
+    await expect(
+      continuePi(legacy, {
+        parent: first.call,
+        models: models([assistant([{ type: "text", text: "done" }], "stop")]),
+        model,
+      }),
+    ).rejects.toThrow("persisted base URL");
+
+    const profileless = mapRecords(store, (entry) => {
+      if (entry.kind !== "call" || entry.seq !== first.call) return entry;
+      const request = JSON.parse(JSON.stringify(entry.request)) as Record<
+        string,
+        Json
+      >;
+      delete request.modelProfile;
+      return { ...entry, request };
+    });
+    await expect(
+      continuePi(profileless, {
+        parent: first.call,
+        models: models([assistant([{ type: "text", text: "done" }], "stop")]),
+        model,
+      }),
+    ).rejects.toThrow("persisted model profile");
   });
 });

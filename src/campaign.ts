@@ -15,6 +15,7 @@ import type {
   Tool,
   Verdict,
 } from "./types";
+import { toolDeclarations } from "./types";
 
 interface PreparedTool {
   readonly declaration: Omit<AuditedTool, "execute">;
@@ -165,18 +166,11 @@ class CampaignWriter extends CampaignReader implements Campaign {
   }
 
   private prepareTools(tools: readonly Tool[]): readonly PreparedTool[] {
-    const seen = new Set<string>();
-    return tools.map((tool) => {
-      const name = z.string().min(1).parse(tool.name);
-      if (seen.has(name)) throw new Error(`duplicate tool name: ${name}`);
-      seen.add(name);
-      const description = z.string().min(1).parse(tool.description);
-      z.literal("safe").parse(tool.replay);
-      const input = tool.input;
-      const inputSchema = copyJson(z.toJSONSchema(input));
+    const declarations = toolDeclarations(tools);
+    return tools.map((tool, index) => {
       return {
-        declaration: { name, description, inputSchema },
-        input,
+        declaration: declarations[index]!,
+        input: tool.input,
         run: tool.run.bind(tool),
       };
     });

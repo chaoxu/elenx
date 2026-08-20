@@ -2,7 +2,7 @@
 
 Elenx is a durable semantic kernel for agent work. It stores exact candidate bytes, records calls, tool invocations, settled tool results, and unknown tool outcomes through an append-only campaign API, binds verdicts to fresh candidate-scoped calls, and derives verification status from the recorded evidence.
 
-The bundled Pi runner executes application-selected models and Zod tools. Pi owns provider execution and credentials; Elenx records logical calls, pre-send request checkpoints, and settled telemetry.
+The bundled Pi runner executes application-selected models and Zod tools. Pi owns provider execution and credentials; Elenx records logical calls, pre-send request checkpoints, and settled telemetry. Durable continuation extends an output-limited response with its validated transcript, frozen model profile, and tool contract.
 
 The kernel enforces identity, durability, crash semantics, and accounting contracts. It records application-selected capabilities but does not sandbox the runner. The model owns reasoning strategy. Applications own context assembly, tools, budgets, verification methods, and publication. Elenx contains no task corpus, benchmark suite, evaluation runner, or mathematical search policy.
 
@@ -11,7 +11,7 @@ The kernel enforces identity, durability, crash semantics, and accounting contra
 The v1 kernel requires Bun 1.3.13 or newer. Applications define tool schemas with Zod:
 
 ```sh
-bun add git+https://gitea.lab/chaoxu/elenx.git#v0.7.11 zod@4.4.3
+bun add git+https://gitea.lab/chaoxu/elenx.git#v0.7.12 zod@4.4.3
 ```
 
 Elenx exposes Pi types directly. Keep TypeScript's `skipLibCheck` enabled while Pi's provider SDK declarations require it.

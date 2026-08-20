@@ -1,6 +1,13 @@
 import { z } from "zod";
 
-import type { Entry, EntryId, Json, ToolDeclaration, Verdict } from "./schemas";
+import {
+  copyJson,
+  type Entry,
+  type EntryId,
+  type Json,
+  type ToolDeclaration,
+  type Verdict,
+} from "./schemas";
 
 export type {
   Entry,
@@ -24,6 +31,24 @@ export interface ToolExecutionContext {
   readonly toolCall: EntryId;
   readonly source?: string;
   readonly signal: AbortSignal;
+}
+
+export function toolDeclarations(
+  tools: readonly Tool[],
+): readonly ToolDeclaration[] {
+  const seen = new Set<string>();
+  return tools.map((tool) => {
+    const name = z.string().min(1).parse(tool.name);
+    if (seen.has(name)) throw new Error(`duplicate tool name: ${name}`);
+    seen.add(name);
+    const description = z.string().min(1).parse(tool.description);
+    z.literal("safe").parse(tool.replay);
+    return {
+      name,
+      description,
+      inputSchema: copyJson(z.toJSONSchema(tool.input)),
+    };
+  });
 }
 
 export interface AuditedTool extends ToolDeclaration {

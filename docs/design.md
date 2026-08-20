@@ -128,7 +128,7 @@ No configured limit declares the campaign resolved or retired. Each logical prov
 
 A usable report completes a turn. One turn may contain several logical provider operations for protocol-tool interaction, safe retry, or output-limit continuation. If a response ends only because it reached an output limit and has a valid explicit prefix, proposed solver V1 continues the same logical turn until it obtains a usable report or the user intervenes. Each continuation is another inference; it is not byte-for-byte resumption. Context exhaustion requires a fresh context rather than in-place continuation.
 
-Implementing an unbounded logical turn over finite Pi calls requires a durable continuation chain: every segment carries one logical turn identity and a parent reference. Compatible opaque artifacts may be stored only for replay. An incomplete technical segment never becomes the campaign's mathematical report. This continuation facility is required by proposed solver V1 and is not a current kernel v1 guarantee.
+Implementing an unbounded logical turn over finite Pi calls requires a durable continuation chain: every segment carries one logical turn identity and a parent reference. Compatible opaque artifacts may be stored only for replay. An incomplete technical segment never becomes the campaign's mathematical report. The kernel now supplies this chain through `continuePi`; proposed solver V1 still needs to schedule it as one turn and withhold incomplete segments from the coordinator.
 
 After a completed turn, context retention is a separate policy:
 
@@ -136,7 +136,7 @@ After a completed turn, context retention is a separate policy:
 - **Restart:** start a fresh conversation with a new context package. Include the prior report only if the context policy selects it.
 - **Adaptive:** continue while continuity is useful, then restart from explicit state when context pressure or fixation outweighs it.
 
-Cross-model work always restarts from explicit state. Exact transcript continuation requires a compatible frozen provider, model, API, and reasoning profile. [Official OpenAI documentation](https://developers.openai.com/api/docs/guides/reasoning#how-reasoning-works) states that reasoning tokens are not visible through the API, occupy context, and may be carried through compatible reasoning items. These provider semantics can optimize continuation but cannot define campaign memory.
+Cross-model work always restarts from explicit state. Exact transcript continuation requires the frozen provider, model ID, API, base URL, system prompt, reasoning setting, model profile, and ordered tool declarations. The model profile includes the context window, output limit, thinking-level map, sampling parameters, and compatibility settings. [Official OpenAI documentation](https://developers.openai.com/api/docs/guides/reasoning#how-reasoning-works) states that reasoning tokens are not visible through the API, occupy context, and may be carried through compatible reasoning items. These provider semantics can optimize continuation but cannot define campaign memory.
 
 ## Evidence review
 
