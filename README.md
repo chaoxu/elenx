@@ -23,7 +23,7 @@ The API and campaign schema are experimental. Campaigns are accepted only when t
 | Question | Authority |
 | --- | --- |
 | What does the kernel guarantee? | [`SPEC.md`](SPEC.md) |
-| What design and philosophy does `reasoning-v1` follow? | [`docs/design.md`](docs/design.md) |
+| What design boundary guides solver policies? | [`docs/design.md`](docs/design.md) |
 | How do I build an application? | [`docs/application-author.md`](docs/application-author.md) |
 | Which solver policies should we test? | [`docs/hypotheses.md`](docs/hypotheses.md) |
 
@@ -37,9 +37,9 @@ The deterministic verifier example is [`examples/v1/scripted-verifier.ts`](examp
 
 ## Companion solver
 
-[`elenx-solve`](https://gitea.lab/chaoxu/elenx-solve) supplies the current `reasoning-v1` protocol: one user-controlled resumable pure-reasoning campaign with serial reasoner, reviewer, verifier, and coordinator turns. It carries explicit context packages, continues output-limited responses within the same logical turn, and gives the model no campaign-ending action. Every proposed resolution becomes an immutable Elenx candidate whose status follows its frozen verifier set.
+[`elenx-solve`](https://gitea.lab/chaoxu/elenx-solve) supplies the `exploration-v1` protocol: a coordinator maintains policy-permitted evidence, fresh explorers work on the complete goal, optional reviewers stamp exact evidence revisions, and every proposed resolution enters final candidate verification automatically. The `none`, `negative`, `positive`, and `both` memory policies run the same resumable loop while controlling which evidence kinds may be nominated, retained, and shown to explorers.
 
-[`docs/design.md`](docs/design.md) defines the protocol's philosophy and vocabulary. [`elenx-solve/docs/protocol.md`](https://gitea.lab/chaoxu/elenx-solve/src/branch/main/docs/protocol.md) remains the authority for exact runtime behavior, and the solver preserves legacy `model-first-v1` campaigns under their original contract.
+[`docs/design.md`](docs/design.md) defines the governing design direction. [`elenx-solve/docs/protocol.md`](https://gitea.lab/chaoxu/elenx-solve/src/branch/main/docs/protocol.md) remains the authority for exact runtime behavior.
 
 ## Development
 

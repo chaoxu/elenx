@@ -1,174 +1,94 @@
-# Elenx system hypotheses
+# Elenx policy hypotheses
 
-Status: current research plan, 2026-08-20. [`design.md`](design.md) defines the philosophy and vocabulary of the implemented `reasoning-v1` baseline. The companion [`elenx-solve` protocol](https://gitea.lab/chaoxu/elenx-solve/src/branch/main/docs/protocol.md) defines exact runtime behavior.
+Status: experimental plan, 2026-08-20. [`design.md`](design.md) defines the boundary. The companion [`elenx-solve` protocol](https://gitea.lab/chaoxu/elenx-solve/src/branch/main/docs/protocol.md) defines current runtime behavior.
 
-This document owns experimental comparisons, not kernel guarantees or current policy. Elenx contains no task corpus, benchmark suite, or evaluation runner.
+## Objective
 
-## Research objective
+Measure which exploration and verification policies produce the most externally adjudicated resolutions for a fixed monetary cost. Elenx keeps accounting, provenance, recovery, and final candidate verification constant while one policy choice changes.
 
-For a strong reasoning model working on a problem that may require repeated attempts, which policy produces the greatest externally adjudicated capability for a given monetary cost?
+A smoke test establishes that a policy runs and records the intended state. It says nothing about comparative capability.
 
-Capability means correct resolution of the exact assigned problem. A proposed resolution, a candidate, and a candidate with verified status under its frozen verifier set are intermediate outcomes until the application-selected external authority accepts the result. Cost includes every coordinator, reasoner, continuation, reviewer, verifier, retrieval, and tool call used by the policy. Elapsed time is reported but is not currently optimized.
+## Memory policies
 
-Experiments vary one policy over the same durable mechanism: serial role turns, exact reports, durable control decisions, explicit context packages, immutable candidates, and complete accounting where the provider reports it. Campaigns remain active until the user retires them.
-
-## Reasoning ownership
-
-| ID | Policy | Hypothesis | Main risk |
+| ID | Explorer context | Hypothesis | Main risk |
 | --- | --- | --- | --- |
-| O0 | Delegated reasoning | A fresh sub-agent with the whole problem and selected evidence uses more of its context for mathematics and escapes coordinator fixation | A strategically shallow coordinator sends the wrong evidence or assignment |
-| O1 | Coordinator reasoning | Combining the mathematical report and routing decision avoids a lossy handoff and a separate control call | One call may divide attention between exploration and coordination |
-| O2 | Adaptive reasoning | A strong coordinator can recognize when integrated coordinator reasoning or clean-context delegation is more valuable | The routing decision consumes cost and may be systematically wrong |
+| M0 | final goal only | independent attempts are a strong pass@k baseline | attempts repeatedly choose the same attractive route |
+| M1 | goal plus negative evidence | failed-route memory improves search diversity | an overbroad item suppresses a useful route |
+| M2 | goal plus positive evidence | reusable progress enables cumulative solutions | a false partial claim propagates |
+| M3 | goal plus both kinds | progress and route diversity complement each other | longer context and correlated errors erase the gain |
 
-All three use one active agent at a time. A delegated assignment may be the complete problem. The comparison is about where mathematical reasoning happens, not whether sub-agents are allowed.
+M0-M3 run the same coordinator, explorer, candidate, verifier, recovery, and stopping loop. The selected memory value controls which evidence tags explorers may nominate, coordinators may retain, and later explorers may see. M0 requires empty nominations and exposes only the coordinator's `explore` action, so it records no evidence revisions or reviews.
 
-## Assignment scope
+Positive and negative are steering tags. Positive presentation offers material that may support a route. Negative presentation asks the explorer to avoid repeating a route unless it gives a concrete reason the recorded obstruction is wrong, incomplete, or inapplicable. Neither tag asserts truth, impossibility, verification, or importance.
 
-| ID | Policy | Hypothesis | Main risk |
-| --- | --- | --- | --- |
-| A0 | Campaign-level goal | A broad “continue resolving this problem” assignment lets the reasoner allocate its own effort and pursue unexpected routes | The reasoner may revisit familiar work without enough direction |
-| A1 | Targeted direction | Supplying one promising route or precise obstruction reduces rediscovery | The coordinator's local judgment constrains the stronger reasoner |
-| A2 | Small decomposition | Narrow lemmas make progress and verification easy to localize | Easy tasks cause early return, lose global structure, and add handoff cost |
+Under M1-M3, the explorer nominates a small set of policy-permitted items and the coordinator decides what to add or revise. Code enforces the retained tag, exact source and revision references, and visibility rule; models supply every semantic judgment.
 
-Useful reasoning, not token consumption, is the objective. When a proposed resolution appears quickly, further work should attack, strengthen, reconstruct, or generalize it rather than create artificial tasks.
+An external benchmark can compute pass@k from the first `k` M0 explorer attempts because each receives the same goal-only context. Policy comparisons must still count coordinator and verifier spend. The runtime continues to the first verified candidate unless paused or interrupted.
 
-## Turn-to-turn context
+## Construction variants
 
-| ID | Policy | Hypothesis | Main risk |
-| --- | --- | --- | --- |
-| C0 | Restart with no selected evidence | Independent attempts supply diversity and avoid stale context cheaply | Routes and deductions are repeatedly rediscovered |
-| C1 | Continue exact compatible transcript | Conversational and opaque reasoning continuity preserves a productive proof plan | Context cost, fixation, and eventual context exhaustion |
-| C2 | Restart with the prior report | Explicit handoff preserves most useful state without the full transcript | The report omits details that mattered only inside the prior reasoning |
-| C3 | Restart with selected evidence | Curated state preserves decision-changing facts at lower input cost | Selection removes a subtle dependency or encodes a bad strategy |
-| C4 | Adaptive continuation | Continue productive contexts and restart when pressure or fixation appears | Context-quality diagnosis is unreliable and itself costs money |
+The initial comparison varies evidence retention and visibility together. Later matched comparisons can vary one construction choice:
 
-The implemented `reasoning-v1` baseline starts each completed role turn from a fresh Pi root and supplies explicit durable state. An output-limit continuation stays within the same logical turn and is not one of these policies. Exact-transcript continuation after a completed turn and adaptive retention require experimental runtime variants. Cross-model work always restarts from explicit state. Record the exact supplied context and provider-reported input, cache-read, cache-write, output, and reasoning buckets; caching is not assumed.
-
-## Evidence content
-
-An evidence proposal enters later context only after all requested assessments settle. A policy may select no proposals, in which case it pays no intermediate review cost.
-
-| ID | Selected evidence | Hypothesis | Main risk |
-| --- | --- | --- | --- |
-| M0 | None | Strong independent attempts outperform memory once curation and review are charged | Repeated semantic work dominates cost |
-| M1 | Attempted work | Knowing what was tried lets the reasoner infer what matters without prescriptive strategy | History consumes attention and encourages superficial variation |
-| M2 | Neutral negative evidence | Scoped statements such as “route X reached obstruction Y” reduce exact repetition while preserving autonomy | Mentioning X increases its salience or Y is overgeneralized |
-| M3 | Negative advice | “Do not repeat X unless Y changes” prevents more waste than a neutral record | Imperative negation suppresses a useful variant or becomes stale authority |
-| M4 | Established partial state | Assessed lemmas, examples, and open obligations allow cumulative proof construction | A fallible intermediate assessment propagates a false premise |
-| M5 | Negative and partial state | Combining blocked routes with reusable progress best supports long campaigns | The context package becomes a second, weaker research program |
-
-M2 and M3 are distinct interventions. A failed attempt and a prohibition have different prompt effects. Every negative item must preserve its exact scope and a condition under which reconsideration is sensible.
-
-## Evidence selection and review
-
-| ID | Comparison | Hypothesis |
+| Axis | Initial policy | Later comparison |
 | --- | --- | --- |
-| E1 | Reasoner proposes evidence versus coordinator extracts it | The reasoner retains mathematical nuance; the coordinator better identifies campaign-level value |
-| E2 | Same-model reviewer versus fresh same-model reviewer versus different-model reviewer | Freshness or model diversity reduces rationalization enough to justify its cost |
-| E3 | One lightweight assessment versus repeated strong assessments | Additional review is worthwhile only as the proposal's downstream consequence grows |
-| E4 | Fixed review strength versus coordinator-selected strength | A strong coordinator allocates review spend better than a static rule |
-| E5 | Review immediately versus at a milestone | Immediate review prevents error propagation; delayed review avoids checking evidence never reused |
-| E6 | Push all selected evidence versus select per context package | Per-turn selection saves context; pushing all evidence prevents omission of a decisive obstruction |
+| nomination | explorer nominates items | coordinator extracts without nominations |
+| admission | coordinator selects | automatic or reviewed admission |
+| representation | coordinator-authored revision linked to an exact source | verbatim nomination, split, rewrite, or compression |
+| selection | all visible evidence fits | model selection, context cap, or retrieval |
+| presentation | fixed tag-specific headings | ordering, provenance, or stamp disclosure |
+| access | coordinator packages all context | explorer reads exact evidence on demand |
+| topology | one fresh explorer at a time | transcript reuse or nested agents |
 
-An assessment is a fallible observation. A model review cannot create a runtime-enforced mathematical exclusion. The baseline retains the exact source report or checking feedback and proposal, reviewer profile and call provenance, assessment judgment, reasons, optional revision, provider-reported usage, and Pi's cost estimate when available; it reports unmeasured and potentially unknown spend separately. Experiments that vary disclosure or review method must record those added variables explicitly.
+The harness records exact proposals, decisions, revisions, and context exposure so each comparison can be reconstructed.
 
-## Failed candidate verification
+## Verification variants
 
-Starting from the same immutable candidate and verdict history, compare:
+Evidence review is an independent axis:
 
-| ID | Next action | Hypothesis | Main risk |
-| --- | --- | --- | --- |
-| F0 | Same-context repair with objections | The original reasoner can repair its intended argument most efficiently | It rationalizes the same route or hidden mistake |
-| F1 | Fresh-context repair with objections | A fresh reasoner sees the defect without inheriting the producer's fixation | Explicit objections anchor it to local repair when replacement is better |
-| F2 | Independent replacement without the candidate | Blind exploration finds a genuinely different proposed resolution | It repeats work and ignores an inexpensive repair |
-| F3 | Independent reconstruction of the claimed result | Reconstructability supplies stronger assurance and may expose missing premises | The call adds verification cost without advancing discovery |
-| F4 | Withhold objections on the next attempt | Removing verifier anchoring improves global replanning | The same defect is recreated |
-
-The verifier feedback never mutates the candidate. Any correction produces a new candidate with the campaign's frozen verifier profiles.
-
-## Model allocation
-
-| ID | Comparison | Hypothesis |
+| ID | Evidence policy | Question |
 | --- | --- | --- |
-| L1 | Same model for every role versus a different fresh-context model | A different model supplies sufficiently different errors and routes to justify handoff cost |
-| L2 | Strong model for coordination versus a cheaper coordinator | Coordinator work can become inexpensive only after its semantic decisions are reliable enough not to reduce capability |
-| L3 | Free-form report versus compact report schema | Free form preserves unexpected mathematical content; a compact schema reduces handoff cost and enables deterministic routing |
-| L4 | LLM coordinator versus deterministic coordinator | A deterministic coordinator becomes viable after stable report and control contracts are observed |
-| L5 | Combined coordinator-reasoner report and control versus a separate interpretation turn | Combining artifacts removes a recurring call tax; separation may improve routing and evidence selection enough to repay it |
+| E0 | no review | is model-selected memory useful before checking? |
+| E1 | adversarial review | which material errors does a hostile reading catch? |
+| E2 | blind reconstruction | which gaps appear when another agent rebuilds the claim? |
+| E3 | different model family | does model diversity reduce correlated errors? |
+| E4 | formal or deterministic check | which evidence justifies translation and checking cost? |
 
-Do not infer model independence from a fresh call. Record the model, provider, prompt policy, disclosure, and compatible-continuation state for each role.
+Every review binds one exact evidence revision. A repair starts with no inherited stamps.
 
-## Serial execution and concurrency
+Final candidate verification remains required for `solved`. Separate comparisons may vary the frozen verifier set, but every M0-M3 run uses the same final-verification policy within a matched experiment.
 
-| ID | Comparison | Hypothesis |
-| --- | --- | --- |
-| S1 | Serial attempts versus parallel attempts at equal total spend | Parallelism mainly reduces elapsed time and adds duplicate work, so serial execution is at least as capable per dollar |
-| S2 | One active sub-agent versus fan-out | Clean-context serial delegation captures most of the benefit without synthesis cost |
-| S3 | Flat delegation versus nested delegation | Nested delegation helps only when a task is genuinely decomposable and the capability gain exceeds extra handoffs |
+## Recovery tests
 
-Parallelism can still improve capability at equal spend by producing diverse routes. That would be a quality effect, not a cost saving supplied by concurrency. `reasoning-v1` keeps it disabled because elapsed time is not an objective.
+Interrupt and resume after:
 
-## Pure-reasoning boundary and future capabilities
+- an explorer report;
+- an evidence addition or revision;
+- candidate creation;
+- each verifier verdict; and
+- the last required `PASS`.
 
-`reasoning-v1` supplies no external information or execution. Later experiments should add one capability at a time:
-
-| ID | Extension | Problem class it may unlock | Cost or assurance risk |
-| --- | --- | --- | --- |
-| X1 | Controlled theorem retrieval | Problems whose decisive input is an obscure existing theorem or exact source match | Search and context cost; nearby but inapplicable results anchor the proof |
-| X2 | Example and counterexample computation | Problems where small cases reveal an obstruction, invariant, or construction | Computation can replace proof with suggestive evidence |
-| X3 | Coding reasoner | Problems requiring custom search, symbolic manipulation, or certificate generation | Code correctness and execution become additional verification obligations |
-| X4 | Formal or deterministic checker | Problems whose claims can be encoded and checked mechanically | Formalization cost and mismatch between encoded and intended statements |
-| X5 | Indexed evidence retrieval | Campaigns whose selected evidence no longer fits directly in context | The reasoner may fail to retrieve a fact whose relevance it cannot yet see |
-| X6 | Recursive or specialist sub-agents | Problems with many separable technical obligations | Handoffs, duplicated work, and integration failures increase spend |
-
-These extensions should be compared against `reasoning-v1`, not bundled into a replacement architecture.
-
-## Rethlas comparison experiment
-
-Rethlas shows that some omitted capabilities already work in an executable system, not that its full bundle is cost-optimal. A retrieval-critical problem may be easy for Rethlas and impossible in practice for `reasoning-v1`: once Rethlas's Matlas theorem-retrieval component supplies an obscure theorem, the remaining proof may be short, while `reasoning-v1` cannot recover information absent from both its input and the model's internal knowledge. Citation-heavy problems may have the same asymmetry because Rethlas can inspect the referenced statement and `reasoning-v1` cannot. Compare one-factor hybrids:
-
-1. `reasoning-v1` (implemented, untested).
-2. `reasoning-v1` plus controlled theorem retrieval.
-3. `reasoning-v1` plus explicit Rethlas-style exploration skills.
-4. `reasoning-v1` plus indexed working-memory channels.
-5. `reasoning-v1` plus parallel recursive proving.
-6. Full current Rethlas.
-
-Stratify problems into retrieval-critical, self-contained and tightly coupled, misleading-near-match literature, many-independent-route, overstrong-conjecture, and citation-hypothesis-mismatch groups. The first decisive comparison is `reasoning-v1` versus `reasoning-v1` plus retrieval on retrieval-critical and misleading-literature problems.
+Committed work must not disappear or repeat. Resume after the last `PASS` must make no model call. Failed-verifier feedback must reach a later explorer only through evidence visible under the selected memory policy.
 
 ## Measurement
 
-The primary result is a capability–cost frontier. Report at least:
+Match problem bytes, completion criteria, model access, sampling settings, per-call limits, and final verifier policy. External benchmark drivers should cap total spend or attempts without changing runtime semantics. Report:
 
-- externally adjudicated exact resolutions;
-- proposed resolutions and candidates that fail later assurance;
-- candidates with verified status under their frozen verifier sets but rejected externally;
-- provider-reported or estimated cost for coordination, continuation, review, verification, and failed calls, with unmeasured and potentially unknown spend reported separately;
-- provider-reported token buckets and unknown-spend events;
-- repeated or semantically near-duplicate routes;
-- false or overbroad selected evidence discovered later;
-- context supplied to every turn; and
-- elapsed time as a diagnostic only.
+- externally accepted resolutions;
+- proposed resolutions rejected by final verification or external adjudication;
+- provider-reported tokens and estimated cost, leaving unknown usage unknown;
+- repeated routes;
+- evidence later found false, vague, or overbroad;
+- leakage across the selected memory view;
+- exact context shown to each role;
+- cache usage; and
+- elapsed time as a diagnostic.
 
-Compare policies at matched total spend and on identical problem bytes, completion criteria, model access, and external adjudication. Interleave randomized replicates to reduce provider drift. Pilot tasks validate instrumentation; held-out tasks support claims. Experiments and their problem corpus live outside Elenx and `elenx-solve`.
+Use randomized replicated runs once the benchmark exists.
 
-## First experiments
+## Experiment order
 
-Run the smallest comparisons before adding tools or concurrency:
-
-1. Compare delegated, coordinator-owned, and adaptive exploration with no selected evidence.
-2. Compare exact continuation, fresh restart, and restart with the prior report.
-3. From one frozen report, compare no evidence, attempted-work memory, neutral negative evidence, and negative advice.
-4. Compare lightweight and repeated assessment for the same proposed negative item.
-5. From one failed candidate, compare same-context repair, fresh-context repair, and independent replacement.
-
-Freeze every context package and control decision so later policies can be replayed from the same settled boundary without rerunning earlier turns.
-
-## Open questions
-
-- Can a coordinator select relevant evidence without doing enough object-level mathematics to become the main reasoner?
-- Which observable signals justify continuing a context rather than restarting it?
-- Does explicit negative advice prevent repetition or prime the prohibited route?
-- How often does evidence review save later reasoning cost rather than add another correlated opinion?
-- When does a different model add a different reasoning distribution rather than a lossy paraphrase?
-- Which problem families reward pure sustained reasoning, and which require retrieval, computation, or formal checking?
+1. Run one M0 smoke problem through final verification.
+2. Test every recovery boundary with deterministic model fixtures.
+3. Establish an externally capped M0 pass@k baseline.
+4. Compare M1, M2, and M3 at equal spend.
+5. Add one construction, verification, access, or topology variation only when the prior comparison motivates it.
