@@ -17,13 +17,13 @@ A smoke test establishes that a policy runs and records the intended state. It s
 | M2 | goal plus positive evidence | reusable progress enables cumulative solutions | a false partial claim propagates |
 | M3 | goal plus both kinds | progress and route diversity complement each other | longer context and correlated errors erase the gain |
 
-M0-M3 run the same coordinator, explorer, candidate, verifier, recovery, and stopping loop. The selected memory value controls which evidence tags explorers may nominate, coordinators may retain, and later explorers may see. M0 requires empty nominations and exposes only the coordinator's `explore` action, so it records no evidence revisions or reviews.
+M0-M3 run the same coordinator, explorer, candidate, final-assurance, recovery, and stopping loop. The selected memory value controls which evidence tags explorers may nominate, coordinators may retain, and later explorers may see. M0 requires empty nominations and exposes only the coordinator's `explore` action, so it records no evidence revisions or reviews.
 
 Positive and negative are steering tags. Positive presentation offers material that may support a route. Negative presentation asks the explorer to avoid repeating a route unless it gives a concrete reason the recorded obstruction is wrong, incomplete, or inapplicable. Neither tag asserts truth, impossibility, verification, or importance.
 
 Under M1-M3, the explorer nominates a small set of policy-permitted items and the coordinator decides what to add or revise. Code enforces the retained tag, exact source and revision references, and visibility rule; models supply every semantic judgment.
 
-An external benchmark can compute pass@k from the first `k` M0 explorer attempts because each receives the same goal-only context. Policy comparisons must still count coordinator and verifier spend. The runtime continues to the first verified candidate unless paused or interrupted.
+An external benchmark can compute pass@k from the first `k` M0 explorer attempts because each receives the same goal-only context. Policy comparisons must still count coordinator and final-assurance spend. The runtime continues to the first verified candidate unless paused or interrupted.
 
 ## Construction variants
 
@@ -55,7 +55,7 @@ Evidence review is an independent axis:
 
 Every review binds one exact evidence revision. A repair starts with no inherited stamps.
 
-Final candidate verification remains required for `solved`. Separate comparisons may vary the frozen verifier set, but every M0-M3 run uses the same final-verification policy within a matched experiment.
+Final candidate assurance remains required for `solved`: ordinary hostile verification, reconstruction-input certification, blind reconstruction, and comparison. Separate experiments may vary that frozen cadence, but every M0-M3 run uses the same final policy within a matched comparison. E2 above remains an optional intermediate-evidence review rather than the mandatory candidate reconstruction.
 
 ## Recovery tests
 
@@ -64,14 +64,17 @@ Interrupt and resume after:
 - an explorer report;
 - an evidence addition or revision;
 - candidate creation;
-- each verifier verdict; and
+- each ordinary-verifier verdict;
+- reconstruction-bundle certification;
+- blind reconstruction;
+- reconstruction comparison; and
 - the last required `PASS`.
 
-Committed work must not disappear or repeat. Resume after the last `PASS` must make no model call. Failed-verifier feedback must reach a later explorer only through evidence visible under the selected memory policy.
+Committed work must not disappear or repeat. Resume after the last `PASS` must make no model call. Failed-gate feedback must reach a later explorer only through evidence visible under the selected memory policy.
 
 ## Measurement
 
-Match problem bytes, completion criteria, model access, sampling settings, per-call limits, and final verifier policy. External benchmark drivers should cap total spend or attempts without changing runtime semantics. Report:
+Match problem bytes, completion criteria, model access, sampling settings, per-call limits, and final-assurance policy. External benchmark drivers should cap total spend or attempts without changing runtime semantics. Report:
 
 - externally accepted resolutions;
 - proposed resolutions rejected by final verification or external adjudication;

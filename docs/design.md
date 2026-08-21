@@ -1,6 +1,6 @@
 # Elenx design
 
-Status: design for the `exploration-v1` solver, 2026-08-20. [`../SPEC.md`](../SPEC.md) defines kernel guarantees. The companion [`elenx-solve` protocol](https://gitea.lab/chaoxu/elenx-solve/src/branch/main/docs/protocol.md) defines exact solver behavior.
+Status: design for the `exploration-v4` solver, 2026-08-21. [`../SPEC.md`](../SPEC.md) defines kernel guarantees. The companion [`elenx-solve` protocol](https://gitea.lab/chaoxu/elenx-solve/src/branch/main/docs/protocol.md) defines exact solver behavior.
 
 ## Principle
 
@@ -35,21 +35,26 @@ fresh explorer on the first iteration
         |
         +-- proposed resolution --> immutable candidate
                                           |
-                                  all final verifiers
+                                ordinary hostile audit
                                     |           |
-                             all PASSes      otherwise
+                                 non-PASS    all PASS
                                     |           |
-                                    v           v
-                                  solved    coordinator
-                                               |
-                         add/revise/review, then choose explore
-                                               |
-                                               +-----> fresh explorer
+                                    |    certify reconstruction input
+                                    |           |
+                                    |      blind reconstruction
+                                    |           |
+                                    |         comparison
+                                    |       |            |
+                                    +--- non-PASS       PASS
+                                    |                    |
+                              coordinator              solved
+                                    |
+                  add/revise/review, then choose explore
 ```
 
 Each explorer receives the final goal and the evidence visible under the selected memory policy. It has no filesystem, database, shell, retrieval, or delegation tools. One structured result carries its raw report, nominated evidence, and at most one proposed resolution.
 
-The raw report always survives. The coordinator may write a source-grounded evidence revision, revise an existing item, ask an optional reviewer to examine one exact revision, or launch the next explorer. A proposed resolution bypasses coordinator authorship: the solver freezes it as a candidate and runs every final verifier declared at campaign creation.
+The raw report always survives. The coordinator may write a source-grounded evidence revision, revise an existing item, ask an optional reviewer to examine one exact revision, or launch the next explorer. A proposed resolution bypasses coordinator authorship: the solver freezes its proof, cited dependencies, and reconstruction bundle as one candidate, then runs the frozen final-assurance cadence.
 
 Coordinator and explorer calls start from fresh roots. Reusing a compatible provider cache may reduce cost, but a previous transcript is not hidden campaign state. A later policy may deliberately add transcript reuse or direct evidence lookup as a separate experiment.
 
@@ -81,7 +86,11 @@ All four use the same loop. M0 explorers submit an empty nomination list, and th
 
 Intermediate evidence review is optional. A review is a fallible stamp on one exact evidence revision. Adversarial review, blind reconstruction, a different model family, formalization, and human review can coexist as distinct stamps. A repair creates a new revision; old stamps remain on the bytes they examined.
 
-Final verification is required before a campaign reports `solved`. Every proposed resolution creates an immutable candidate with a frozen nonempty verifier set. Failed and inconclusive candidates remain in the journal. A repaired resolution creates a new candidate, and no verdict transfers to it.
+Final verification is required before a campaign reports `solved`. Every proposed resolution creates an immutable candidate with frozen ordinary-verifier, bundle-certification, and comparison labels. Ordinary verifiers inspect the original proof without its reconstruction bundle. After they pass, a fresh certifier checks every reconstruction input for proof leakage, a blind fresh root reconstructs from only the goal and certified high-level bundle, and a fresh comparator maps that derivation to the candidate's conclusions and declared dependencies.
+
+The harness enforces candidate binding, prompt projections, fresh roots, serial order, and replay. Models judge leakage, correctness, and agreement. One frozen reconstruction profile runs the three fresh roots, so blindness means transcript and context isolation rather than model-family independence.
+
+Failed and inconclusive candidates remain in the journal. A repaired resolution creates a new candidate, and no verdict or reconstruction transfers to it.
 
 Verifier feedback reaches another explorer only when the coordinator records it as evidence and the memory policy exposes its tag. This prevents candidate reports, verifier output, raw history, or hidden runtime state from leaking around M0-M3.
 
