@@ -37,7 +37,7 @@ The deterministic verifier example is [`examples/v1/scripted-verifier.ts`](examp
 
 ## Companion solver
 
-[`elenx-solve`](https://gitea.lab/chaoxu/elenx-solve) supplies the `exploration-v4` protocol: a coordinator maintains policy-permitted evidence, fresh explorers work on the complete goal, optional reviewers stamp exact evidence revisions, and every proposed resolution enters ordinary hostile verification followed by certified blind reconstruction and comparison. The `none`, `negative`, `positive`, and `both` memory policies run the same resumable loop while controlling which evidence kinds may be nominated, retained, and shown to explorers.
+[`elenx-solve`](https://gitea.lab/chaoxu/elenx-solve) supplies the `exploration-v5` protocol: a coordinator maintains and explicitly retires policy-permitted evidence, fresh explorers work on the complete goal and live evidence, optional reviewers stamp exact revisions, and every proposed resolution enters the configured verifier gates. The built-in gates are adversarial proof audit, premise audit, and candidate-blind reconstruction with comparison. The `none`, `negative`, `positive`, and `both` memory policies run the same resumable loop while controlling which evidence kinds may be nominated, retained, and shown to explorers.
 
 [`docs/design.md`](docs/design.md) defines the governing design direction. [`elenx-solve/docs/protocol.md`](https://gitea.lab/chaoxu/elenx-solve/src/branch/main/docs/protocol.md) remains the authority for exact runtime behavior.
 

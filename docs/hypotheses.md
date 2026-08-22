@@ -34,7 +34,7 @@ The initial comparison varies evidence retention and visibility together. Later 
 | nomination | explorer nominates items | coordinator extracts without nominations |
 | admission | coordinator selects | automatic or reviewed admission |
 | representation | coordinator-authored revision linked to an exact source | verbatim nomination, split, rewrite, or compression |
-| selection | all visible evidence fits | model selection, context cap, or retrieval |
+| selection | all live evidence under a fixed ceiling | model selection, compression, or retrieval |
 | presentation | fixed tag-specific headings | ordering, provenance, or stamp disclosure |
 | access | coordinator packages all context | explorer reads exact evidence on demand |
 | topology | one fresh explorer at a time | transcript reuse or nested agents |
@@ -55,18 +55,17 @@ Evidence review is an independent axis:
 
 Every review binds one exact evidence revision. A repair starts with no inherited stamps.
 
-Final candidate assurance remains required for `solved`: ordinary hostile verification, reconstruction-input certification, blind reconstruction, and comparison. Separate experiments may vary that frozen cadence, but every M0-M3 run uses the same final policy within a matched comparison. E2 above remains an optional intermediate-evidence review rather than the mandatory candidate reconstruction.
+Final candidate assurance remains required for `solved`. The initial fixed policy uses adversarial proof audit, premise audit, and candidate-blind reconstruction with comparison. Separate experiments may vary the frozen verifier set, but every M0-M3 run uses the same set within a matched comparison. E2 above remains an optional intermediate-evidence review rather than the candidate-level reconstruction gate.
 
 ## Recovery tests
 
 Interrupt and resume after:
 
 - an explorer report;
-- an evidence addition or revision;
+- an evidence addition, revision, or drop;
 - candidate creation;
-- each ordinary-verifier verdict;
-- reconstruction-bundle certification;
-- blind reconstruction;
+- each direct-verifier verdict;
+- candidate-blind reconstruction;
 - reconstruction comparison; and
 - the last required `PASS`.
 

@@ -1,6 +1,6 @@
 # Elenx design
 
-Status: design for the `exploration-v4` solver, 2026-08-21. [`../SPEC.md`](../SPEC.md) defines kernel guarantees. The companion [`elenx-solve` protocol](https://gitea.lab/chaoxu/elenx-solve/src/branch/main/docs/protocol.md) defines exact solver behavior.
+Status: design for the `exploration-v5` solver, 2026-08-21. [`../SPEC.md`](../SPEC.md) defines kernel guarantees. The companion [`elenx-solve` protocol](https://gitea.lab/chaoxu/elenx-solve/src/branch/main/docs/protocol.md) defines exact solver behavior.
 
 ## Principle
 
@@ -35,26 +35,28 @@ fresh explorer on the first iteration
         |
         +-- proposed resolution --> immutable candidate
                                           |
-                                ordinary hostile audit
+                                configured direct audits
                                     |           |
                                  non-PASS    all PASS
                                     |           |
-                                    |    certify reconstruction input
-                                    |           |
-                                    |      blind reconstruction
-                                    |           |
-                                    |         comparison
-                                    |       |            |
-                                    +--- non-PASS       PASS
-                                    |                    |
-                              coordinator              solved
+                                    |    reconstruction configured?
+                                    |         |              |
+                                    |        no             yes
+                                    |         |              |
+                                    |       solved    blind reconstruction
+                                    |                        |
+                                    |                     comparison
+                                    |                  |              |
+                                    +------------- non-PASS         PASS
+                                    |                               |
+                              coordinator                         solved
                                     |
-                  add/revise/review, then choose explore
+               add/revise/drop/review, then choose explore
 ```
 
-Each explorer receives the final goal and the evidence visible under the selected memory policy. It has no filesystem, database, shell, retrieval, or delegation tools. One structured result carries its raw report, nominated evidence, and at most one proposed resolution.
+Each explorer receives the final goal and the live evidence visible under the selected memory policy. It has no filesystem, database, shell, retrieval, or delegation tools. One structured result carries its raw report, nominated evidence, completion claim, and directly used positive evidence roots.
 
-The raw report always survives. The coordinator may write a source-grounded evidence revision, revise an existing item, ask an optional reviewer to examine one exact revision, or launch the next explorer. A proposed resolution bypasses coordinator authorship: the solver freezes its proof, cited dependencies, and reconstruction bundle as one candidate, then runs the frozen final-assurance cadence.
+The raw report always survives. The coordinator may write a source-grounded evidence revision, revise or drop an existing item, ask an optional reviewer to examine one exact revision, or launch the next explorer. A proposed resolution bypasses coordinator authorship: the solver freezes its report, cited positive roots, and their dependency closure as one candidate, then runs the configured verifier gates.
 
 Coordinator and explorer calls start from fresh roots. Reusing a compatible provider cache may reduce cost, but a previous transcript is not hidden campaign state. A later policy may deliberately add transcript reuse or direct evidence lookup as a separate experiment.
 
@@ -82,13 +84,19 @@ The first four memory policies retain and expose different evidence:
 
 All four use the same loop. M0 explorers submit an empty nomination list, and the M0 coordinator can only launch another explorer. M0 therefore creates no evidence revisions or reviews, and each explorer call has the same goal-only context semantics as an independent pass@k sample. Coordinator and verifier calls remain measured harness overhead, and the runtime has no hidden `k` limit.
 
+Each added or revised card declares the live positive revisions supporting it. The resulting graph is acyclic because dependencies point to earlier revisions. An explorer cites directly used positive roots; the harness freezes the complete dependency closure in dependency-first order.
+
+Revision and drop permanently remove an exact revision from future explorer context and citation without deleting its journal history. Retiring a dependency makes its live dependents dangling. The harness withholds `explore` until the coordinator revises or drops every dangling card. A frozen explorer-context ceiling applies the same mechanical gate when the next request is too large.
+
 ## Verification
 
 Intermediate evidence review is optional. A review is a fallible stamp on one exact evidence revision. Adversarial review, blind reconstruction, a different model family, formalization, and human review can coexist as distinct stamps. A repair creates a new revision; old stamps remain on the bytes they examined.
 
-Final verification is required before a campaign reports `solved`. Every proposed resolution creates an immutable candidate with frozen ordinary-verifier, bundle-certification, and comparison labels. Ordinary verifiers inspect the original proof without its reconstruction bundle. After they pass, a fresh certifier checks every reconstruction input for proof leakage, a blind fresh root reconstructs from only the goal and certified high-level bundle, and a fresh comparator maps that derivation to the candidate's conclusions and declared dependencies.
+Final verification is required before a campaign reports `solved`. Every proposed resolution creates an immutable candidate whose required verifier labels come from the frozen configuration. The built-in direct gates are `proof-audit`, which attacks the composed proof, and `premise-audit`, which inventories and independently checks every load-bearing imported claim.
 
-The harness enforces candidate binding, prompt projections, fresh roots, serial order, and replay. Models judge leakage, correctness, and agreement. One frozen reconstruction profile runs the three fresh roots, so blindness means transcript and context isolation rather than model-family independence.
+The optional `reconstruction` gate runs only after every configured direct audit passes. A candidate-blind fresh root receives the goal plus the IDs and texts in the cited positive dependency closure, but not the candidate's new argument, reviews, history, or verdicts. A second fresh call compares that derivation with the exact candidate. Direct audits retain responsibility for the independent standing of the supplied modules.
+
+The harness enforces candidate binding, prompt projections, fresh roots, serial phase order, and replay. Models judge correctness and agreement. Each verifier lives behind one localized kind, so removing it from configuration removes its calls and gate.
 
 Failed and inconclusive candidates remain in the journal. A repaired resolution creates a new candidate, and no verdict or reconstruction transfers to it.
 
@@ -98,9 +106,9 @@ Verifier feedback reaches another explorer only when the coordinator records it 
 
 ## Recovery and stopping
 
-State is derived from the append-only journal. Resume first reconciles any completed tool submission, evidence revision, candidate, or verdict, then dispatches exactly the next unresolved phase. A crash after the final required `PASS` resumes directly as solved without another model call.
+State is derived from the append-only journal. Resume first reconciles any completed tool submission, evidence revision, candidate, or verdict, then dispatches exactly the next unresolved phase. Replay accepts a phase call only after the preceding phase settled and rejects duplicate valid terminal calls. A crash after the final required `PASS` resumes directly as solved without another model call.
 
-M0-M3 repeat until a candidate is verified, the operator pauses, or an operational failure returns control. The runtime has no monetary cap, iteration cap, permanent retirement state, or model-controlled completion action. External benchmark drivers may cap attempts or spend when comparing policies.
+M0-M3 repeat until a candidate is verified, the operator pauses, or an operational failure returns control. The runtime has no monetary cap, iteration cap, or model-controlled completion action. External benchmark drivers may cap attempts or spend when comparing policies.
 
 ## Growth rule
 
