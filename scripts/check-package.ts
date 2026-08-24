@@ -82,8 +82,9 @@ try {
   const candidate = campaign.submitCandidate(new TextEncoder().encode("x"), ["v1"]);
   deriveCandidateStatus(campaign.records(), candidate);
   derivePiSpend(campaign.records());
-  piRequest.parse({ protocol: "elenx/pi-run/v1", model: { provider: "p", id: "m", api: "a" }, prompt: "x" });
-  piStoredResult.parse({ state: "succeeded", text: "x", transcript: [] });
+  piRequest.parse({ protocol: "elenx/pi-run/v1", model: { provider: "p", id: "m", api: "a" }, modelProfile: null, prompt: "x" });
+  piStoredResult.parse({ state: "succeeded", text: "x", transcript: [],
+    telemetry: { schemaVersions: PI_TELEMETRY_SCHEMA_VERSIONS, spans: [] } });
   builtinPi({ credentials: new InMemoryCredentialStore() });
   defineTool({ name: "read", description: "Read", input: z.strictObject({}), replay: "safe", async run() { return null; } });
 } finally { campaign.close(); }

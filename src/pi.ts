@@ -211,7 +211,7 @@ function modelProfile(model: Model<Api>): Json {
 export const piRequest = z.strictObject({
   protocol: z.literal("elenx/pi-run/v1"),
   model: piModel,
-  modelProfile: json.optional(),
+  modelProfile: json,
   system: z.string().optional(),
   prompt: z.string(),
   reasoning: piReasoning.optional(),
@@ -280,9 +280,9 @@ export function piRequestAttempts(
 }
 
 const storedResultBase = {
-  transcript: z.array(json).readonly().optional(),
+  transcript: z.array(json).readonly(),
   text: z.string(),
-  telemetry: piTelemetry.optional(),
+  telemetry: piTelemetry,
 };
 
 export const piStoredResult = z.discriminatedUnion("state", [
@@ -290,8 +290,8 @@ export const piStoredResult = z.discriminatedUnion("state", [
   z.strictObject({
     state: z.literal("failed"),
     error: z.string(),
-    providerRetryable: z.boolean().default(false),
-    truncated: z.boolean().default(false),
+    providerRetryable: z.boolean(),
+    truncated: z.boolean(),
     ...storedResultBase,
   }),
   z.strictObject({
@@ -431,10 +431,6 @@ export function derivePiSpend(entries: readonly Entry[]) {
       continue;
     }
     const stored = piStoredResult.parse(result.output);
-    if (stored.telemetry === undefined) {
-      unaccountedCalls.push(call.seq);
-      continue;
-    }
     const { spans } = stored.telemetry;
     if (new Set(spans.map(({ id }) => id)).size !== spans.length)
       throw new Error(`duplicate Pi telemetry span in call ${call.seq}`);

@@ -93,6 +93,7 @@ function spendEntries(
       request: {
         protocol: "elenx/pi-run/v1",
         model: { provider: "fake", id: "test-v1", api: "openai-responses" },
+        modelProfile: null,
         prompt: "test",
       },
       tools: [],
@@ -106,6 +107,7 @@ function spendEntries(
       output: {
         state: "succeeded",
         text: "done",
+        transcript: [],
         telemetry: {
           schemaVersions: PI_TELEMETRY_SCHEMA_VERSIONS,
           spans: [
@@ -789,6 +791,7 @@ describe("thin Pi runner", () => {
         request: {
           protocol: "elenx/pi-run/v1",
           model: { provider: model.provider, id: model.id, api: model.api },
+          modelProfile: null,
           prompt: "test",
         },
       },
@@ -1443,17 +1446,11 @@ describe("thin Pi runner", () => {
       error: "Pi exceeded its context window",
     });
     expect(
-      piStoredResult.parse({
+      piStoredResult.safeParse({
         state: "failed",
         text: "",
         error: "legacy failure",
-      }),
-    ).toEqual({
-      state: "failed",
-      text: "",
-      error: "legacy failure",
-      providerRetryable: false,
-      truncated: false,
-    });
+      }).success,
+    ).toBe(false);
   });
 });

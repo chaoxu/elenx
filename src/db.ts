@@ -7,7 +7,7 @@ import { isUint8Array } from "node:util/types";
 import { ENTRY_KINDS, entry as entrySchema, entryId } from "./schemas";
 import type { Entry, EntryDraft, EntryId, Json } from "./types";
 
-const SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 5;
 const ENTRY_KIND_SQL = Object.values(ENTRY_KINDS)
   .map((kind) => `'${kind}'`)
   .join(", ");
