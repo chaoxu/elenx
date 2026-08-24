@@ -25,7 +25,7 @@ Positive and negative are steering tags. Positive presentation offers material t
 
 Under M1-M3, the explorer suggests a small set of policy-permitted items and the coordinator decides what to add or revise. Suggestions are advisory: the coordinator may extract any packet-grounded result whether or not the explorer nominated it. Code enforces the retained tag, exact source and revision references, and visibility rule; models supply every semantic judgment.
 
-An external benchmark can compute pass@k from the first `k` M0 explorer attempts because each receives the same goal-only prompt and terminal tool. Repeated-context counts remain telemetry and do not enter the request. Policy comparisons must still count coordinator and final-assurance spend. The runtime continues to the first verified candidate unless paused or interrupted.
+An external benchmark can compute pass@k from the first `k` M0 explorer attempts because each receives the same frozen prompt and terminal tool. Repeated-context counts remain telemetry and do not enter the request. Policy comparisons must still count coordinator and final-assurance spend. The runtime continues to the first verified candidate unless paused or interrupted.
 
 ## Construction variants
 
