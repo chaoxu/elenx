@@ -1,6 +1,6 @@
 # Elenx policy hypotheses
 
-Status: experimental plan, 2026-08-20. [`design.md`](design.md) defines the boundary. The companion [`elenx-solve` protocol](https://gitea.lab/chaoxu/elenx-solve/src/branch/main/docs/protocol.md) defines current runtime behavior.
+Status: experimental plan, 2026-08-23. [`design.md`](design.md) defines the boundary. The companion [`elenx-solve` protocol](https://gitea.lab/chaoxu/elenx-solve/src/branch/main/docs/protocol.md) defines current runtime behavior.
 
 ## Objective
 
@@ -17,7 +17,9 @@ A smoke test establishes that a policy runs and records the intended state. It s
 | M2 | goal plus positive evidence | reusable progress enables cumulative solutions | a false partial claim propagates |
 | M3 | goal plus both kinds | progress and route diversity complement each other | longer context and correlated errors erase the gain |
 
-M0-M3 run the same coordinator, explorer, candidate, final-assurance, recovery, and stopping loop. The selected memory value controls which evidence tags explorers may nominate, coordinators may retain, and later explorers may see. M0 requires empty nominations and exposes only the coordinator's `explore` action, so it records no evidence revisions or reviews.
+M0-M3 run the same coordinator, explorer, candidate, final-assurance, recovery, and stopping loop. The selected memory value controls which evidence tags explorers may nominate, coordinators may retain, and later explorers may see. M0 requires empty nominations and an empty coordinator batch, so it records no evidence revisions or reviews.
+
+Proof search resembles searching a tree, which motivates the M0-M3 comparison: negative evidence prunes branches already found not to work, so if the solution is shallow, M1 behaves like breadth-first search and reaches it quickly; positive evidence accumulates proved intermediate results, letting later attempts build deeper, so M2 behaves like depth-first extension of promising branches; M3 combines both at the cost of the longest context. The benchmark comparison at equal spend decides whether any policy is more effective, and retention itself is costly because stored evidence consumes the context window.
 
 Positive and negative are steering tags. Positive presentation offers material that may support a route. Negative presentation asks the explorer to avoid repeating a route unless it gives a concrete reason the recorded obstruction is wrong, incomplete, or inapplicable. Neither tag asserts truth, impossibility, verification, or importance.
 
@@ -37,6 +39,7 @@ The initial comparison varies evidence retention and visibility together. Later 
 | selection | all live evidence under a fixed ceiling | model selection, compression, or retrieval |
 | presentation | fixed tag-specific headings | ordering, provenance, or stamp disclosure |
 | access | coordinator packages all context | explorer reads exact evidence on demand |
+| guidance | no user guidance; shipped defaults only | user-supplied frozen modules, per-launch selection, or switching policies |
 | topology | one fresh explorer at a time | transcript reuse or nested agents |
 
 The harness records exact proposals, decisions, revisions, and context exposure so each comparison can be reconstructed.
@@ -56,6 +59,8 @@ Evidence review is an independent axis:
 Every review binds one exact evidence revision. A repair starts with no inherited stamps.
 
 Final candidate assurance remains required for `solved`. The initial fixed policy uses adversarial proof audit, premise audit, and candidate-blind reconstruction with comparison. Separate experiments may vary the frozen verifier set, but every M0-M3 run uses the same set within a matched comparison. E2 above remains an optional intermediate-evidence review rather than the candidate-level reconstruction gate.
+
+[`research/exposure-weighted-progressive-assurance.md`](research/exposure-weighted-progressive-assurance.md) records a deferred proposal for allocating verification dynamically according to uncertainty, downstream exposure, consequence, and cost. It remains outside the active experiment order until fixed-policy campaigns supply calibrated truth labels, joint verifier failures, cost observations, faithful dependency telemetry, and a successful offline or shadow comparison.
 
 ## Recovery tests
 
@@ -86,6 +91,8 @@ Match problem bytes, completion criteria, model access, sampling settings, per-c
 - elapsed time as a diagnostic.
 
 Use randomized replicated runs once the benchmark exists.
+
+[`research/known-solution-diagnostics.md`](research/known-solution-diagnostics.md) records the diagnostic method behind the benchmark: known-solution problems make exploration failure unambiguous, proof-guided transcript analysis converts each failure into testable policy hypotheses, and the benchmark supports hill climbing over those hypotheses.
 
 ## Experiment order
 
