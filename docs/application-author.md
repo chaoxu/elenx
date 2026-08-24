@@ -3,7 +3,7 @@
 Install Elenx from Gitea:
 
 ```sh
-bun add git+https://gitea.lab/chaoxu/elenx.git#v0.7.12 zod@4.4.3
+bun add git+https://gitea.lab/chaoxu/elenx.git#v0.7.13 zod@4.4.3
 ```
 
 ## Create and verify a candidate
@@ -85,12 +85,16 @@ The candidate envelope is application-owned. Include every fact that must be aud
 
 ## Give a model one narrow tool
 
-Inside the lifecycle above, replace its `runPi` call with this fragment when the verifier needs one read-only source tool:
+When a verifier needs one read-only source tool, run source inspection as a preliminary call and pass its recorded result into the verdict prompt. Keep the final verdict as the same verdict-only structured call shown above.
 
 ```ts
-import { defineTool } from "elenx";
+import { defineTool, returnedToolSubmission } from "elenx";
 import { z } from "zod";
 
+const inspectedSource = z.strictObject({
+  source: z.enum(allowedSourceNames),
+  text: z.string(),
+});
 const inspectSource = defineTool({
   name: "inspect_source",
   description: "Read one source already attached to this candidate",
@@ -104,17 +108,40 @@ const inspectSource = defineTool({
   },
 });
 
+const inspection = await runPi(campaign, {
+  models,
+  model,
+  label: `${verifier}/source-inspection`,
+  candidate,
+  system:
+    "Inspect one attached source. Call inspect_source exactly once, then stop.",
+  prompt: stored,
+  tools: [inspectSource],
+  stopAfterToolResult: true,
+});
+if (inspection.state !== "succeeded") throw new Error(inspection.error);
+const sourceInspection = inspectedSource.parse(
+  returnedToolSubmission(
+    campaign.records(),
+    inspection.call,
+    inspectSource.name,
+  ).output,
+);
+
 const audit = await runPi(campaign, {
   models,
   model,
   label: verifier,
   candidate,
-  prompt,
-  tools: [inspectSource],
+  system:
+    "Audit the candidate and source-inspection result. Call submit_verdict exactly once, then stop.",
+  prompt: JSON.stringify({ stored, sourceInspection }),
+  tools: [submitVerdict],
+  stopAfterToolResult: true,
 });
 ```
 
-Zod validates the model's input before `run` executes and generates the JSON Schema Pi receives. Schema refinements and transforms must be pure admission logic. `replay: "safe"` is the application's assertion that every valid repetition is harmless; a write needs an application-stable semantic key or reconciliation rule. A recorded tool call without a result has an unknown outcome and is never retried by the kernel. Use the campaign namespace and tool-call sequence to reconcile the original external record. The exact recording and replay contract is in [`../SPEC.md`](../SPEC.md#calls-and-tools).
+Zod validates the model's input before `run` executes and generates the JSON Schema Pi receives. Pure refinements are supported; transforms are unsupported because JSON Schema cannot represent them. `replay: "safe"` is the application's assertion that every valid repetition is harmless; a write needs an application-stable semantic key or reconciliation rule. A recorded tool call without a result has an unknown outcome and is never retried by the kernel. Use the campaign namespace and tool-call sequence to reconcile the original external record. The exact recording and replay contract is in [`../SPEC.md`](../SPEC.md#calls-and-tools).
 
 Tools should express one bounded application action. Suitable proof-search tools read a named attached source, inspect a bounded frontier view, launch one application-approved computation, or submit one structured observation. Do not expose SQL, the campaign path, a database client, arbitrary record append, unrestricted candidate access, the whole `Campaign`, or a general filesystem shell.
 

@@ -846,6 +846,7 @@ async function runPiBody(
         ...(await loop(exact.prompt, options.prior)),
       ];
       for (let used = 0; used < (exact.maxRecoveries ?? 0); used++) {
+        if (turns >= 32) break;
         const final = messages.findLast(
           (message): message is AssistantMessage =>
             message.role === "assistant",

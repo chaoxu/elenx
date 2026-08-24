@@ -1283,6 +1283,54 @@ describe("thin Pi runner", () => {
     ).toHaveLength(32);
   });
 
+  test("does not recover after the thirty-second turn ends at length", async () => {
+    const echo = defineTool({
+      name: "echo",
+      description: "Echo",
+      input: z.strictObject({ value: z.string() }),
+      replay: "safe",
+      async run({ value }) {
+        return { value };
+      },
+    });
+    const replies = [
+      ...Array.from({ length: 31 }, (_, index) =>
+        assistant(
+          [
+            {
+              type: "toolCall" as const,
+              id: `pre-limit-echo-${index}`,
+              name: "echo",
+              arguments: { value: "again" },
+            },
+          ],
+          "toolUse",
+        ),
+      ),
+      assistant([{ type: "text", text: "limit" }], "length"),
+      assistant([{ type: "text", text: "turn 33" }], "stop"),
+    ];
+    let providerCalls = 0;
+    const result = await runPi(campaign(), {
+      models: models(replies, () => {
+        providerCalls += 1;
+      }),
+      model,
+      label: "audit/v1",
+      prompt: "Audit",
+      tools: [echo],
+      maxRecoveries: 1,
+    });
+
+    expect(result).toMatchObject({ state: "failed", truncated: true });
+    expect(providerCalls).toBe(32);
+    expect(
+      (result.transcript as readonly { role?: string }[]).filter(
+        ({ role }) => role === "assistant",
+      ),
+    ).toHaveLength(32);
+  });
+
   test("does not accept a mixed terminal tool batch at the turn cap", async () => {
     const store = campaign();
     const candidate = store.submitCandidate(new TextEncoder().encode("claim"), [

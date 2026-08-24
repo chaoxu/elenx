@@ -23,9 +23,9 @@ Proof search resembles searching a tree, which motivates the M0-M3 comparison: n
 
 Positive and negative are steering tags. Positive presentation offers material that may support a route. Negative presentation asks the explorer to avoid repeating a route unless it gives a concrete reason the recorded obstruction is wrong, incomplete, or inapplicable. Neither tag asserts truth, impossibility, verification, or importance.
 
-Under M1-M3, the explorer nominates a small set of policy-permitted items and the coordinator decides what to add or revise. Code enforces the retained tag, exact source and revision references, and visibility rule; models supply every semantic judgment.
+Under M1-M3, the explorer suggests a small set of policy-permitted items and the coordinator decides what to add or revise. Suggestions are advisory: the coordinator may extract any packet-grounded result whether or not the explorer nominated it. Code enforces the retained tag, exact source and revision references, and visibility rule; models supply every semantic judgment.
 
-An external benchmark can compute pass@k from the first `k` M0 explorer attempts because each receives the same goal-only context. Policy comparisons must still count coordinator and final-assurance spend. The runtime continues to the first verified candidate unless paused or interrupted.
+An external benchmark can compute pass@k from the first `k` M0 explorer attempts because each receives the same goal-only prompt and terminal tool. Repeated-context counts remain telemetry and do not enter the request. Policy comparisons must still count coordinator and final-assurance spend. The runtime continues to the first verified candidate unless paused or interrupted.
 
 ## Construction variants
 
@@ -33,7 +33,7 @@ The initial comparison varies evidence retention and visibility together. Later 
 
 | Axis | Initial policy | Later comparison |
 | --- | --- | --- |
-| nomination | explorer nominates items | coordinator extracts without nominations |
+| suggestions | explorer supplies evidence suggestions | explorer supplies none; coordinator still extracts packet-grounded evidence |
 | admission | coordinator selects | automatic or reviewed admission |
 | representation | coordinator-authored revision linked to an exact source | verbatim nomination, split, rewrite, or compression |
 | selection | all live evidence under a fixed ceiling | model selection, compression, or retrieval |

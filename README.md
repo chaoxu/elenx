@@ -11,7 +11,7 @@ The kernel enforces identity, durability, crash semantics, and accounting contra
 The v1 kernel requires Bun 1.3.13 or newer. Applications define tool schemas with Zod:
 
 ```sh
-bun add git+https://gitea.lab/chaoxu/elenx.git#v0.7.12 zod@4.4.3
+bun add git+https://gitea.lab/chaoxu/elenx.git#v0.7.13 zod@4.4.3
 ```
 
 Elenx exposes Pi types directly. Keep TypeScript's `skipLibCheck` enabled while Pi's provider SDK declarations require it.
@@ -37,7 +37,7 @@ The deterministic verifier example is [`examples/v1/scripted-verifier.ts`](examp
 
 ## Companion solver
 
-[`elenx-solve`](https://gitea.lab/chaoxu/elenx-solve) supplies the `exploration-v5` protocol: a coordinator maintains and explicitly retires policy-permitted evidence, fresh explorers work on the complete goal and live evidence, optional reviewers stamp exact revisions, and every proposed resolution enters the configured verifier gates. The built-in gates are adversarial proof audit, premise audit, and candidate-blind reconstruction with comparison. The `none`, `negative`, `positive`, and `both` memory policies run the same resumable loop while controlling which evidence kinds may be nominated, retained, and shown to explorers.
+[`elenx-solve`](https://gitea.lab/chaoxu/elenx-solve) supplies the `exploration-v11` protocol: a coordinator maintains and explicitly retires policy-permitted evidence, fresh explorers work on the complete goal and live evidence, optional reviewers stamp exact revisions, and every proposed resolution enters the configured verifier gates. The built-in policy requires adversarial proof audit and may add premise audit and candidate-blind reconstruction with comparison. The `none`, `negative`, `positive`, and `both` memory policies run the same resumable loop while controlling which evidence kinds may be nominated, retained, and shown to explorers.
 
 [`docs/design.md`](docs/design.md) defines the governing design direction. [`elenx-solve/docs/protocol.md`](https://gitea.lab/chaoxu/elenx-solve/src/branch/main/docs/protocol.md) remains the authority for exact runtime behavior.
 

@@ -1,6 +1,6 @@
 # Elenx design
 
-Status: design for the `exploration-v5` solver, 2026-08-21. [`../SPEC.md`](../SPEC.md) defines kernel guarantees. The companion [`elenx-solve` protocol](https://gitea.lab/chaoxu/elenx-solve/src/branch/main/docs/protocol.md) defines exact solver behavior.
+Status: design for the `exploration-v11` solver, 2026-08-23. [`../SPEC.md`](../SPEC.md) defines kernel guarantees. The companion [`elenx-solve` protocol](https://gitea.lab/chaoxu/elenx-solve/src/branch/main/docs/protocol.md) defines exact solver behavior.
 
 ## Principle
 
@@ -56,7 +56,7 @@ fresh explorer on the first iteration
 
 Each explorer receives the final goal and the live evidence visible under the selected memory policy. It has no filesystem, database, shell, retrieval, or delegation tools. One structured result carries its raw report, nominated evidence, completion claim, and directly used positive evidence roots.
 
-The raw report always survives. The coordinator may write a source-grounded evidence revision, revise or drop an existing item, ask an optional reviewer to examine one exact revision, or launch the next explorer. A proposed resolution bypasses coordinator authorship: the solver freezes its report, cited positive roots, and their dependency closure as one candidate, then runs the configured verifier gates.
+The raw report always survives. Explorer nominations are suggestions; the coordinator may write any packet-grounded evidence revision, revise or drop an existing item, ask an optional reviewer to examine one exact revision, or launch the next explorer. A proposed resolution bypasses coordinator authorship: the solver freezes its report, cited positive roots, and their dependency closure as one candidate, then runs the configured verifier gates.
 
 Coordinator and explorer calls start from fresh roots. Reusing a compatible provider cache may reduce cost, but a previous transcript is not hidden campaign state. A later policy may deliberately add transcript reuse or direct evidence lookup as a separate experiment.
 
@@ -82,7 +82,7 @@ The first four memory policies retain and expose different evidence:
 | **M2** | positive evidence | positive evidence |
 | **M3** | positive and negative evidence | positive and negative evidence |
 
-All four use the same loop. M0 explorers submit an empty nomination list, and the M0 coordinator can only launch another explorer. M0 therefore creates no evidence revisions or reviews, and each explorer call has the same goal-only context semantics as an independent pass@k sample. Coordinator and verifier calls remain measured harness overhead, and the runtime has no hidden `k` limit.
+All four use the same loop. M0 explorers submit an empty nomination list, and the M0 coordinator can only launch another explorer. M0 therefore creates no evidence revisions or reviews, and each explorer receives the same goal-only prompt and terminal tool as an independent pass@k sample. The harness keeps repeated-context counts in telemetry rather than showing them to the explorer. Coordinator and verifier calls remain measured harness overhead, and the runtime has no hidden `k` limit.
 
 Each added or revised card declares the live positive revisions supporting it. The resulting graph is acyclic because dependencies point to earlier revisions. An explorer cites directly used positive roots; the harness freezes the complete dependency closure in dependency-first order.
 
@@ -92,9 +92,9 @@ Revision and drop permanently remove an exact revision from future explorer cont
 
 Intermediate evidence review is optional. A review is a fallible stamp on one exact evidence revision. Adversarial review, blind reconstruction, a different model family, formalization, and human review can coexist as distinct stamps. A repair creates a new revision; old stamps remain on the bytes they examined.
 
-Final verification is required before a campaign reports `solved`. Every proposed resolution creates an immutable candidate whose required verifier labels come from the frozen configuration. The built-in direct gates are `proof-audit`, which attacks the composed proof, and `premise-audit`, which inventories and independently checks every load-bearing imported claim.
+Final verification is required before a campaign reports `solved`. Every proposed resolution creates an immutable candidate whose required verifier labels come from the frozen configuration. `proof-audit` attacks the composed proof. The optional `premise-audit` inventories and independently checks every load-bearing imported claim before proof audit.
 
-The optional `reconstruction` gate runs only after every configured direct audit passes. A candidate-blind fresh root receives the goal plus the IDs and texts in the cited positive dependency closure, but not the candidate's new argument, reviews, history, or verdicts. A second fresh call compares that derivation with the exact candidate. Direct audits retain responsibility for the independent standing of the supplied modules.
+The optional `reconstruction` gate requires `proof-audit` and runs only after every configured direct audit passes. A candidate-blind fresh root receives the goal plus the IDs and texts in the cited positive dependency closure, but not the candidate's new argument, reviews, history, or verdicts. A second fresh call compares that derivation with the exact candidate. Direct audits retain responsibility for the independent standing of the supplied modules.
 
 The harness enforces candidate binding, prompt projections, fresh roots, serial phase order, and replay. Models judge correctness and agreement. Each verifier lives behind one localized kind, so removing it from configuration removes its calls and gate.
 

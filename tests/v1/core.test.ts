@@ -470,6 +470,46 @@ describe("small kernel", () => {
     ]);
   });
 
+  test("allows refined tool schemas and rejects transformed schemas", async () => {
+    const campaign = createCampaign(database(), "test", null);
+    const refined = defineTool({
+      name: "refined",
+      description: "Accept nonblank text",
+      input: z.strictObject({
+        value: z.string().refine((value) => value.trim().length > 0),
+      }),
+      replay: "safe",
+      async run({ value }) {
+        return { value };
+      },
+    });
+    await expect(
+      campaign.call(
+        { label: "refinement", request: null, tools: [refined] },
+        ({ tools }) => tools[0]!.execute({ value: "accepted" }),
+      ),
+    ).resolves.toMatchObject({ output: { value: "accepted" } });
+
+    const transformed = defineTool({
+      name: "transformed",
+      description: "Trim text",
+      input: z.string().transform((value) => value.trim()),
+      replay: "safe",
+      async run(value) {
+        return value;
+      },
+    });
+    await expect(
+      campaign.call(
+        { label: "transform", request: null, tools: [transformed] },
+        async () => null,
+      ),
+    ).rejects.toThrow("Transforms cannot be represented in JSON Schema");
+    expect(
+      campaign.records().filter((entry) => entry.kind === "call"),
+    ).toHaveLength(1);
+  });
+
   test("waits for detached tools and rejects late invocations", async () => {
     const campaign = createCampaign(database(), "test", null);
     let release!: () => void;
