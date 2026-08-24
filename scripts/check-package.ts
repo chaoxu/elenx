@@ -69,11 +69,11 @@ try {
   type CallReceipt, type Campaign, type Entry, type Json, type Verdict,
 } from "elenx";
 import {
-  builtinPi, continuePi, derivePiSpend, ELENX_PI_TELEMETRY_SCHEMA,
+  builtinPi, derivePiSpend, ELENX_PI_TELEMETRY_SCHEMA,
   InMemoryCredentialStore, piReasoning, piRequest,
-  piContinuationRequest, piRequestAttempts, piStoredResult,
+  piRequestAttempts, piStoredResult,
   PI_TELEMETRY_SCHEMA_VERSIONS, piTelemetry, runPi,
-  type PiContinuationOptions, type PiResult, type PiSpend,
+  type PiResult, type PiSpend,
 } from "elenx/pi";
 import { z } from "zod";
 
@@ -89,9 +89,9 @@ try {
 } finally { campaign.close(); }
 void [entryIdSchema, verdictSchema, openCampaign, openReader,
   returnedToolSubmission, ELENX_PI_TELEMETRY_SCHEMA, PI_TELEMETRY_SCHEMA_VERSIONS,
-  continuePi, piContinuationRequest, piReasoning, piRequestAttempts, piTelemetry, runPi];
+  piReasoning, piRequestAttempts, piTelemetry, runPi];
 void (undefined as unknown as CallReceipt | Campaign | Entry | Json | Verdict |
-  PiContinuationOptions | PiResult | PiSpend);
+  PiResult | PiSpend);
 `,
   );
   await run([process.execPath, "install", "--ignore-scripts"], consumer);

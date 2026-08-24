@@ -151,36 +151,13 @@ The campaign artifact stores candidate bytes, requests, prompts, transcripts, to
 
 ## Account for provider work
 
-`derivePiSpend(records)` returns settled provider operations, per-call and campaign totals, unaccounted Pi calls, and redacted completed request checkpoints that may represent unknown spend. Provider-reported token buckets and estimated cost remain separate; missing usage is `null`, not zero. Pass `{ call }` or `{ candidate }` to restrict the projection. It reads one record snapshot and writes nothing.
+`derivePiSpend(records)` returns settled provider operations, per-call and campaign totals, unaccounted Pi calls, and redacted completed request checkpoints that may represent unknown spend. Provider-reported token buckets and estimated cost remain separate; missing usage is `null`, not zero. It reads one record snapshot and writes nothing.
 
 ## Resume and read safely
 
 Use `openCampaign(path)` only after the prior writer or coordinator has terminated or closed, then derive the next application action from `campaign.records()`. Close every handle in `finally`; copying an open database is unsupported. Calls and tool calls without matching results require external reconciliation and are not automatically replayable. Use `openReader(path)` for read-only inspection. Recovery, copying, rollback-journal, and rejected WAL-state rules are defined in [`../SPEC.md`](../SPEC.md#campaign-artifact).
 
-`continuePi` extends a `runPi` result whose final response reached its output limit. Pass the same model and tool definitions used by the root call:
-
-```ts
-import { continuePi, runPi } from "elenx/pi";
-
-let segment = await runPi(campaign, {
-  models,
-  model,
-  label: "reason/v1",
-  prompt,
-  reasoning: "max",
-  tools,
-});
-while (segment.state === "failed" && segment.truncated) {
-  segment = await continuePi(campaign, {
-    parent: segment.call,
-    models,
-    model,
-    tools,
-  });
-}
-```
-
-The final result contains the complete transcript and concatenated text. Elenx validates the exact transcript prefix, provider checkpoints, model profile, and tool contract before each continuation dispatch. An unknown checkpointed child permanently ends that continuation chain in V1; start a fresh `runPi` call from explicit application state. Keep one coordinator in control from admission through settlement; this serializes extension of each parent. A fresh model, profile, prompt, or context policy also starts another root call.
+A `runPi` result that is still length-truncated after its bounded in-call recoveries is a dead end. Preserve it and start a fresh `runPi` call from explicit application state; a fresh model, profile, prompt, or context policy likewise starts another root call.
 
 `runPi` writes through the supplied `Campaign.call` interface. A decorator around that interface is trusted application code and may observe or alter execution; the kernel does not claim an intra-process security boundary against its caller.
 

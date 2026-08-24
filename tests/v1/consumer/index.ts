@@ -10,10 +10,8 @@ import {
 } from "elenx";
 import {
   builtinPi,
-  continuePi,
   derivePiSpend,
   InMemoryCredentialStore,
-  piContinuationRequest,
   runPi,
 } from "elenx/pi";
 import { z } from "zod";
@@ -52,8 +50,6 @@ void openCampaign;
 void entryIdSchema.parse(1);
 void deriveCandidateStatus(campaign.records(), 1);
 void derivePiSpend(campaign.records());
-void continuePi;
-void piContinuationRequest;
 void returnedToolSubmission;
 void (undefined as unknown as CallReceipt);
 void result;

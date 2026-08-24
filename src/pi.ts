@@ -23,7 +23,6 @@ import {
   type TSchema,
 } from "@earendil-works/pi-ai";
 import { z } from "zod";
-import { isDeepStrictEqual } from "node:util";
 
 import { entryId, json } from "./schemas";
 import type {
@@ -34,7 +33,6 @@ import type {
   Json,
   Tool,
 } from "./types";
-import { toolDeclarations } from "./types";
 
 export { InMemoryCredentialStore } from "@earendil-works/pi-ai";
 export { builtinModels as builtinPi } from "@earendil-works/pi-ai/providers/all";
@@ -61,7 +59,6 @@ export interface PiRunOptions {
   readonly tools?: readonly Tool[];
   readonly stopAfterToolResult?: true;
   readonly maxRecoveries?: number;
-  readonly isRetryableError?: (message: string) => boolean;
   readonly signal?: AbortSignal;
 }
 
@@ -225,22 +222,10 @@ export const piRequest = z.strictObject({
 const lengthContinuation =
   "The previous response was interrupted before completion. Continue exactly where you left off; do not restart or repeat completed work.";
 
-export const piContinuationRequest = piRequest.extend({
-  protocol: z.literal("elenx/pi-continuation/v1"),
-  turn: entryId,
-  parent: entryId,
-  modelProfile: json,
-  prompt: z.literal(lengthContinuation),
-});
-
-const piOuterRequest = z.discriminatedUnion("protocol", [
-  piRequest,
-  piContinuationRequest,
-]);
-type PiOuterRequest = z.output<typeof piOuterRequest>;
-
-function parsePiOuterRequest(value: unknown): PiOuterRequest | undefined {
-  const parsed = piOuterRequest.safeParse(value);
+function parsePiRequest(
+  value: unknown,
+): z.output<typeof piRequest> | undefined {
+  const parsed = piRequest.safeParse(value);
   return parsed.success ? parsed.data : undefined;
 }
 
@@ -281,7 +266,7 @@ export function piRequestAttempts(
     if (
       owner === undefined ||
       owner.seq >= call.seq ||
-      parsePiOuterRequest(owner.request) === undefined
+      parsePiRequest(owner.request) === undefined
     ) {
       throw new Error(`invalid Pi request checkpoint call ${call.seq}`);
     }
@@ -374,10 +359,6 @@ export interface PiSpendOperation {
   readonly usage: PiMeasuredUsage | null;
 }
 
-export type PiSpendScope =
-  | { readonly call: EntryId; readonly candidate?: never }
-  | { readonly candidate: EntryId; readonly call?: never };
-
 function measuredUsage(
   attributes: Record<string, unknown>,
 ): PiMeasuredUsage | null {
@@ -428,27 +409,11 @@ function spendSummary(operations: readonly PiSpendOperation[]) {
 
 export type PiSpendSummary = ReturnType<typeof spendSummary>;
 
-export function derivePiSpend(entries: readonly Entry[], scope?: PiSpendScope) {
-  if (scope !== undefined && "call" in scope && "candidate" in scope) {
-    throw new Error("Pi spend scope selects either call or candidate");
-  }
-  const selectedCall =
-    scope !== undefined && "call" in scope
-      ? entryId.parse(scope.call)
-      : undefined;
-  const selectedCandidate =
-    scope !== undefined && "candidate" in scope
-      ? entryId.parse(scope.candidate)
-      : undefined;
+export function derivePiSpend(entries: readonly Entry[]) {
   const calls = entries.filter(
     (item): item is Extract<Entry, { kind: "call" }> =>
-      item.kind === "call" &&
-      parsePiOuterRequest(item.request) !== undefined &&
-      (selectedCall === undefined || item.seq === selectedCall) &&
-      (selectedCandidate === undefined || item.candidate === selectedCandidate),
+      item.kind === "call" && parsePiRequest(item.request) !== undefined,
   );
-  if (selectedCall !== undefined && calls.length !== 1)
-    throw new Error(`Pi call not found: ${selectedCall}`);
   const results = new Map(
     entries
       .filter((item) => item.kind === "call-result")
@@ -551,7 +516,6 @@ function result(
   stopAfterToolResult: boolean,
   signal: AbortSignal | undefined,
   contextWindow: number,
-  isRetryableError: PiRunOptions["isRetryableError"],
 ): PiOutcome {
   const stored = jsonSnapshot(messages) as readonly Json[];
   const final = messages.findLast(
@@ -600,10 +564,7 @@ function result(
       text,
       transcript: stored,
       providerRetryable:
-        final !== undefined &&
-        !overflow &&
-        (isRetryableAssistantError(final) ||
-          isRetryableError?.(final.errorMessage ?? "") === true),
+        final !== undefined && !overflow && isRetryableAssistantError(final),
       truncated:
         final !== undefined &&
         final.stopReason === "length" &&
@@ -742,14 +703,12 @@ function measuredStream(
 }
 
 interface PiCallExecutionOptions {
-  readonly request: PiOuterRequest;
+  readonly request: z.output<typeof piRequest>;
   readonly label: string;
   readonly candidate?: EntryId;
   readonly tools?: readonly Tool[];
   readonly models: PiModels;
   readonly model: Model<Api>;
-  readonly prior: readonly AgentMessage[];
-  readonly isRetryableError?: PiRunOptions["isRetryableError"];
   readonly signal?: AbortSignal;
 }
 
@@ -771,7 +730,7 @@ async function runPiCall(
       ...(options.signal === undefined ? {} : { signal: options.signal }),
     },
     async ({ call, request, tools, signal }) => {
-      const exact = parsePiOuterRequest(request);
+      const exact = parsePiRequest(request);
       if (exact === undefined) throw new Error("invalid stored Pi request");
       return runPiBody(campaign, call, exact, tools, signal, options);
     },
@@ -782,12 +741,12 @@ async function runPiCall(
 async function runPiBody(
   campaign: Campaign,
   call: EntryId,
-  exact: PiOuterRequest,
+  exact: z.output<typeof piRequest>,
   tools: readonly AuditedTool[],
   signal: AbortSignal,
   options: Pick<
     PiCallExecutionOptions,
-    "models" | "model" | "prior" | "isRetryableError" | "label" | "candidate"
+    "models" | "model" | "label" | "candidate"
   >,
 ): Promise<PiResultBody> {
   const telemetry = new InMemoryTelemetryContext();
@@ -841,10 +800,7 @@ async function runPiBody(
           signal,
           measuredStream(campaign.call.bind(campaign), call, options.models),
         );
-      let messages = [
-        ...options.prior,
-        ...(await loop(exact.prompt, options.prior)),
-      ];
+      let messages = await loop(exact.prompt, []);
       for (let used = 0; used < (exact.maxRecoveries ?? 0); used++) {
         if (turns >= 32) break;
         const final = messages.findLast(
@@ -852,9 +808,7 @@ async function runPiBody(
             message.role === "assistant",
         );
         const retry =
-          final?.stopReason === "error" &&
-          (isRetryableAssistantError(final) ||
-            options.isRetryableError?.(final.errorMessage ?? "") === true);
+          final?.stopReason === "error" && isRetryableAssistantError(final);
         const interrupted =
           final !== undefined &&
           !signal?.aborted &&
@@ -874,7 +828,6 @@ async function runPiBody(
         exact.stopAfterToolResult === true,
         signal,
         options.model.contextWindow,
-        options.isRetryableError,
       );
       span.setAttributes({ "elenx.pi.outcome": outcome.state });
       if (outcome.state !== "succeeded") {
@@ -924,404 +877,6 @@ export async function runPi(
     ...(options.tools === undefined ? {} : { tools: options.tools }),
     models: options.models,
     model: options.model,
-    prior: [],
-    ...(options.isRetryableError === undefined
-      ? {}
-      : { isRetryableError: options.isRetryableError }),
     ...(options.signal === undefined ? {} : { signal: options.signal }),
   });
-}
-
-export interface PiContinuationOptions {
-  readonly parent: EntryId;
-  readonly models: PiModels;
-  readonly model: Model<Api>;
-  readonly tools?: readonly Tool[];
-  readonly maxRecoveries?: number;
-  readonly isRetryableError?: PiRunOptions["isRetryableError"];
-  readonly signal?: AbortSignal;
-}
-
-export async function continuePi(
-  campaign: Campaign,
-  options: PiContinuationOptions,
-): Promise<PiResult> {
-  const admission = continuationAdmission(campaign, options);
-  const { maxRecoveries: _rootRecoveries, ...inherited } =
-    admission.rootRequest;
-  const request = piContinuationRequest.parse({
-    ...inherited,
-    protocol: "elenx/pi-continuation/v1",
-    turn: admission.root.seq,
-    parent: admission.parent.seq,
-    prompt: lengthContinuation,
-    ...(options.maxRecoveries === undefined
-      ? {}
-      : { maxRecoveries: options.maxRecoveries }),
-  });
-  return runPiCall(campaign, {
-    request,
-    label: admission.root.label,
-    ...(admission.root.candidate === undefined
-      ? {}
-      : { candidate: admission.root.candidate }),
-    ...(options.tools === undefined ? {} : { tools: options.tools }),
-    models: options.models,
-    model: options.model,
-    prior: admission.transcript,
-    ...(options.isRetryableError === undefined
-      ? {}
-      : { isRetryableError: options.isRetryableError }),
-    ...(options.signal === undefined ? {} : { signal: options.signal }),
-  });
-}
-
-interface ContinuationAdmission {
-  readonly root: Extract<Entry, { kind: "call" }>;
-  readonly parent: Extract<Entry, { kind: "call" }>;
-  readonly rootRequest: z.output<typeof piRequest>;
-  readonly transcript: readonly AgentMessage[];
-}
-
-function continuationAdmission(
-  campaign: Campaign,
-  options: PiContinuationOptions,
-): ContinuationAdmission {
-  const records = campaign.records();
-  const calls = new Map(
-    records
-      .filter(
-        (entry): entry is Extract<Entry, { kind: "call" }> =>
-          entry.kind === "call",
-      )
-      .map((entry) => [entry.seq, entry]),
-  );
-  const parent = calls.get(entryId.parse(options.parent));
-  if (parent === undefined)
-    throw new Error("continuation parent call not found");
-  const results = new Map(
-    records
-      .filter(
-        (entry): entry is Extract<Entry, { kind: "call-result" }> =>
-          entry.kind === "call-result",
-      )
-      .map((entry) => [entry.parent, entry]),
-  );
-  for (const child of calls.values()) {
-    if (!isContinuationChild(child.request, parent.seq)) continue;
-    if (!piContinuationRequest.safeParse(child.request).success) {
-      throw new Error("continuation parent has a malformed child");
-    }
-    const result = results.get(child.seq);
-    if (result?.state !== "returned") {
-      if (piRequestAttempts(records, child.seq).length === 0) continue;
-      throw new Error("continuation parent has an unsettled child");
-    }
-    const stored = piStoredResult.safeParse(result.output);
-    if (
-      !stored.success ||
-      stored.data.state === "succeeded" ||
-      (stored.data.state === "failed" && stored.data.truncated)
-    ) {
-      throw new Error("continuation parent already has a usable child");
-    }
-  }
-  const lineage: {
-    readonly call: Extract<Entry, { kind: "call" }>;
-    readonly request: PiOuterRequest;
-  }[] = [];
-  let current = parent;
-  let rootRequest: z.output<typeof piRequest>;
-  while (true) {
-    const root = piRequest.safeParse(current.request);
-    if (root.success) {
-      rootRequest = root.data;
-      lineage.push({ call: current, request: root.data });
-      break;
-    }
-    const continuation = piContinuationRequest.safeParse(current.request);
-    if (!continuation.success) throw new Error("parent is not a Pi call");
-    lineage.push({ call: current, request: continuation.data });
-    if (continuation.data.parent >= current.seq) {
-      throw new Error("continuation parent must precede the child");
-    }
-    const ancestor = calls.get(continuation.data.parent);
-    if (ancestor === undefined) {
-      throw new Error("continuation ancestor call not found");
-    }
-    current = ancestor;
-  }
-  lineage.reverse();
-  const root = lineage[0]!.call;
-  if (rootRequest.model.baseUrl === undefined) {
-    throw new Error("continuation requires a root with a persisted base URL");
-  }
-  if (rootRequest.modelProfile === undefined) {
-    throw new Error("continuation requires a persisted model profile");
-  }
-  if (!sameJson(modelRecord(options.model), rootRequest.model)) {
-    throw new Error("continuation model differs from its root");
-  }
-  if (!sameJson(modelProfile(options.model), rootRequest.modelProfile)) {
-    throw new Error("continuation model profile differs from its root");
-  }
-  const attempts = piRequestAttempts(records);
-  let previousTranscript: readonly Json[] | undefined;
-  let transcript: readonly AgentMessage[] = [];
-  for (const { call, request } of lineage) {
-    if (
-      call.label !== root.label ||
-      call.candidate !== root.candidate ||
-      !sameJson(call.tools, root.tools)
-    ) {
-      throw new Error("continuation call contract differs from its root");
-    }
-    if (
-      request.protocol === "elenx/pi-continuation/v1" &&
-      (request.turn !== root.seq ||
-        !sameJson(request.model, rootRequest.model) ||
-        !sameJson(request.modelProfile, rootRequest.modelProfile) ||
-        request.system !== rootRequest.system ||
-        request.reasoning !== rootRequest.reasoning ||
-        request.stopAfterToolResult !== rootRequest.stopAfterToolResult)
-    ) {
-      throw new Error("continuation request differs from its root");
-    }
-    const settled = results.get(call.seq);
-    if (settled?.state !== "returned") {
-      throw new Error("continuation ancestor is unsettled");
-    }
-    const stored = piStoredResult.safeParse(settled.output);
-    if (
-      !stored.success ||
-      stored.data.state !== "failed" ||
-      !stored.data.truncated ||
-      stored.data.transcript === undefined
-    ) {
-      throw new Error("continuation lineage contains a non-truncated result");
-    }
-    const replay = replayableTranscript(
-      stored.data.transcript,
-      rootRequest,
-      options.model.contextWindow,
-    );
-    if (
-      previousTranscript !== undefined &&
-      !sameJson(
-        stored.data.transcript.slice(0, previousTranscript.length),
-        previousTranscript,
-      )
-    ) {
-      throw new Error("continuation transcript changed its parent prefix");
-    }
-    previousTranscript = stored.data.transcript;
-    if (call.seq === parent.seq) transcript = replay;
-    const checkpoints = attempts.filter(
-      (attempt) => attempt.parent === call.seq,
-    );
-    if (
-      checkpoints.length === 0 ||
-      checkpoints.some(
-        (attempt) =>
-          attempt.state !== "completed" ||
-          !sameJson(attempt.model, request.model),
-      )
-    ) {
-      throw new Error("continuation request checkpoint differs from its call");
-    }
-  }
-  const expectedTools = toolDeclarations(options.tools ?? []);
-  if (!sameJson(expectedTools, root.tools)) {
-    throw new Error("continuation tools differ from its root");
-  }
-  return { root, parent, rootRequest, transcript };
-}
-
-function isContinuationChild(request: Json, parent: EntryId): boolean {
-  if (
-    typeof request !== "object" ||
-    request === null ||
-    Array.isArray(request)
-  ) {
-    return false;
-  }
-  const object = request as Readonly<Record<string, Json>>;
-  return (
-    object.protocol === "elenx/pi-continuation/v1" && object.parent === parent
-  );
-}
-
-function sameJson(left: unknown, right: unknown): boolean {
-  return isDeepStrictEqual(left, right);
-}
-
-const replayNumber = z.number().nonnegative();
-const replayUsage = z.looseObject({
-  input: replayNumber,
-  output: replayNumber,
-  cacheRead: replayNumber,
-  cacheWrite: replayNumber,
-  cacheWrite1h: replayNumber.optional(),
-  reasoning: replayNumber.optional(),
-  totalTokens: replayNumber,
-  cost: z.looseObject({
-    input: replayNumber,
-    output: replayNumber,
-    cacheRead: replayNumber,
-    cacheWrite: replayNumber,
-    total: replayNumber,
-  }),
-});
-const replayText = z.looseObject({
-  type: z.literal("text"),
-  text: z.string(),
-  textSignature: z.string().optional(),
-});
-const replayThinking = z.looseObject({
-  type: z.literal("thinking"),
-  thinking: z.string(),
-  thinkingSignature: z.string().optional(),
-  redacted: z.boolean().optional(),
-});
-const replayToolCall = z.looseObject({
-  type: z.literal("toolCall"),
-  id: z.string().min(1),
-  name: z.string().min(1),
-  arguments: z.record(z.string(), json),
-  thoughtSignature: z.string().optional(),
-  namespace: z.string().optional(),
-});
-const replayUser = z.looseObject({
-  role: z.literal("user"),
-  content: z.string(),
-  timestamp: replayNumber,
-});
-const replayAssistant = z.looseObject({
-  role: z.literal("assistant"),
-  content: z.array(z.union([replayText, replayThinking, replayToolCall])),
-  api: z.string().min(1),
-  provider: z.string().min(1),
-  model: z.string().min(1),
-  responseModel: z.string().min(1).optional(),
-  responseId: z.string().min(1).optional(),
-  diagnostics: z.array(json).optional(),
-  usage: replayUsage,
-  stopReason: z.enum([
-    "stop",
-    "length",
-    "toolUse",
-    "error",
-    "aborted",
-    "deferred",
-  ]),
-  deferred: z
-    .looseObject({
-      provider: z.string().min(1),
-      modelId: z.string().min(1),
-      api: z.string().min(1),
-      id: z.string().min(1),
-      expiresAt: replayNumber.optional(),
-      pollAfterMs: replayNumber.optional(),
-      data: json.optional(),
-    })
-    .optional(),
-  errorMessage: z.string().optional(),
-  rawStopReason: z.string().optional(),
-  endTurn: z.boolean().optional(),
-  timestamp: replayNumber,
-});
-const replayToolResult = z.looseObject({
-  role: z.literal("toolResult"),
-  toolCallId: z.string().min(1),
-  toolName: z.string().min(1),
-  content: z.array(replayText),
-  details: json.optional(),
-  usage: replayUsage.optional(),
-  addedToolNames: z.array(z.string().min(1)).optional(),
-  isError: z.boolean(),
-  timestamp: replayNumber,
-});
-const replayMessage = z.discriminatedUnion("role", [
-  replayUser,
-  replayAssistant,
-  replayToolResult,
-]);
-
-function replayableTranscript(
-  value: readonly Json[],
-  root: z.output<typeof piRequest>,
-  contextWindow: number,
-): readonly AgentMessage[] {
-  const parsed = z.array(replayMessage).safeParse(value);
-  if (!parsed.success) {
-    throw new Error("malformed continuation transcript", {
-      cause: parsed.error,
-    });
-  }
-  const messages = parsed.data;
-  const first = messages[0];
-  if (first?.role !== "user" || first.content !== root.prompt) {
-    throw new Error("continuation transcript changed the root prompt");
-  }
-  let index = 1;
-  let finalAssistant: z.output<typeof replayAssistant> | undefined;
-  while (index < messages.length) {
-    const assistant = messages[index];
-    if (assistant?.role !== "assistant") {
-      throw new Error("invalid continuation transcript sequence");
-    }
-    if (
-      assistant.provider !== root.model.provider ||
-      assistant.model !== root.model.id ||
-      assistant.api !== root.model.api
-    ) {
-      throw new Error("continuation transcript changed model identity");
-    }
-    finalAssistant = assistant;
-    index += 1;
-    const toolCalls = assistant.content.filter(
-      (part): part is z.output<typeof replayToolCall> =>
-        part.type === "toolCall",
-    );
-    for (const toolCall of toolCalls) {
-      const toolResult = messages[index];
-      if (
-        toolResult?.role !== "toolResult" ||
-        toolResult.toolCallId !== toolCall.id ||
-        toolResult.toolName !== toolCall.name ||
-        (assistant.stopReason === "length" && !toolResult.isError)
-      ) {
-        throw new Error("invalid continuation tool result sequence");
-      }
-      index += 1;
-    }
-    if (index === messages.length) break;
-    const next = messages[index];
-    if (
-      next?.role === "assistant" &&
-      toolCalls.length > 0 &&
-      assistant.stopReason !== "length"
-    ) {
-      continue;
-    }
-    if (
-      next?.role !== "user" ||
-      next.content !== lengthContinuation ||
-      assistant.stopReason !== "length"
-    ) {
-      throw new Error("invalid continuation transcript sequence");
-    }
-    index += 1;
-  }
-  if (
-    finalAssistant?.stopReason !== "length" ||
-    finalAssistant.usage.output <= 0 ||
-    isContextOverflow(
-      finalAssistant as unknown as AssistantMessage,
-      contextWindow,
-    )
-  ) {
-    throw new Error("continuation transcript is not length-truncated");
-  }
-  return messages as readonly AgentMessage[];
 }
