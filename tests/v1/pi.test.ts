@@ -1220,6 +1220,125 @@ describe("thin Pi runner", () => {
     });
   });
 
+  test("recovers the recorded incomplete upstream stream internally", async () => {
+    const store = campaign();
+    const dropped = assistant([], "error");
+    dropped.errorMessage =
+      "stream_incomplete: Upstream closed stream without completion";
+    const result = await runPi(store, {
+      models: models([
+        dropped,
+        assistant([{ type: "text", text: "recovered" }], "stop"),
+      ]),
+      model,
+      label: "audit/v1",
+      prompt: "Audit",
+      maxRecoveries: 1,
+    });
+    expect(result).toMatchObject({ state: "succeeded", text: "recovered" });
+    expect(derivePiSpend(store.records()).summary.logicalProviderRequests).toBe(
+      2,
+    );
+  });
+
+  test("keeps an exhausted incomplete upstream stream retryable", async () => {
+    const store = campaign();
+    const dropped = () => {
+      const message = assistant([], "error");
+      message.errorMessage =
+        "stream_incomplete: Upstream closed stream without completion";
+      return message;
+    };
+    const result = await runPi(store, {
+      models: models([dropped(), dropped()]),
+      model,
+      label: "audit/v1",
+      prompt: "Audit",
+      maxRecoveries: 1,
+    });
+    expect(result).toMatchObject({
+      state: "failed",
+      error: "stream_incomplete: Upstream closed stream without completion",
+      providerRetryable: true,
+    });
+    expect(derivePiSpend(store.records()).summary.logicalProviderRequests).toBe(
+      2,
+    );
+  });
+
+  test("prefers structured incomplete-stream diagnostics", async () => {
+    const byCode = assistant([], "error");
+    byCode.errorMessage = "opaque provider failure";
+    byCode.diagnostics = [
+      {
+        type: "provider_response_failure",
+        timestamp: 1,
+        error: {
+          message: "opaque provider failure",
+          code: "stream_incomplete",
+        },
+      },
+    ];
+    const codeResult = await runPi(campaign(), {
+      models: models([byCode]),
+      model,
+      label: "code/v1",
+      prompt: "Code",
+    });
+    expect(codeResult).toMatchObject({
+      state: "failed",
+      providerRetryable: true,
+    });
+
+    const byDetail = assistant([], "error");
+    byDetail.errorMessage = "opaque provider failure";
+    byDetail.diagnostics = [
+      {
+        type: "provider_response_failure",
+        timestamp: 1,
+        details: { failure_detail: "upstream_eof_before_terminal_event" },
+      },
+    ];
+    const detailResult = await runPi(campaign(), {
+      models: models([byDetail]),
+      model,
+      label: "detail/v1",
+      prompt: "Detail",
+    });
+    expect(detailResult).toMatchObject({
+      state: "failed",
+      providerRetryable: true,
+    });
+  });
+
+  test.each([
+    "401 invalid_api_key: authentication failed",
+    "403 permission denied",
+    "429 insufficient_quota: billing hard limit reached",
+    "400 invalid_request_error",
+    "tool submission schema validation failed",
+    "401 invalid_api_key: stream_incomplete: Upstream closed stream without completion",
+    "429 insufficient_quota: stream_incomplete: Upstream closed stream without completion",
+    "400 invalid_request_error: upstream_eof_before_terminal_event",
+    "tool submission failed: upstream_eof_before_terminal_event",
+  ])(
+    "keeps deterministic provider failure non-retryable: %s",
+    async (error) => {
+      const failed = assistant([], "error");
+      failed.errorMessage = error;
+      const result = await runPi(campaign(), {
+        models: models([failed]),
+        model,
+        label: "deterministic/v1",
+        prompt: "Deterministic",
+      });
+      expect(result).toMatchObject({
+        state: "failed",
+        providerRetryable: false,
+      });
+    },
+  );
+
   test("does not continue a non-retryable error stop", async () => {
     const store = campaign();
     const exhausted = assistant([], "error");

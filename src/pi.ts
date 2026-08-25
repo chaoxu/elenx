@@ -228,17 +228,47 @@ const lengthContinuation =
 
 // codex-lb reports transient upstream and transport failures with codes Pi's
 // classifier does not recognize: upstream_unavailable, upstream_error,
-// upstream_proxy_unavailable, proxy_unavailable, and aiohttp's
-// ClientPayloadError. Quota and auth codes stay outside this pattern.
+// premature upstream EOFs, proxy failures, and aiohttp's ClientPayloadError.
+// Quota and auth codes stay outside this pattern.
 const transientGatewayErrorPattern =
   /upstream_(?:unavailable|error)|proxy_unavailable|ClientPayloadError/i;
+const incompleteStreamErrorPattern =
+  /^(?:stream_incomplete:\s*Upstream closed stream without completion|upstream_eof_before_terminal_event)$/i;
+const deterministicProviderErrorPattern =
+  /\b(?:401|403)\b|invalid_api_key|permission denied|insufficient_quota|out of budget|quota exceeded|billing|invalid_request(?:_error)?|context_length_exceeded|tool submission|schema validation/i;
+const transientGatewayDiagnosticCodes = new Set([
+  "stream_incomplete",
+  "upstream_eof_before_terminal_event",
+]);
+
+function hasTransientGatewayDiagnostic(message: AssistantMessage): boolean {
+  return (message.diagnostics ?? []).some((diagnostic) => {
+    const detail =
+      diagnostic.details?.failure_detail ?? diagnostic.details?.failureDetail;
+    return (
+      (typeof diagnostic.error?.code === "string" &&
+        transientGatewayDiagnosticCodes.has(diagnostic.error.code)) ||
+      (typeof detail === "string" &&
+        transientGatewayDiagnosticCodes.has(detail))
+    );
+  });
+}
 
 function isRetryableProviderError(message: AssistantMessage): boolean {
-  if (isRetryableAssistantError(message)) return true;
-  return (
+  if (
     message.stopReason === "error" &&
     message.errorMessage !== undefined &&
-    transientGatewayErrorPattern.test(message.errorMessage)
+    deterministicProviderErrorPattern.test(message.errorMessage)
+  ) {
+    return false;
+  }
+  if (isRetryableAssistantError(message)) return true;
+  if (message.stopReason !== "error") return false;
+  if (hasTransientGatewayDiagnostic(message)) return true;
+  return (
+    message.errorMessage !== undefined &&
+    (transientGatewayErrorPattern.test(message.errorMessage) ||
+      incompleteStreamErrorPattern.test(message.errorMessage.trim()))
   );
 }
 
