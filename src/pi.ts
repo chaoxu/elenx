@@ -20,6 +20,7 @@ import {
   type Model,
   type Models,
   type ThinkingLevel,
+  type Transport,
   type TSchema,
 } from "@earendil-works/pi-ai";
 import { z } from "zod";
@@ -60,6 +61,7 @@ export interface PiRunOptions {
   readonly stopAfterToolResult?: true;
   readonly maxRecoveries?: number;
   readonly signal?: AbortSignal;
+  readonly transport?: Transport;
 }
 
 type PiOutcomeBase = {
@@ -722,6 +724,7 @@ interface PiCallExecutionOptions {
   readonly models: PiModels;
   readonly model: Model<Api>;
   readonly signal?: AbortSignal;
+  readonly transport?: Transport;
 }
 
 async function runPiCall(
@@ -758,7 +761,7 @@ async function runPiBody(
   signal: AbortSignal,
   options: Pick<
     PiCallExecutionOptions,
-    "models" | "model" | "label" | "candidate"
+    "models" | "model" | "label" | "candidate" | "transport"
   >,
 ): Promise<PiResultBody> {
   const telemetry = new InMemoryTelemetryContext();
@@ -807,6 +810,9 @@ async function runPiBody(
             convertToLlm,
             toolExecution: "sequential",
             sessionId,
+            ...(options.transport === undefined
+              ? {}
+              : { transport: options.transport }),
             telemetryContext: span,
             shouldStopAfterTurn: async ({ message }) =>
               (turns += 1) >= 32 || message.stopReason === "length",
@@ -896,5 +902,8 @@ export async function runPi(
     models: options.models,
     model: options.model,
     ...(options.signal === undefined ? {} : { signal: options.signal }),
+    ...(options.transport === undefined
+      ? {}
+      : { transport: options.transport }),
   });
 }

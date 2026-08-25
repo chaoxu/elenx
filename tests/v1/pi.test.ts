@@ -1115,22 +1115,31 @@ describe("thin Pi runner", () => {
   test("keeps one transport session across recovery attempts and separates calls", async () => {
     const store = campaign();
     const sessions: (string | undefined)[] = [];
+    const transports: (string | undefined)[] = [];
+    const observe = (
+      _context: Context,
+      options: SimpleStreamOptions | undefined,
+    ) => {
+      sessions.push(options?.sessionId);
+      transports.push(options?.transport);
+    };
     const interrupted = assistant([], "error");
     interrupted.errorMessage = "WebSocket closed 1006 Connection ended";
     await runPi(store, {
       models: models(
         [interrupted, assistant([{ type: "text", text: "done" }], "stop")],
-        (_context, options) => sessions.push(options?.sessionId),
+        observe,
       ),
       model,
       label: "audit/v1",
       prompt: "Audit",
       maxRecoveries: 1,
+      transport: "sse",
     });
     await runPi(store, {
       models: models(
         [assistant([{ type: "text", text: "fresh" }], "stop")],
-        (_context, options) => sessions.push(options?.sessionId),
+        observe,
       ),
       model,
       label: "audit/v1",
@@ -1138,6 +1147,7 @@ describe("thin Pi runner", () => {
     });
     expect(sessions).toHaveLength(3);
     expect(sessions[0]).toBeString();
+    expect(transports).toEqual(["sse", "sse", undefined]);
     // The failed attempt and its recovery share one session so adapters can
     // key caching and transport-fallback state; a new call starts fresh.
     expect(sessions[1]).toBe(sessions[0]!);
