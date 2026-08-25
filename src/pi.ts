@@ -60,6 +60,7 @@ export interface PiRunOptions {
   readonly tools?: readonly Tool[];
   readonly stopAfterToolResult?: true;
   readonly maxRecoveries?: number;
+  readonly maxLengthContinuations?: number;
   readonly signal?: AbortSignal;
   readonly transport?: Transport;
 }
@@ -219,6 +220,7 @@ export const piRequest = z.strictObject({
   reasoning: piReasoning.optional(),
   stopAfterToolResult: z.literal(true).optional(),
   maxRecoveries: z.number().int().min(1).max(31).optional(),
+  maxLengthContinuations: z.number().int().min(1).max(31).optional(),
 });
 
 const lengthContinuation =
@@ -825,7 +827,10 @@ async function runPiBody(
           measuredStream(campaign.call.bind(campaign), call, options.models),
         );
       let messages = await loop(exact.prompt, []);
-      for (let used = 0; used < (exact.maxRecoveries ?? 0); used++) {
+      let legacyRecoveries = 0;
+      let errorRecoveries = 0;
+      let lengthContinuations = 0;
+      for (;;) {
         if (turns >= 32) break;
         const final = messages.findLast(
           (message): message is AssistantMessage =>
@@ -839,6 +844,16 @@ async function runPiBody(
           !isContextOverflow(final, options.model.contextWindow) &&
           (final.stopReason === "length" || retry);
         if (!interrupted) break;
+        if (exact.maxLengthContinuations === undefined) {
+          if (legacyRecoveries >= (exact.maxRecoveries ?? 0)) break;
+          legacyRecoveries += 1;
+        } else if (retry) {
+          if (errorRecoveries >= (exact.maxRecoveries ?? 0)) break;
+          errorRecoveries += 1;
+        } else {
+          if (lengthContinuations >= exact.maxLengthContinuations) break;
+          lengthContinuations += 1;
+        }
         const prior = retry
           ? messages.slice(0, messages.lastIndexOf(final))
           : messages;
@@ -891,6 +906,9 @@ export async function runPi(
     ...(options.maxRecoveries === undefined
       ? {}
       : { maxRecoveries: options.maxRecoveries }),
+    ...(options.maxLengthContinuations === undefined
+      ? {}
+      : { maxLengthContinuations: options.maxLengthContinuations }),
   });
   return runPiCall(campaign, {
     request: parsed,

@@ -1042,6 +1042,55 @@ describe("thin Pi runner", () => {
     ]);
   });
 
+  test("separates length continuations from provider error recoveries", async () => {
+    const store = campaign();
+    const result = await runPi(store, {
+      models: models([
+        assistant([{ type: "text", text: "part one" }], "length"),
+        {
+          ...assistant([], "error", undefined, false),
+          errorMessage: "WebSocket closed 1006 Connection ended",
+        },
+        assistant([{ type: "text", text: " and part two" }], "stop"),
+      ]),
+      model,
+      label: "audit/v1",
+      prompt: "Audit",
+      maxRecoveries: 1,
+      maxLengthContinuations: 8,
+    });
+    expect(result).toMatchObject({
+      state: "succeeded",
+      text: "part one and part two",
+    });
+    expect(derivePiSpend(store.records()).summary.logicalProviderRequests).toBe(
+      3,
+    );
+  });
+
+  test("permits several length continuations under their own budget", async () => {
+    const store = campaign();
+    const result = await runPi(store, {
+      models: models([
+        assistant([{ type: "text", text: "one" }], "length"),
+        assistant([{ type: "text", text: " two" }], "length"),
+        assistant([{ type: "text", text: " three" }], "stop"),
+      ]),
+      model,
+      label: "audit/v1",
+      prompt: "Audit",
+      maxRecoveries: 1,
+      maxLengthContinuations: 8,
+    });
+    expect(result).toMatchObject({
+      state: "succeeded",
+      text: "one two three",
+    });
+    expect(derivePiSpend(store.records()).summary.logicalProviderRequests).toBe(
+      3,
+    );
+  });
+
   test("does not continue an overflow-shaped length stop", async () => {
     const store = campaign();
     const overflowed = assistant([], "length");
