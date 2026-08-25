@@ -1,6 +1,6 @@
 # Elenx design
 
-Status: design for the `exploration-v11` solver, 2026-08-23. [`../SPEC.md`](../SPEC.md) defines kernel guarantees. The companion [`elenx-solve` protocol](https://gitea.lab/chaoxu/elenx-solve/src/branch/main/docs/protocol.md) defines exact solver behavior.
+Status: design for the `exploration-v12` solver, 2026-08-25. [`../SPEC.md`](../SPEC.md) defines kernel guarantees. The companion [`elenx-solve` protocol](https://gitea.lab/chaoxu/elenx-solve/src/branch/main/docs/protocol.md) defines exact solver behavior.
 
 ## Principle
 
