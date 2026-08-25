@@ -222,6 +222,22 @@ export const piRequest = z.strictObject({
 const lengthContinuation =
   "The previous response was interrupted before completion. Continue exactly where you left off; do not restart or repeat completed work.";
 
+// codex-lb reports transient upstream and transport failures with codes Pi's
+// classifier does not recognize: upstream_unavailable, upstream_error,
+// upstream_proxy_unavailable, proxy_unavailable, and aiohttp's
+// ClientPayloadError. Quota and auth codes stay outside this pattern.
+const transientGatewayErrorPattern =
+  /upstream_(?:unavailable|error)|proxy_unavailable|ClientPayloadError/i;
+
+function isRetryableProviderError(message: AssistantMessage): boolean {
+  if (isRetryableAssistantError(message)) return true;
+  return (
+    message.stopReason === "error" &&
+    message.errorMessage !== undefined &&
+    transientGatewayErrorPattern.test(message.errorMessage)
+  );
+}
+
 function parsePiRequest(
   value: unknown,
 ): z.output<typeof piRequest> | undefined {
@@ -560,7 +576,7 @@ function result(
       text,
       transcript: stored,
       providerRetryable:
-        final !== undefined && !overflow && isRetryableAssistantError(final),
+        final !== undefined && !overflow && isRetryableProviderError(final),
       truncated:
         final !== undefined &&
         final.stopReason === "length" &&
@@ -746,6 +762,11 @@ async function runPiBody(
   >,
 ): Promise<PiResultBody> {
   const telemetry = new InMemoryTelemetryContext();
+  // One transport session per logical call. Pi adapters key provider-side
+  // prompt caching, session affinity, and the WebSocket-to-SSE failure
+  // fallback on this ID; without it a WebSocket failure repeats on every
+  // recovery attempt. The ID is transport configuration and is not persisted.
+  const sessionId = crypto.randomUUID();
   const startSpan = createTypedSpanStarter(telemetry, [
     ELENX_PI_TELEMETRY_SCHEMA,
   ]);
@@ -785,6 +806,7 @@ async function runPiBody(
             model: options.model,
             convertToLlm,
             toolExecution: "sequential",
+            sessionId,
             telemetryContext: span,
             shouldStopAfterTurn: async ({ message }) =>
               (turns += 1) >= 32 || message.stopReason === "length",
@@ -804,7 +826,7 @@ async function runPiBody(
             message.role === "assistant",
         );
         const retry =
-          final?.stopReason === "error" && isRetryableAssistantError(final);
+          final?.stopReason === "error" && isRetryableProviderError(final);
         const interrupted =
           final !== undefined &&
           !signal?.aborted &&

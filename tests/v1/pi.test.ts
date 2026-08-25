@@ -1094,6 +1094,73 @@ describe("thin Pi runner", () => {
     expect(observed[1]?.messages.map(({ role }) => role)).toEqual(["user"]);
   });
 
+  test("retries codex-lb transient gateway errors", async () => {
+    const store = campaign();
+    const dropped = assistant([], "error");
+    dropped.errorMessage =
+      "upstream_unavailable: Codex upstream stream failed (ClientPayloadError: Response payload is not completed)";
+    const result = await runPi(store, {
+      models: models([
+        dropped,
+        assistant([{ type: "text", text: "recovered" }], "stop"),
+      ]),
+      model,
+      label: "audit/v1",
+      prompt: "Audit",
+      maxRecoveries: 1,
+    });
+    expect(result).toMatchObject({ state: "succeeded", text: "recovered" });
+  });
+
+  test("keeps one transport session across recovery attempts and separates calls", async () => {
+    const store = campaign();
+    const sessions: (string | undefined)[] = [];
+    const interrupted = assistant([], "error");
+    interrupted.errorMessage = "WebSocket closed 1006 Connection ended";
+    await runPi(store, {
+      models: models(
+        [interrupted, assistant([{ type: "text", text: "done" }], "stop")],
+        (_context, options) => sessions.push(options?.sessionId),
+      ),
+      model,
+      label: "audit/v1",
+      prompt: "Audit",
+      maxRecoveries: 1,
+    });
+    await runPi(store, {
+      models: models(
+        [assistant([{ type: "text", text: "fresh" }], "stop")],
+        (_context, options) => sessions.push(options?.sessionId),
+      ),
+      model,
+      label: "audit/v1",
+      prompt: "Audit",
+    });
+    expect(sessions).toHaveLength(3);
+    expect(sessions[0]).toBeString();
+    // The failed attempt and its recovery share one session so adapters can
+    // key caching and transport-fallback state; a new call starts fresh.
+    expect(sessions[1]).toBe(sessions[0]!);
+    expect(sessions[2]).toBeString();
+    expect(sessions[2]).not.toBe(sessions[0]!);
+  });
+
+  test("classifies an unrecovered codex-lb gateway error as retryable", async () => {
+    const store = campaign();
+    const dropped = assistant([], "error");
+    dropped.errorMessage = "upstream_error: Codex upstream request failed";
+    const result = await runPi(store, {
+      models: models([dropped]),
+      model,
+      label: "audit/v1",
+      prompt: "Audit",
+    });
+    expect(result).toMatchObject({
+      state: "failed",
+      providerRetryable: true,
+    });
+  });
+
   test("does not continue a non-retryable error stop", async () => {
     const store = campaign();
     const exhausted = assistant([], "error");
