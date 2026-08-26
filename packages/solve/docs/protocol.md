@@ -7,9 +7,10 @@ V15 explores through reviewed one-use handoffs and verifies one exact standalone
 Starting a campaign freezes:
 
 - exact problem and completion criteria
-- context, handoff, and repair-depth ceilings
+- context, handoff, recall, and repair-depth ceilings
 - resolved explorer guidance
 - explorer, handoff-verifier, premise-verifier, and proof-verifier profiles
+- the optional archivist profile, `null` by default
 - isolated source-checker model and reasoning
 
 Every Pi profile freezes provider, model ID, requested reasoning, API, and base URL. The isolated Codex source checker freezes model and reasoning, while each call records its exact Codex version and source activity. Resume recomputes the frozen settings and stops before dispatch when they differ.
@@ -22,9 +23,17 @@ Every explorer is one fresh bounded call with one terminal tool. It receives the
 - the immediately preceding reviewed handoff
 - one rejected candidate with its latest verifier defect
 
-An incomplete turn returns notes, one next objective, and selected note positions with intended uses. Notes are untyped and untrusted. Unselected notes remain durable for inspection but never enter another model context.
+An incomplete turn returns notes, one next objective, and selected note positions with intended uses. Notes are untyped and untrusted. Unselected notes remain durable for inspection and, without a configured archivist, never enter another model context.
 
 A complete turn returns one standalone answer. The answer bytes become the candidate material without an envelope or second delivery artifact.
+
+## Note recall
+
+The optional archivist gives durable notes one non-agentic path back into exploration. When the frozen `archivist` profile is configured and the archive is non-empty, one fresh archivist call precedes each explorer turn. It receives the task, the next explorer's exact context block, and every durable note with its ID and exact text, and its single terminal tool selects unique archive notes with one-sentence relevances. An empty selection is a normal result.
+
+The harness resolves the exact selected note bytes from the journal and appends the texts and relevances to the explorer prompt as untyped, untrusted material; the harness injects no note IDs. The selection schema rejects an oversized packet against the frozen `maxRecallTokens`, so the archivist reselects within its stated budget instead of wedging the campaign, and a predispatch check backstops the same ceiling. The explorer itself has no retrieval tool and cannot query the archive; recall is preassembly, not search. Selection grants no standing and every gate projection is unchanged. With the archivist disabled the explorer requests are byte-identical to the recall-free protocol; with it enabled, an empty selection leaves the explorer user prompt unchanged while the system prompt names recalled notes among the untrusted inputs.
+
+The archivist call itself embeds the complete archive, so its context grows with the campaign's stored notes. A campaign whose archive outgrows `maxContextTokens` stops loudly at the recall predispatch check; archive shedding is deferred future work.
 
 ## Handoff review
 
@@ -72,11 +81,11 @@ The first interrupt pauses after the active turn settles. The second aborts the 
 
 ## Context
 
-`maxContextTokens` bounds every structured model request. `maxHandoffTokens` separately bounds the exact cross-explorer packet. Both checks stop before dispatch and never truncate content.
+`maxContextTokens` bounds every structured model request. `maxHandoffTokens` separately bounds the exact cross-explorer packet, and `maxRecallTokens` bounds the assembled recall packet. Every check stops before dispatch and never truncates content.
 
 ## Inspection and export
 
-Inspection exposes explorer submissions, all stored notes, reviewed handoffs, candidate bytes, candidate status, model calls, source activity, concurrency, and measured provider spend. Each replayed candidate row carries its repair depth plus its originating and gate calls with their summed elapsed time and measured Pi usage; isolated source-check usage stays on the call row rather than in those sums. A repair additionally carries its parent candidate, triggering defect gate, and a regeneration summary of shared prefix and suffix lines against the parent, including while its own gates are still pending. Exact requests and raw source output require `--include-inputs`.
+Inspection exposes explorer submissions, all stored notes, archivist recalls with their selected note IDs and relevances, reviewed handoffs, candidate bytes, candidate status, model calls, source activity, concurrency, and measured provider spend. Each replayed candidate row carries its repair depth plus its originating and gate calls with their summed elapsed time and measured Pi usage; isolated source-check usage stays on the call row rather than in those sums. A repair additionally carries its parent candidate, triggering defect gate, and a regeneration summary of shared prefix and suffix lines against the parent, including while its own gates are still pending. Exact requests and raw source output require `--include-inputs`.
 
 Export requires one solved candidate and writes its immutable bytes without decoration or an added newline.
 

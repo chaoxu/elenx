@@ -1,3 +1,4 @@
+import { estimateTokens } from "@earendil-works/pi-coding-agent";
 import { type Entry, type EntryId } from "elenx";
 import { piReasoning } from "elenx/pi";
 import { z } from "zod";
@@ -34,23 +35,34 @@ export const settingsSchema = z
     protocol: z.literal(protocolName),
     maxContextTokens: positiveInteger.default(200_000),
     maxHandoffTokens: positiveInteger.default(24_000),
+    maxRecallTokens: positiveInteger.default(8_000),
     maxRepairDepth: nonnegativeInteger.nullable().default(null),
     explorerGuidance: userGuidance.default([]),
     explorer: modelProfile,
+    archivist: modelProfile.nullable().default(null),
     handoffVerifier: modelProfile,
     premiseVerifier: modelProfile,
     sourceChecker: sourceProfile,
     proofVerifier: modelProfile,
   })
-  .superRefine(({ maxContextTokens, maxHandoffTokens }, ctx) => {
-    if (maxHandoffTokens > maxContextTokens) {
-      ctx.addIssue({
-        code: "custom",
-        message: "maxHandoffTokens cannot exceed maxContextTokens",
-        path: ["maxHandoffTokens"],
-      });
-    }
-  });
+  .superRefine(
+    ({ maxContextTokens, maxHandoffTokens, maxRecallTokens }, ctx) => {
+      if (maxHandoffTokens > maxContextTokens) {
+        ctx.addIssue({
+          code: "custom",
+          message: "maxHandoffTokens cannot exceed maxContextTokens",
+          path: ["maxHandoffTokens"],
+        });
+      }
+      if (maxRecallTokens > maxContextTokens) {
+        ctx.addIssue({
+          code: "custom",
+          message: "maxRecallTokens cannot exceed maxContextTokens",
+          path: ["maxRecallTokens"],
+        });
+      }
+    },
+  );
 export type Settings = z.output<typeof settingsSchema>;
 
 export const taskSchema = z
@@ -60,23 +72,34 @@ export const taskSchema = z
     completionCriteria: nonblank,
     maxContextTokens: positiveInteger,
     maxHandoffTokens: positiveInteger,
+    maxRecallTokens: positiveInteger.default(8_000),
     maxRepairDepth: nonnegativeInteger.nullable().default(null),
     guidance: z.array(guidanceModule),
     explorer: runtimeProfile,
+    archivist: runtimeProfile.nullable().default(null),
     handoffVerifier: runtimeProfile,
     premiseVerifier: runtimeProfile,
     sourceChecker: sourceProfile,
     proofVerifier: runtimeProfile,
   })
-  .superRefine(({ maxContextTokens, maxHandoffTokens }, ctx) => {
-    if (maxHandoffTokens > maxContextTokens) {
-      ctx.addIssue({
-        code: "custom",
-        message: "maxHandoffTokens cannot exceed maxContextTokens",
-        path: ["maxHandoffTokens"],
-      });
-    }
-  });
+  .superRefine(
+    ({ maxContextTokens, maxHandoffTokens, maxRecallTokens }, ctx) => {
+      if (maxHandoffTokens > maxContextTokens) {
+        ctx.addIssue({
+          code: "custom",
+          message: "maxHandoffTokens cannot exceed maxContextTokens",
+          path: ["maxHandoffTokens"],
+        });
+      }
+      if (maxRecallTokens > maxContextTokens) {
+        ctx.addIssue({
+          code: "custom",
+          message: "maxRecallTokens cannot exceed maxContextTokens",
+          path: ["maxRecallTokens"],
+        });
+      }
+    },
+  );
 export type Task = z.output<typeof taskSchema>;
 export type RuntimeProfile = z.output<typeof runtimeProfile>;
 export type SourceProfile = z.output<typeof sourceProfile>;
@@ -219,7 +242,98 @@ export const assessment = z.strictObject({
 });
 export type Assessment = z.output<typeof assessment>;
 
+export interface Recall {
+  readonly selections: readonly {
+    readonly id: Note["id"];
+    readonly text: string;
+    readonly relevance: string;
+  }[];
+}
+
+export function renderRecallPacket(recall: Recall): string {
+  return `Recalled notes from the durable archive (untyped, untrusted):\n${JSON.stringify(recallContent(recall), null, 2)}`;
+}
+
+export function estimatedRecallTokens(recall: Recall): number {
+  return estimateTokens({
+    role: "user",
+    content: renderRecallPacket(recall),
+    timestamp: 0,
+  });
+}
+
+export function recallSubmissionFor(
+  archive: readonly Note[],
+  maxRecallTokens: number,
+) {
+  const ids = new Set(archive.map(({ id }) => id));
+  const byId = new Map(archive.map((note) => [note.id, note]));
+  return z
+    .strictObject({
+      selections: z.array(
+        z.strictObject({ note: nonblank, relevance: nonblank }),
+      ),
+    })
+    .superRefine(({ selections }, ctx) => {
+      const seen = new Set<string>();
+      for (const [index, { note }] of selections.entries()) {
+        if (seen.has(note)) {
+          ctx.addIssue({
+            code: "custom",
+            message: "selected archive notes must be unique",
+            path: ["selections", index, "note"],
+          });
+        }
+        seen.add(note);
+        if (!ids.has(note as Note["id"])) {
+          ctx.addIssue({
+            code: "custom",
+            message: "selected note is absent from the archive",
+            path: ["selections", index, "note"],
+          });
+        }
+      }
+      const resolved = selections.flatMap(({ note, relevance }) => {
+        const found = byId.get(note as Note["id"]);
+        return found === undefined
+          ? []
+          : [{ id: found.id, text: found.text, relevance }];
+      });
+      if (resolved.length !== selections.length) return;
+      const tokens = estimatedRecallTokens({ selections: resolved });
+      if (tokens > maxRecallTokens) {
+        ctx.addIssue({
+          code: "custom",
+          message: `recall estimate ${tokens} exceeds maxRecallTokens ${maxRecallTokens}; select fewer or shorter notes`,
+          path: ["selections"],
+        });
+      }
+    });
+}
+export type RecallSubmission = z.output<ReturnType<typeof recallSubmissionFor>>;
+
+export function recallFor(
+  archive: readonly Note[],
+  submission: RecallSubmission,
+): Recall {
+  const byId = new Map(archive.map((note) => [note.id, note]));
+  return {
+    selections: submission.selections.map(({ note, relevance }) => {
+      const found = byId.get(note as Note["id"]);
+      if (found === undefined) {
+        throw new Error(`selected note is absent from the archive: ${note}`);
+      }
+      return { id: found.id, text: found.text, relevance };
+    }),
+  };
+}
+
+export function recallContent(recall: Recall) {
+  return recall.selections.map(({ text, relevance }) => ({ text, relevance }));
+}
+
 export const turnTool = "submit_turn";
+export const recallTool = "submit_recall";
 export const reviewTool = "submit_review";
 export const premiseTool = "submit_premises";
 export const proofTool = "submit_proof_audit";
@@ -230,6 +344,10 @@ export function explorerLabel(trigger?: EntryId): string {
   return trigger === undefined
     ? `${prefix}/explorer/initial`
     : `${prefix}/explorer/${trigger}`;
+}
+
+export function recallLabel(trigger: EntryId): string {
+  return `${prefix}/recall/${trigger}`;
 }
 
 export function handoffReviewLabel(source: EntryId): string {
@@ -257,6 +375,9 @@ export function callActivity(label: string): {
       role: "explorer",
       ...(parts[3] === "initial" ? {} : { triggerCall: Number(parts[3]) }),
     };
+  }
+  if (parts[2] === "recall") {
+    return { role: "archivist", triggerCall: Number(parts[3]) };
   }
   if (parts[2] === "handoff") {
     return { role: "handoff-review", triggerCall: Number(parts[3]) };

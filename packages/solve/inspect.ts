@@ -217,10 +217,13 @@ export function inspectCampaign(path: string, options: InspectionOptions = {}) {
       completionCriteria: task.completionCriteria,
       maxContextTokens: task.maxContextTokens,
       maxHandoffTokens: task.maxHandoffTokens,
+      maxRecallTokens: task.maxRecallTokens,
       maxRepairDepth: task.maxRepairDepth,
       guidance: task.guidance,
       profiles: {
         explorer: publicProfile(task.explorer),
+        archivist:
+          task.archivist === null ? null : publicProfile(task.archivist),
         handoffVerifier: publicProfile(task.handoffVerifier),
         premiseVerifier: publicProfile(task.premiseVerifier),
         sourceChecker: task.sourceChecker,
@@ -269,6 +272,7 @@ function semanticSnapshot(
       phase: "projection-error" as const,
       projectionError: error instanceof Error ? error.message : String(error),
       explorations: [],
+      recalls: [],
       handoffs: [],
       candidates: [],
       solution: undefined,

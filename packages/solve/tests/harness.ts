@@ -55,6 +55,11 @@ export const proofModel = {
   id: "proof-v1",
   provider: "proof",
 };
+export const archivistModel = {
+  ...baseModel,
+  id: "archivist-v1",
+  provider: "archivist",
+};
 
 const modelsList = [
   explorerModel,
@@ -62,6 +67,7 @@ const modelsList = [
   premiseModel,
   sourceModel,
   proofModel,
+  archivistModel,
 ] as const;
 
 export const problem = "Prove that the sum of two even integers is even.";
@@ -80,9 +86,11 @@ export function runSettings(overrides: Partial<Settings> = {}): Settings {
     protocol: "exploration-v15",
     maxContextTokens: 200_000,
     maxHandoffTokens: 24_000,
+    maxRecallTokens: 8_000,
     maxRepairDepth: null,
     explorerGuidance: [],
     explorer: selection(explorerModel),
+    archivist: null,
     handoffVerifier: selection(handoffModel),
     premiseVerifier: selection(premiseModel),
     sourceChecker: {

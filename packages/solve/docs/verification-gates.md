@@ -41,6 +41,8 @@ The next explorer receives exactly:
 
 It receives no earlier transcript, unselected note, older handoff, or verifier history. A non-PASS assessment does not erase the handoff. It tells the next explorer to repair or investigate the exact defect instead of silently relying on the packet.
 
+With a configured archivist, recalled archive notes reach the next explorer without passing this gate. That bypass is deliberate: recall bytes are untyped, untrusted, and grant no standing, and the gate keeps covering the handoff the explorer authored.
+
 The review gives no permanent standing to any note. Reusing a note requires selecting its text again in a later handoff, which reviews the new packet and intended use.
 
 ## External premise gate

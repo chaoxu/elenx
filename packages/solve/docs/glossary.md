@@ -21,6 +21,8 @@ A separate name requires distinct bytes, authority, or lifecycle.
 | **solved**             | Campaign state containing one verified candidate.                                                            |
 | **continuation**       | Transcript-preserving provider request after an output-length stop.                                          |
 | **recovery**           | Repeated operational work after interruption or provider failure.                                            |
+| **archivist**          | Optional role that preassembles recalled archive notes for the next explorer through one terminal selection. |
+| **recall**             | The harness-assembled packet of exact archived note texts injected into one explorer prompt.                 |
 | **repair**             | New mathematical bytes created after semantic failure.                                                       |
 | **repair depth**       | Count of consecutive direct repairs from a line's original candidate; bounded by `maxRepairDepth`.           |
 | **profile**            | Frozen provider, model, reasoning, API, and base URL for one Pi model mode.                                  |

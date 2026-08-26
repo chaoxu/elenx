@@ -41,7 +41,7 @@ fresh explorer
                          fresh explorer       solved
 ```
 
-Every explorer starts from a fresh root and receives only the task plus the immediately preceding reviewed handoff or one rejected candidate with its latest defect. It has no retrieval or execution tools.
+Every explorer starts from a fresh root and receives only the task plus the immediately preceding reviewed handoff or one rejected candidate with its latest defect, plus, under a configured archivist, a harness-preassembled packet of recalled archive notes. It has no retrieval or execution tools.
 
 Every candidate repeats premise and proof gates. No note review or prior candidate verdict transfers into acceptance.
 
@@ -53,8 +53,8 @@ Raw history remains inspectable but never becomes implicit model context.
 
 ## Recovery
 
-State derives from the journal. Resume reconciles settled explorer submissions, handoff reviews, candidates, source calls, and verdicts before dispatch. Provider failures may restart an unresolved phase. Mathematical repair always creates new bytes.
+State derives from the journal. Resume reconciles settled explorer submissions, archivist recalls, handoff reviews, candidates, source calls, and verdicts before dispatch. Provider failures may restart an unresolved phase. Mathematical repair always creates new bytes.
 
 ## Growth rule
 
-V15 deliberately omits note search, adaptive verification depth, parallel exploration, transcript reuse, reconstruction, and formal tools. Each remains an independent measured experiment. Stopping stays minimal: the only frozen stopping rule is the default-off repair-depth ceiling, and richer stopping policy remains deferred. The kernel grows only when several applications need the same mechanical invariant.
+V15 deliberately omits adaptive verification depth, parallel exploration, transcript reuse, reconstruction, and formal tools. Each remains an independent measured experiment. Note recall ships as a default-off archivist role that preassembles archived notes for the explorer; explorer-driven search stays omitted so reasoning calls never gain retrieval tools. Stopping stays minimal: the only frozen stopping rule is the default-off repair-depth ceiling, and richer stopping policy remains deferred. The kernel grows only when several applications need the same mechanical invariant.

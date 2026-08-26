@@ -12,16 +12,34 @@ Receives:
 - no earlier context on the first turn
 - one exact handoff and its assessment after an incomplete turn
 - one exact rejected candidate and one harness-bounded defect after candidate failure
+- with a configured archivist, the exact recalled note texts and stated relevances, preassembled by the harness
 - one terminal submission tool
 
 Excluded:
 
 - raw prior transcripts
-- unselected or older notes
+- unselected or older notes outside the recalled packet
+- note IDs and origin calls
 - source-search reports, transcripts, and nonblocking fields
 - complete premise inventories
 - previous PASS verdicts
+- retrieval tools of any kind
 - filesystem, shell, web, browser control, memory, plugins, and delegation
+
+## Archivist
+
+Receives:
+
+- exact task
+- the next explorer's exact context block
+- every durable note with its ID and exact text
+- one terminal selection tool
+
+Excluded:
+
+- raw prior transcripts and handoff history
+- candidates, verdicts, and premise material outside the context block
+- web and execution capabilities
 
 ## Handoff verifier
 

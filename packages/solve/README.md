@@ -11,7 +11,7 @@ bun install --frozen-lockfile
 bun solve.ts run problem.md criteria.md run.db examples/exploration-sol-max.json
 ```
 
-The settings file freezes four Pi profiles and one isolated source-checker configuration:
+The settings file freezes the Pi role profiles, the optional archivist profile, and one isolated source-checker configuration:
 
 - explorer
 - handoff verifier
@@ -19,7 +19,7 @@ The settings file freezes four Pi profiles and one isolated source-checker confi
 - isolated source-checker model and reasoning
 - exact proof verifier
 
-`maxContextTokens` bounds every model request. `maxHandoffTokens` bounds the packet crossing between explorers. `maxRepairDepth`, `null` by default, bounds consecutive repairs of one failed candidate line; reaching it reports `repair-limit`.
+`maxContextTokens` bounds every model request. `maxHandoffTokens` bounds the packet crossing between explorers. `maxRepairDepth`, `null` by default, bounds consecutive repairs of one failed candidate line; reaching it reports `repair-limit`. An optional `archivist` profile, `null` by default, preassembles recalled archive notes for each explorer under `maxRecallTokens`; the explorer itself has no retrieval tool.
 
 Every Pi call uses SSE, one required terminal tool, serial tool submission, eight output-length continuations, and one provider recovery. Provider-retryable phase failures restart from journal state with capped backoff.
 
