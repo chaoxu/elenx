@@ -8,62 +8,62 @@ import {
 } from "node:fs";
 import { basename, dirname, join } from "node:path";
 
-import { coordinatorState } from "../inspect";
-import { withCoordinatorLock } from "../runtime";
+import { campaignState } from "../inspect";
+import { withCampaignLock } from "../runtime";
 import { campaignPath, cleanupCampaigns } from "./harness";
 
 afterEach(cleanupCampaigns);
 
-test("only one coordinator may own a campaign", async () => {
+test("only one process may own a campaign", async () => {
   const path = campaignPath();
-  await withCoordinatorLock(path, async () => {
-    expect(existsSync(`${path}.coordinator.lock`)).toBe(true);
+  await withCampaignLock(path, async () => {
+    expect(existsSync(`${path}.runner.lock`)).toBe(true);
     await expect(
-      withCoordinatorLock(path, async () => {
+      withCampaignLock(path, async () => {
         throw new Error("the contender must never run");
       }),
-    ).rejects.toThrow("campaign already has a running coordinator");
+    ).rejects.toThrow("campaign already has a running process");
   });
 });
 
-test("coordinator state is read-only and distinguishes an active owner", async () => {
+test("campaign state is read-only and distinguishes an active owner", async () => {
   const path = campaignPath();
-  const lockPath = `${path}.coordinator.lock`;
-  expect(coordinatorState(path)).toBe("not-running");
+  const lockPath = `${path}.runner.lock`;
+  expect(campaignState(path)).toBe("not-running");
   expect(existsSync(lockPath)).toBe(false);
 
-  await withCoordinatorLock(path, async () => {
+  await withCampaignLock(path, async () => {
     const before = readFileSync(lockPath);
     const modifiedAtMs = statSync(lockPath).mtimeMs;
-    expect(coordinatorState(path)).toBe("running");
+    expect(campaignState(path)).toBe("running");
     expect(readFileSync(lockPath)).toEqual(before);
     expect(statSync(lockPath).mtimeMs).toBe(modifiedAtMs);
   });
 
-  expect(coordinatorState(path)).toBe("not-running");
+  expect(campaignState(path)).toBe("not-running");
 });
 
-test("coordinator state shares canonical path handling with lock ownership", async () => {
+test("campaign state shares canonical path handling with lock ownership", async () => {
   const path = campaignPath();
   const alias = join(dirname(path), "campaign-alias.db");
   writeFileSync(path, "");
   symlinkSync(basename(path), alias);
 
-  await withCoordinatorLock(path, async () => {
-    expect(coordinatorState(alias)).toBe("running");
+  await withCampaignLock(path, async () => {
+    expect(campaignState(alias)).toBe("running");
     await expect(
-      withCoordinatorLock(alias, async () => {
+      withCampaignLock(alias, async () => {
         throw new Error("the alias contender must never run");
       }),
-    ).rejects.toThrow("campaign already has a running coordinator");
+    ).rejects.toThrow("campaign already has a running process");
   });
 });
 
-test("coordinator state does not follow a symlinked lock", () => {
+test("campaign state does not follow a symlinked lock", () => {
   const path = campaignPath();
   const target = join(dirname(path), "other.lock");
   writeFileSync(target, "");
-  symlinkSync(basename(target), `${path}.coordinator.lock`);
-  expect(coordinatorState(path)).toBe("unknown");
+  symlinkSync(basename(target), `${path}.runner.lock`);
+  expect(campaignState(path)).toBe("unknown");
   expect(readFileSync(target)).toEqual(Buffer.from(""));
 });

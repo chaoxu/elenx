@@ -4,7 +4,7 @@ import { basename, dirname, join } from "node:path";
 
 import { builtinPi, type PiRunOptions } from "elenx/pi";
 
-import type { SourceSearch } from "./verifiers/source-audit";
+import type { SourceCheck } from "./verifiers/source-check";
 
 export type SolveModels = Pick<
   ReturnType<typeof builtinPi>,
@@ -14,7 +14,7 @@ export type SolveModels = Pick<
 export interface SolveDependencies {
   readonly models?: SolveModels;
   readonly run?: typeof import("elenx/pi").runPi;
-  readonly sourceSearch?: SourceSearch;
+  readonly sourceCheck?: SourceCheck;
   readonly signal?: AbortSignal;
   readonly pauseRequested?: () => boolean;
   readonly status?: (message: string) => void;
@@ -27,7 +27,7 @@ export interface CallFailureRetry {
   readonly maxDelayMs: number;
 }
 
-// Transient provider failures are absorbed inside the coordinator loop: a
+// Transient provider failures are absorbed inside the campaign loop: a
 // failed call stays in the journal, the phase is re-derived, and a fresh
 // call runs after capped exponential backoff. Only this many consecutive
 // failures end the session with a call-failure report.
@@ -37,9 +37,9 @@ export const DEFAULT_CALL_FAILURE_RETRY: CallFailureRetry = {
   maxDelayMs: 600_000,
 };
 
-export type CoordinatorState = "running" | "not-running" | "unknown";
+export type CampaignState = "running" | "not-running" | "unknown";
 
-function coordinatorLockPath(campaignPath: string): string {
+function runnerLockPath(campaignPath: string): string {
   let canonicalPath: string;
   try {
     canonicalPath = realpathSync(campaignPath);
@@ -50,13 +50,13 @@ function coordinatorLockPath(campaignPath: string): string {
       basename(campaignPath),
     );
   }
-  return `${canonicalPath}.coordinator.lock`;
+  return `${canonicalPath}.runner.lock`;
 }
 
-export function coordinatorState(campaignPath: string): CoordinatorState {
+export function campaignState(campaignPath: string): CampaignState {
   let lockPath: string;
   try {
-    lockPath = coordinatorLockPath(campaignPath);
+    lockPath = runnerLockPath(campaignPath);
   } catch {
     return "unknown";
   }
@@ -87,11 +87,11 @@ export function coordinatorState(campaignPath: string): CoordinatorState {
   }
 }
 
-export async function withCoordinatorLock<T>(
+export async function withCampaignLock<T>(
   campaignPath: string,
   operation: () => Promise<T>,
 ): Promise<T> {
-  using lock = new Database(coordinatorLockPath(campaignPath), {
+  using lock = new Database(runnerLockPath(campaignPath), {
     create: true,
   });
   lock.run("PRAGMA busy_timeout = 0");
@@ -100,7 +100,7 @@ export async function withCoordinatorLock<T>(
   } catch (error) {
     if (error instanceof SQLiteError && error.code?.startsWith("SQLITE_BUSY")) {
       throw new Error(
-        `campaign already has a running coordinator: ${campaignPath}`,
+        `campaign already has a running process: ${campaignPath}`,
         { cause: error },
       );
     }

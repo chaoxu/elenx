@@ -17,7 +17,7 @@
     },
     "packages/solve": {
       "name": "elenx-solve",
-      "version": "0.33.0",
+      "version": "0.34.0",
       "bin": {
         "elenx-solve": "./solve.ts",
       },
@@ -32,7 +32,7 @@
         "typescript": "5.9.2",
       },
       "peerDependencies": {
-        "elenx": "^0.9.2",
+        "elenx": "^0.9.3",
       },
       "optionalPeers": [
         "elenx",

@@ -14,7 +14,7 @@ import {
 
 afterEach(cleanupCampaigns);
 
-test("inspection exposes v14 policy", async () => {
+test("inspection exposes the v15 policy", async () => {
   const path = campaignPath();
   await start(
     {
@@ -25,21 +25,18 @@ test("inspection exposes v14 policy", async () => {
     },
     dependencies([]),
   );
-  const inspection = inspectCampaign(path);
-  expect(inspection).toMatchObject({
-    protocol: "exploration-v14",
+  expect(inspectCampaign(path)).toMatchObject({
+    protocol: "exploration-v15",
     phase: "explorer",
-    memory: "claims-and-routes",
-    claims: [],
-    routes: [],
-    admissionAudits: [],
-    resolutions: [],
-    deliveryCandidates: [],
+    maxHandoffTokens: 24_000,
+    explorations: [],
+    handoffs: [],
+    candidates: [],
     calls: [],
   });
 });
 
-test("inspection gates exact request and tool payloads behind include-inputs", async () => {
+test("inspection gates exact requests behind include-inputs", async () => {
   const path = campaignPath();
   await start(
     {
@@ -51,11 +48,10 @@ test("inspection gates exact request and tool payloads behind include-inputs", a
     dependencies([
       {
         submission: {
-          rawReport: "A partial factorization attempt.",
-          nominatedClaims: [],
-          nominatedRoutes: [],
-          claimsComplete: false,
-          citedClaims: [],
+          action: "continue",
+          notes: ["one note"],
+          nextObjective: "continue",
+          selectedNotes: [],
         },
       },
     ]),
@@ -64,20 +60,13 @@ test("inspection gates exact request and tool payloads behind include-inputs", a
   const call = inspectCampaign(path, { includeInputs: true }).calls[0]!;
   expect(call.request).toMatchObject({
     protocol: "elenx/pi-run/v1",
-    reasoning: "max",
-    stopAfterToolResult: true,
-    maxRecoveries: 1,
-    maxLengthContinuations: 8,
-    model: {
-      provider: "explorer",
-      id: "explorer-v1",
-      baseUrl: "https://invalid.test/v1",
-    },
+    reasoning: "high",
+    model: { provider: "explorer", id: "explorer-v1" },
   });
   expect(call.declaredTools).toHaveLength(1);
 });
 
-test("CLI inspection emits complete JSON", async () => {
+test("CLI inspection emits v15 JSON", async () => {
   const path = campaignPath();
   await start(
     {
@@ -94,7 +83,7 @@ test("CLI inspection emits complete JSON", async () => {
   });
   expect(result.status).toBe(0);
   expect(JSON.parse(result.stdout)).toMatchObject({
-    protocol: "exploration-v14",
+    protocol: "exploration-v15",
     phase: "explorer",
   });
 });

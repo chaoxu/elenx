@@ -19,7 +19,7 @@ Runtime and dependency versions are pinned in `package.json` and `bun.lock`. Ele
 
 ## Campaign artifact
 
-A campaign is one SQLite database. The database uses SQLite's `journal_mode=DELETE` rollback journal, `synchronous=FULL`, a five-second busy timeout, a strict table, and append-only triggers. Each durable fact is one atomic row insertion. `createCampaign` creates a new artifact, `openCampaign` reopens an existing artifact for appends and performs any required rollback-journal recovery, and `openReader` opens an existing artifact without write access. WAL-format headers and `-wal` or `-shm` sidecars are outside the artifact contract and are rejected before SQLite opens the file. SQLite serializes individual row insertions; applications remain responsible for ensuring that only one coordinator attempts a logical phase at a time.
+A campaign is one SQLite database. The database uses SQLite's `journal_mode=DELETE` rollback journal, `synchronous=FULL`, a five-second busy timeout, a strict table, and append-only triggers. Each durable fact is one atomic row insertion. `createCampaign` creates a new artifact, `openCampaign` reopens an existing artifact for appends and performs any required rollback-journal recovery, and `openReader` opens an existing artifact without write access. WAL-format headers and `-wal` or `-shm` sidecars are outside the artifact contract and are rejected before SQLite opens the file. SQLite serializes individual row insertions; applications remain responsible for ensuring that only one writer attempts a logical phase at a time.
 
 Creation uses an exclusive private file create and never overwrites an existing path. The schema and campaign identity commit together. A crash before that commit may leave an invalid file, which readers reject and an operator must remove before retry. The artifact is not tamper-resistant against an operator with raw filesystem or SQL access.
 
@@ -100,7 +100,7 @@ The parent call contains the optional candidate sequence, provider, model ID, AP
 - the call returned JSON whose `state` is `"succeeded"`; and
 - SQLite admits the first verdict citing that call.
 
-`returnedToolSubmission(records, call, tool)` requires exactly one matching tool call and exactly one returned tool result, then projects their record IDs, admitted input, and output. It does not require output to equal input. An application parses the input with its own submission schema and passes the derived verdict and evidence to `recordVerdict`; the coordinator supplies no second semantic value that could disagree with the durable submission.
+`returnedToolSubmission(records, call, tool)` requires exactly one matching tool call and exactly one returned tool result, then projects their record IDs, admitted input, and output. It does not require output to equal input. An application parses the input with its own submission schema and passes the derived verdict and evidence to `recordVerdict`; the application supplies no second semantic value that could disagree with the durable submission.
 
 A candidate is verified when each required verifier has at least one PASS and no required verifier has any FAIL. INCONCLUSIVE neither passes nor fails. A later PASS does not erase a FAIL for that candidate ID. Failures are submission-scoped: submitting even identical bytes again creates an independent candidate, and applications decide whether to permit that retry.
 

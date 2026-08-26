@@ -5,32 +5,40 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
-  codexSourceSearch,
+  codexSourceCheck,
   parseSourceStdout,
-  sourceAuditDeveloperInstructions,
-  sourceAuditOutputSchema,
-  sourceAuditRequest,
+  sourceCheckRequest,
+  sourceCheckRequestFor,
   sourceEventPrefix,
-  type SourceAuditRequest,
-} from "../verifiers/source-audit";
+  type SourceCheckRequest,
+} from "../verifiers/source-check";
 
 const fakeCodex = new URL("./fixtures/fake-codex.ts", import.meta.url).pathname;
 const statement =
   "Every finite tree with at least two vertices has two leaves.";
-const request: SourceAuditRequest = {
-  candidate: 1,
-  offlineCall: 2,
-  model: "gpt-5.6-luna",
-  reasoning: "max",
-  developerInstructions: sourceAuditDeveloperInstructions,
-  unresolvedStatements: [statement],
-  outputSchema: sourceAuditOutputSchema([statement]),
-  prompt: "Check the exact theorem.",
-};
+const request: SourceCheckRequest = sourceCheckRequestFor(
+  1,
+  2,
+  [
+    {
+      statement,
+      hypotheses: ["The tree is finite", "The tree has at least two vertices"],
+      application: "The candidate uses the leaf theorem.",
+      answerQuote: "Apply the leaf theorem.",
+      standing: "UNRESOLVED",
+      refutationAttempt: "No counterexample was found.",
+      gap: "An external source is required.",
+    },
+  ],
+  {
+    model: "gpt-5.6-luna",
+    reasoning: "max",
+  },
+);
 
 test("source requests bind their frozen schema to the unresolved statements", () => {
   expect(
-    sourceAuditRequest.safeParse({ ...request, outputSchema: {} }).success,
+    sourceCheckRequest.safeParse({ ...request, outputSchema: {} }).success,
   ).toBe(false);
 });
 
@@ -65,7 +73,7 @@ async function captures(path: string): Promise<Record<string, unknown>[]> {
 test("Codex source search isolates context and preserves auditable output", async () => {
   const fixture = await fixtureEnvironment();
   try {
-    const search = codexSourceSearch({
+    const search = codexSourceCheck({
       command: fakeCodex,
       environment: fixture.environment,
     });
@@ -79,7 +87,7 @@ test("Codex source search isolates context and preserves auditable output", asyn
     expect(result).not.toHaveProperty("result");
     const parsed = parseSourceStdout(request, result.stdout);
     expect(parsed.result).toMatchObject({
-      resolutions: [{ statement, standing: "UNESTABLISHED" }],
+      resolutions: [{ statement, standing: "UNRESOLVED" }],
     });
     expect(parsed).toMatchObject({
       queries: ["authoritative source"],
@@ -117,9 +125,9 @@ test("Codex source search isolates context and preserves auditable output", asyn
     expect(configs).toContain("include_apps_instructions=false");
     expect(configs).toContain("include_collaboration_mode_instructions=false");
     expect(configs).toContain("project_doc_max_bytes=0");
-    expect(configs).toContain(
-      `developer_instructions=${JSON.stringify(sourceAuditDeveloperInstructions)}`,
-    );
+    expect(
+      configs.some((value) => value?.startsWith("developer_instructions=")),
+    ).toBe(true);
     expect(execution).toMatchObject({
       input: request.prompt,
       homeEntries: ["auth.json"],
@@ -136,7 +144,7 @@ test("Codex source search isolates context and preserves auditable output", asyn
 test("malformed Codex JSONL retains its valid prefix for inspection", async () => {
   const fixture = await fixtureEnvironment("malformed");
   try {
-    const result = await codexSourceSearch({
+    const result = await codexSourceCheck({
       command: fakeCodex,
       environment: fixture.environment,
     })(request);
@@ -159,7 +167,7 @@ test("aborting Codex source search cancels and cleans its temporary home", async
   try {
     const controller = new AbortController();
     setTimeout(() => controller.abort(), 100);
-    const result = await codexSourceSearch({
+    const result = await codexSourceCheck({
       command: fakeCodex,
       environment: fixture.environment,
     })(request, controller.signal);

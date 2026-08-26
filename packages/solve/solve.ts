@@ -19,14 +19,13 @@ const usage = `Usage:
   elenx-solve inspect [--include-inputs] CAMPAIGN.db
   elenx-solve export CAMPAIGN.db
 
-Run a serial exploration-v14 campaign. Explorers produce mathematical claims
-and operational routes; terminal audits check the complete claim closure; and
-a candidate-only audit checks the standalone delivery bytes. Pause and resume
-are safe. Inspect prints state, lineage, and accounting. Export writes only the
-exact verified delivery answer bytes.
+Run a serial exploration-v15 campaign. Every cross-explorer handoff is reviewed
+before reuse. Submitted answers receive isolated external-premise verification
+and a fresh audit of the exact standalone bytes. Pause and resume are safe.
+Inspect prints state and accounting. Export writes only the accepted candidate.
 
 run starts the campaign, or resumes it when CAMPAIGN.db already exists, so a
-killed process restarts with the identical invocation. The coordinator retries
+killed process restarts with the identical invocation. The campaign runner retries
 transient call failures in place with capped exponential backoff; a run report
 with outcome call-failure means that retry budget was exhausted by consecutive
 failures.`;
@@ -121,7 +120,6 @@ async function main(args: readonly string[]): Promise<void> {
     writeJson(report);
     if (report.outcome === "interrupted") process.exitCode = 130;
     if (report.outcome === "call-failure") process.exitCode = 1;
-    if (report.outcome === "delivery-failure") process.exitCode = 1;
   } finally {
     process.off("SIGINT", stop);
     process.off("SIGTERM", stop);
@@ -165,12 +163,10 @@ async function readSettingsFile(path: string): Promise<Settings> {
 
 function providers(settings: Settings): readonly string[] {
   return [
-    settings.coordinator.provider,
     settings.explorer.provider,
-    ...(settings.memory === "none"
-      ? []
-      : settings.admissionAuditors.map(({ provider }) => provider)),
-    ...settings.resolutionAuditors.map(({ provider }) => provider),
+    settings.handoffVerifier.provider,
+    settings.premiseVerifier.provider,
+    settings.proofVerifier.provider,
   ];
 }
 

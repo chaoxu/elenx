@@ -1,45 +1,30 @@
 {
-  "protocol": "exploration-v14",
-  "memory": "claims-and-routes",
+  "protocol": "exploration-v15",
   "maxContextTokens": 200000,
+  "maxHandoffTokens": 24000,
   "explorerGuidance": [],
-  "coordinatorGuidance": [],
-  "coordinator": {
-    "provider": "openai-codex",
-    "model": "gpt-5.6-sol",
-    "reasoning": "max"
-  },
   "explorer": {
     "provider": "openai-codex",
     "model": "gpt-5.6-sol",
     "reasoning": "max"
   },
-  "admissionAuditors": [
-    {
-      "name": "claim-route-audit",
-      "provider": "openai-codex",
-      "model": "gpt-5.6-sol",
-      "reasoning": "max"
-    }
-  ],
-  "resolutionAuditors": [
-    {
-      "kind": "premise-audit",
-      "provider": "openai-codex",
-      "model": "gpt-5.6-sol",
-      "reasoning": "max"
-    },
-    {
-      "kind": "proof-audit",
-      "provider": "openai-codex",
-      "model": "gpt-5.6-sol",
-      "reasoning": "max"
-    },
-    {
-      "kind": "reconstruction",
-      "provider": "openai-codex",
-      "model": "gpt-5.6-sol",
-      "reasoning": "max"
-    }
-  ]
+  "handoffVerifier": {
+    "provider": "openai-codex",
+    "model": "gpt-5.6-sol",
+    "reasoning": "max"
+  },
+  "premiseVerifier": {
+    "provider": "openai-codex",
+    "model": "gpt-5.6-sol",
+    "reasoning": "max"
+  },
+  "sourceChecker": {
+    "model": "gpt-5.6-sol",
+    "reasoning": "max"
+  },
+  "proofVerifier": {
+    "provider": "openai-codex",
+    "model": "gpt-5.6-sol",
+    "reasoning": "max"
+  }
 }

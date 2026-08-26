@@ -38,6 +38,7 @@ export function fakePiRequest(options: PiRunOptions): Json {
     ...(options.maxLengthContinuations === undefined
       ? {}
       : { maxLengthContinuations: options.maxLengthContinuations }),
+    ...(options.cacheKey === undefined ? {} : { cacheKey: options.cacheKey }),
   };
   return JSON.parse(JSON.stringify(request)) as Json;
 }

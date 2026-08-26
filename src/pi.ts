@@ -63,6 +63,7 @@ export interface PiRunOptions {
   readonly maxLengthContinuations?: number;
   readonly signal?: AbortSignal;
   readonly transport?: Transport;
+  readonly cacheKey?: string;
 }
 
 type PiOutcomeBase = {
@@ -221,6 +222,7 @@ export const piRequest = z.strictObject({
   stopAfterToolResult: z.literal(true).optional(),
   maxRecoveries: z.number().int().min(1).max(31).optional(),
   maxLengthContinuations: z.number().int().min(1).max(31).optional(),
+  cacheKey: z.string().min(1).max(64).optional(),
 });
 
 const lengthContinuation =
@@ -639,6 +641,7 @@ function measuredStream(
   writeCall: Campaign["call"],
   parent: EntryId,
   models: PiModels,
+  cacheKey: string | undefined,
 ): StreamFn {
   return (model, context, options) =>
     startAiSpan(
@@ -669,7 +672,10 @@ function measuredStream(
               payload,
               requestModel,
             );
-            const effective = replacement === undefined ? payload : replacement;
+            const effective = withPromptCacheKey(
+              replacement === undefined ? payload : replacement,
+              cacheKey,
+            );
             const snapshot = jsonSnapshot(effective);
             const checkpoint = {
               label: piRequestLabel,
@@ -746,6 +752,15 @@ function measuredStream(
         return stream;
       },
     );
+}
+
+function withPromptCacheKey(payload: unknown, cacheKey: string | undefined) {
+  return cacheKey !== undefined &&
+    typeof payload === "object" &&
+    payload !== null &&
+    "prompt_cache_key" in payload
+    ? { ...payload, prompt_cache_key: cacheKey }
+    : payload;
 }
 
 interface PiCallExecutionOptions {
@@ -854,7 +869,12 @@ async function runPiBody(
           },
           () => {},
           signal,
-          measuredStream(campaign.call.bind(campaign), call, options.models),
+          measuredStream(
+            campaign.call.bind(campaign),
+            call,
+            options.models,
+            exact.cacheKey,
+          ),
         );
       let messages = await loop(exact.prompt, []);
       let legacyRecoveries = 0;
@@ -939,6 +959,7 @@ export async function runPi(
     ...(options.maxLengthContinuations === undefined
       ? {}
       : { maxLengthContinuations: options.maxLengthContinuations }),
+    ...(options.cacheKey === undefined ? {} : { cacheKey: options.cacheKey }),
   });
   return runPiCall(campaign, {
     request: parsed,

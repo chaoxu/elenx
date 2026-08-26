@@ -37,7 +37,7 @@ The deterministic verifier example is [`examples/v1/scripted-verifier.ts`](examp
 
 ## Solver
 
-[`packages/solve`](packages/solve) supplies the `exploration-v14` protocol. Its working memory separates citable mathematical claims from operational route records. A fresh terminal proof audit checks the complete claim closure, optional reconstruction derives the result from the same declared claim graph used for comparison, and a separate delivery audit checks the exact standalone answer bytes. The `none`, `claims`, and `claims-and-routes` memory policies run the same resumable loop while controlling which working state reaches later explorers.
+[`packages/solve`](packages/solve) supplies the `exploration-v15` protocol. Explorers exchange one exact reviewed handoff rather than campaign history. A submitted standalone answer becomes the candidate bytes. Offline premise verification uses isolated web search only for unresolved external claims, then a fresh proof audit checks the exact answer.
 
 [`docs/design.md`](docs/design.md) defines the governing design direction. [`packages/solve/docs/protocol.md`](packages/solve/docs/protocol.md) remains the authority for exact runtime behavior.
 

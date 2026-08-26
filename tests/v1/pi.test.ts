@@ -852,6 +852,7 @@ describe("thin Pi runner", () => {
       system: "Answer briefly.",
       prompt: "Test",
       reasoning: "max",
+      cacheKey: "stable-test-cache",
     });
 
     expect(result.state).toBe("failed");
@@ -875,6 +876,7 @@ describe("thin Pi runner", () => {
             },
           ],
           reasoning: { effort: "max" },
+          prompt_cache_key: "stable-test-cache",
         },
         state: "completed",
       },

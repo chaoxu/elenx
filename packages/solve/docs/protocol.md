@@ -1,221 +1,81 @@
-# `exploration-v14` protocol
+# `exploration-v15` protocol
 
 ## Contract
 
-`exploration-v14` gives the harness five mechanical responsibilities: freeze exact artifacts, maintain future context, run configured audits, derive completion from recorded results, and export only audited delivery bytes. Models choose mathematical content and search strategy.
-
-The Elenx kernel remains the only journal. The solver adds no mutable workflow database, cache authority, publication table, or hidden state.
-
-## Frozen campaign
+V15 explores through reviewed one-use handoffs and verifies one exact standalone candidate. The Elenx kernel remains the only journal. The solver adds no mutable database or hidden runtime state.
 
 Starting a campaign freezes:
 
-- the exact problem and completion criteria
-- memory policy and global context ceiling
-- resolved explorer and coordinator guidance
-- coordinator and explorer profiles
-- named admission-auditor profiles
-- ordered resolution-auditor profiles and template methods
+- exact problem and completion criteria
+- context and handoff ceilings
+- resolved explorer guidance
+- explorer, handoff-verifier, premise-verifier, and proof-verifier profiles
+- isolated source-checker model and reasoning
 
-Each runtime profile freezes provider, model ID, requested reasoning, API, and base URL. Resume recomputes the profile and requires structural equality before model dispatch.
+Every Pi profile freezes provider, model ID, requested reasoning, API, and base URL. The isolated Codex source checker freezes model and reasoning, while each call records its exact Codex version and source activity. Resume recomputes the frozen settings and stops before dispatch when they differ.
 
-The implementation accepts only `exploration-v14`. V12 databases require release `v0.31.0`, and v13 databases require release `v0.32.0`. A malformed v14 declaration and an unknown protocol produce distinct read-only errors.
+## Explorer turn
 
-## Claims and routes
+Every explorer is one fresh bounded call with one terminal tool. It receives the task and exactly one context:
 
-The working memory contains two disjoint entities.
+- nothing on the initial turn
+- the immediately preceding reviewed handoff
+- one rejected candidate with its latest verifier defect
 
-```ts
-interface EvidenceClaim {
-  id: `claim-${number}`;
-  statement: string;
-  dependsOn: ClaimId[];
-  originCall: EntryId;
-  replaces?: ClaimId;
-}
+An incomplete turn returns notes, one next objective, and selected note positions with intended uses. Notes are untyped and untrusted. Unselected notes remain durable for inspection but never enter another model context.
 
-interface RouteRecord {
-  id: `route-${number}`;
-  attempt: string;
-  outcome: string;
-  evidenceClaims: ClaimId[];
-  retryCondition?: string;
-  originCall: EntryId;
-  replaces?: RouteId;
-}
-```
+A complete turn returns one standalone answer. The answer bytes become the candidate material without an envelope or second delivery artifact.
 
-A claim is one exact citable mathematical proposition. Its subject may be a lemma, counterexample, obstruction, impossibility result, invariant, or reduction. A conditional result states its hypotheses inside the proposition.
+## Handoff review
 
-A route records operational search history. It references claims instead of copying their statements. Route IDs are rejected in claim dependencies and resolution citations. Routes never enter reconstruction, terminal proof audit, delivery assembly authority, or delivery audit.
+The harness constructs one exact handoff from the next objective and selected note bytes. Note positions must be unique and belong to the same explorer submission. `maxHandoffTokens` applies before verifier dispatch.
 
-`memory` has three values:
+One fresh verifier receives only the task and exact handoff. It returns `PASS`, `FAIL`, or `INCONCLUSIVE` with one report. The next explorer receives the handoff and assessment together. The assessment grants no permanent standing to a note.
 
-- `none` retains no claims or routes
-- `claims` retains claims only
-- `claims-and-routes` retains both entities
+## Candidate verification
 
-## Explorer and coordinator
+Every candidate requires two frozen kernel verifier labels in order.
 
-An explorer submits one `ExplorerReport`:
+### Premise audit
 
-```ts
-interface ExplorerReport {
-  rawReport: string;
-  nominatedClaims: Array<{
-    statement: string;
-    basedOnClaims: ClaimId[];
-  }>;
-  nominatedRoutes: Array<{
-    attempt: string;
-    outcome: string;
-    evidenceClaims: ClaimId[];
-    retryCondition?: string;
-  }>;
-  claimsComplete: boolean;
-  citedClaims: ClaimId[];
-}
-```
+The offline premise verifier receives only the task and exact candidate. It inventories the smallest external premises neither given by the task nor proved in the answer. It must bind every application to a contiguous candidate quote.
 
-Nominations are advisory. The coordinator receives the latest decision packet and submits one atomic batch with distinct actions:
+`REFUTED` and `MISAPPLIED` fail the candidate. `UNRESOLVED` premises trigger isolated source verification.
 
-```text
-add_claim / revise_claim / drop_claim / retain_claim
-add_route / revise_route / drop_route / retain_route
-```
+The source checker receives only exact premise statements, hypotheses, applications, candidate excerpts, and asserted citation metadata. It runs ephemeral Codex web search in a temporary read-only directory with workspace, shell, browser control, plugins, memory, and delegation disabled. Raw JSONL, queries, usage, stdout, and stderr remain inspectable.
 
-New claim and route IDs are consecutive within their own namespaces. A replacement receives a new ID, new origin, and complete redeclaration of its references. Retiring a claim requires revising or dropping every surviving dependent claim and route in the same batch. The action schema rejects duplicate targets, foreign IDs, forward references, dangling references, and retention of a provisional item without passing admission stamps.
+Each unresolved premise must become `SOURCED`. An authoritative URL, locator, contiguous quote, statement and hypothesis match, application check, citation-metadata check, and refutation attempt are required. Every other result blocks acceptance.
 
-With no admission auditors, changed items become live as explicitly unaudited memory. With auditors configured, every auditor checks the complete changed batch. Claim auditors return premise inventories and the harness derives their verdicts. Route auditors return direct verdicts about the accuracy of the recorded attempt and outcome. A route PASS grants no proof standing. The batch becomes live only when every changed item passes every configured admission auditor.
+The source call uses the premise verifier label so its merged result can supply the candidate-bound premise verdict.
 
-An admission auditor places a newly discovered proof, refutation, or derivation in `mathematicalFinding`. A repaired claim may use that mathematical text as its immutable origin. Terminal and delivery support preserve `mathematicalFinding` and premise material while excluding the admission report, verdict, standing, auditor identity, and stamps.
+### Proof audit
 
-## Resolution candidate
+After premise PASS, one fresh proof verifier receives only the task, exact candidate, and verified source certificates. It checks correctness, completeness, self-containment, edge cases, citation use, and hidden campaign references.
 
-An explorer with `claimsComplete = true` creates one immutable modular candidate:
+The campaign reaches `solved` only when both required labels have candidate-bound PASS verdicts. `verified` remains a procedural gate result rather than a calibrated probability of mathematical truth.
 
-```ts
-interface ResolutionCandidate {
-  protocol: "elenx-solve/exploration-v14/resolution/v1";
-  problem: string;
-  completionCriteria: string;
-  citedClaims: ClaimId[];
-  newArgument: string;
-  sourceReport: EntryId;
-}
-```
+## Repair
 
-The kernel binds the candidate bytes to the frozen required-verifier labels. Failed and inconclusive candidates remain in the journal. Their safely projected feedback reaches a later explorer only through a new coordinator batch permitted by memory policy.
+Failed candidates remain immutable. The next explorer receives the exact rejected candidate and one bounded defect. Premise failures expose only the statement plus its refutation, application defect, unresolved source gap, or citation-mismatch detail. Premise inventories, source-search reports and transcripts, nonblocking source fields, previous PASS prose, and exploration history remain excluded. A repair is another complete candidate and repeats both gates.
 
-## Premise audit and source fallback
+## Recovery
 
-`premise-audit` is optional and must precede `proof-audit`. It inventories the smallest non-routine open premises in the resolution and support origins.
+State is reconstructed from the append-only journal. Resume reconciles settled tool submissions, candidates, source calls, and verdicts before dispatching the first unresolved phase.
 
-- `GIVEN` binds to an exact problem quote.
-- `PROVED` binds a verbatim proof to an allowed immutable origin.
-- `REFUTED` supplies a decisive refutation.
-- `UNESTABLISHED` names the smallest open obligation.
+Each model call uses SSE, one required terminal tool, serial tool submission, eight output-length continuations, and one separate in-call provider recovery. Provider-retryable phase failures restart from journal state with capped exponential backoff. Deterministic failures stop immediately.
 
-The harness derives FAIL from refutation or misapplication, INCONCLUSIVE from an unestablished premise, and PASS otherwise. One isolated Codex web-search fallback may resolve offline `UNESTABLISHED` findings as `SOURCED`, `REFUTED`, or still `UNESTABLISHED`. Source calls use an isolated read-only directory and preserve raw JSONL and telemetry. Source prose and certificates remain audit records rather than exploration context.
+Each Pi request freezes a deterministic prompt-cache key derived from the task, role, and profile. Pi keeps a separate random transport session per logical call, so cross-turn cache routing does not share recovery or transport state.
 
-## Fresh terminal proof audit
+The first interrupt pauses after the active turn settles. The second aborts the provider operation.
 
-`proof-audit` is required. It receives:
+## Context
 
-- the resolution candidate
-- every claim in the current transitive support closure
-- every direct dependency edge
-- each claim's immutable mathematical origin
-- established premises
+`maxContextTokens` bounds every structured model request. `maxHandoffTokens` separately bounds the exact cross-explorer packet. Both checks stop before dispatch and never truncate content.
 
-Admission verdicts, PASS stamps, route records, and admission-audit prose are excluded from the mathematical authority projection.
+## Inspection and export
 
-The auditor returns structured coverage:
+Inspection exposes explorer submissions, all stored notes, reviewed handoffs, candidate bytes, candidate status, model calls, source activity, concurrency, and measured provider spend. Exact requests and raw source output require `--include-inputs`.
 
-```ts
-interface FinalProofAudit {
-  claimChecks: Array<{
-    claim: ClaimId;
-    dependencyChecks: Array<{
-      dependency: ClaimId;
-      verdict: Verdict;
-      report: string;
-    }>;
-    derivation: Assessment;
-  }>;
-  rootApplications: Array<{
-    claim: ClaimId;
-    verdict: Verdict;
-    report: string;
-  }>;
-  resolution: Assessment;
-}
-```
+Export requires one solved candidate and writes its immutable bytes without decoration or an added newline.
 
-The schema requires exactly one check for every closure claim, every direct edge, and every cited root, with no duplicates or foreign IDs. The harness derives the aggregate verdict: any FAIL yields FAIL, otherwise any INCONCLUSIVE yields INCONCLUSIVE, otherwise the result is PASS. The structured audit remains durable verdict evidence.
-
-An earlier admission PASS never substitutes for terminal coverage. Claims admitted without any admission auditor receive the same terminal checks.
-
-## Reconstruction
-
-Reconstruction is optional and follows all direct resolution audits. The harness constructs one strict `DeclaredEvidenceDAG`:
-
-```ts
-interface DeclaredEvidenceDAG {
-  roots: ClaimId[];
-  claims: Array<{
-    id: ClaimId;
-    statement: string;
-    dependsOn: ClaimId[];
-  }>;
-  sourcedPremises: Array<{ statement: string }>;
-}
-```
-
-The schema requires unique IDs, present roots and dependencies, acyclicity, and exactly the transitive root closure. Derivation and comparison receive the same serialized DAG bytes. Every listed claim, prerequisite, and sourced premise is an authorized assumption for this gate. The comparator checks hypotheses, applications, undeclared theorem-class dependencies, exact-goal completion, and agreement with the candidate. Terminal proof audit remains responsible for claim truth.
-
-The derivation call never receives the candidate argument, routes, support artifacts, audit history, or verdicts. Its comparison verdict names the exact derivation call.
-
-A comparison FAIL is candidate-fatal. A comparison INCONCLUSIVE permits exactly one fresh candidate-blind derivation under a distinct retry label, followed by one comparison of that retry against the same candidate; the retry comparison's verdict is final. The candidate is verified only through comparison PASS, so a mistaken retry still has to survive the comparator on the merits.
-
-## Standalone delivery
-
-Passing modular gates launches one delivery assembler using the explorer profile. Its input contains the exact task, verified resolution, complete mathematical support closure, and sourced premise statements. It returns one standalone answer.
-
-The kernel stores that answer as a second immutable candidate:
-
-```ts
-interface DeliveryArtifact {
-  protocol: "elenx-solve/exploration-v14/delivery/v1";
-  resolution: EntryId;
-  answer: string;
-}
-```
-
-The delivery candidate requires only `delivery-audit`. That fresh audit reuses the proof-audit profile but receives a strict whitelist: the task, exact answer, and sourced premise statements. It receives no claim DAG, support artifact, route, stamp, campaign history, or earlier verdict.
-
-The audit returns theorem checks plus self-containment, internal-reference hygiene, and exact-resolution checks. The harness derives its verdict with the same FAIL then INCONCLUSIVE then PASS precedence.
-
-Application status is `solved` only when the linked modular resolution and delivery candidate are both verified. Delivery failure is terminal and returns `delivery-failure`. An operator may inspect the defect and start a fresh campaign or a later protocol. The v14 engine does not silently spend more calls after delivery rejection.
-
-`export CAMPAIGN.db` requires exactly one verified delivery linked to a verified resolution. It emits `DeliveryArtifact.answer` bytes without decoration or an added newline.
-
-## Recovery and replay
-
-State is derived from the append-only journal. Replay identity consists of the label, candidate binding, provider, model ID, API, base URL, requested reasoning, system prompt, user prompt, recovery settings, terminal tool name, description, and JSON schema. The provider-reported `modelProfile` remains telemetry rather than replay authority.
-
-Resume reconciles completed tool submissions, candidates, and verdicts before dispatch. A crash after delivery assembly does not repeat assembly. A crash after a delivery-audit submission records the pending verdict and reaches solved without another model call. A solved resume makes no model call.
-
-Provider-retryable failures restart the same unresolved phase with capped exponential backoff. Unknown tool effects are never retried. Deterministic schema or terminal-submission failures fail immediately.
-
-## Context and transport
-
-Every Pi role starts from a fresh root and receives one terminal tool. Calls use SSE and force serial tool submission. A response that reaches its output limit continues with the complete validated transcript and a short instruction to continue without restarting or repeating completed work. Each call permits eight such length continuations and one separate provider-error recovery, subject to the Elenx runner's aggregate thirty-two-turn cap. `maxContextTokens` bounds the estimated system prompt, user prompt, terminal-tool description, and terminal schema for every structured phase. The check runs before dispatch.
-
-The source fallback is the only retrieval capability. Pi roles receive no filesystem, database, shell, web, execution, or delegation tools.
-
-## Inspection
-
-Inspection separates claims, routes, modular resolutions, and delivery candidates. It exposes liveness, replacement lineage, admission stamps, structured terminal coverage, reconstruction calls, delivery linkage, call settlement, concurrency, provider usage, source telemetry, measured spend, accounting gaps, and unsettled checkpoints.
-
-`--include-inputs` adds exact requests, declared tools, request checkpoints, raw source JSONL, stderr, and complete source results. A semantic projection failure leaves kernel records and telemetry inspectable.
+V12, v13, and v14 databases require their matching solver releases. V15 does not replay their workflow.

@@ -45,19 +45,20 @@ if (args[0] === "--version") {
   if (statement === undefined) throw new Error("missing statement");
   const resolution = {
     statement,
-    standing: "UNESTABLISHED",
+    standing: "UNRESOLVED",
     citation: null,
     url: null,
     locator: null,
     exactQuote: null,
     sourceMatch: null,
-    candidateSourceMatch: null,
-    candidateSourceCheck: null,
+    candidateCitationMatch: null,
+    candidateCitationCheck: null,
     refutationAttempt: "Checked the smallest cases.",
     refutation: null,
     gap: "No exact source or refutation was found.",
-    application: "APPLIES",
-    applicationCheck: "The stated hypotheses match conditionally.",
+    application: null,
+    applicationCheck: null,
+    defect: null,
   };
   const result = { report: "Search completed.", resolutions: [resolution] };
   for (const event of [

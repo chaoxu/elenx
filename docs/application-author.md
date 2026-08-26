@@ -77,7 +77,7 @@ try {
 
 `returnedToolSubmission` requires one named tool call and its returned result. The application parses the durable input with the same submission schema and passes its verdict and evidence to `recordVerdict`; it supplies no second semantic value that could disagree with the model's submission. Tool output may differ from input, so the projection records both without equating them.
 
-Use that structured path for an LLM verifier. An application-owned deterministic verifier adapter instead runs through `campaign.call`, validates its typed receipt, and applies one fixed mapping from that receipt to the verdict passed to `recordVerdict`. Elenx preserves the mapping's input and output; it does not establish that the verifier is sound. Never translate free-form model text into a coordinator-selected verdict.
+Use that structured path for an LLM verifier. An application-owned deterministic verifier adapter instead runs through `campaign.call`, validates its typed receipt, and applies one fixed mapping from that receipt to the verdict passed to `recordVerdict`. Elenx preserves the mapping's input and output; it does not establish that the verifier is sound. Never translate free-form model text into an application-selected verdict.
 
 Use `stopAfterToolResult` when the verdict-submission tool is the call's only tool. Gather source inspections or other observations in earlier calls so finalization has one unambiguous submission.
 
@@ -155,7 +155,7 @@ The campaign artifact stores candidate bytes, requests, prompts, transcripts, to
 
 ## Resume and read safely
 
-Use `openCampaign(path)` only after the prior writer or coordinator has terminated or closed, then derive the next application action from `campaign.records()`. Close every handle in `finally`; copying an open database is unsupported. Calls and tool calls without matching results require external reconciliation and are not automatically replayable. Use `openReader(path)` for read-only inspection. Recovery, copying, rollback-journal, and rejected WAL-state rules are defined in [`../SPEC.md`](../SPEC.md#campaign-artifact).
+Use `openCampaign(path)` only after the prior writer has terminated or closed, then derive the next application action from `campaign.records()`. Close every handle in `finally`; copying an open database is unsupported. Calls and tool calls without matching results require external reconciliation and are not automatically replayable. Use `openReader(path)` for read-only inspection. Recovery, copying, rollback-journal, and rejected WAL-state rules are defined in [`../SPEC.md`](../SPEC.md#campaign-artifact).
 
 A `runPi` result that is still length-truncated after its bounded in-call recoveries is a dead end. Preserve it and start a fresh `runPi` call from explicit application state; a fresh model, profile, prompt, or context policy likewise starts another root call.
 
