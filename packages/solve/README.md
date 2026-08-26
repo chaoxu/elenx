@@ -12,7 +12,7 @@ A v14 campaign completes this sequence:
 2. `premise-audit`, when configured, resolves imported premises.
 3. The required `proof-audit` freshly checks every claim in the transitive support closure, every direct dependency edge, every cited-root application, and the final composition.
 4. Optional template auditors run their frozen methods.
-5. Optional reconstruction receives one declared evidence DAG. Derivation and comparison receive byte-identical copies of that DAG.
+5. Optional reconstruction receives one declared evidence DAG. Derivation and comparison receive byte-identical copies of that DAG. A comparison FAIL is candidate-fatal; a comparison INCONCLUSIVE permits exactly one fresh derivation whose comparison verdict is final.
 6. A delivery assembler expands the modular proof into one standalone answer.
 7. Elenx stores that answer as a second immutable candidate. A fresh `delivery-audit` sees only the task, exact answer bytes, and established sourced premise statements.
 
