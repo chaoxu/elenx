@@ -1,9 +1,9 @@
 # Building an Elenx application
 
-Install Elenx from Gitea:
+Install Elenx from GitHub:
 
 ```sh
-bun add git+https://gitea.lab/chaoxu/elenx.git#v0.7.13 zod@4.4.3
+bun add github:chaoxu/elenx zod@4.4.3
 ```
 
 ## Create and verify a candidate

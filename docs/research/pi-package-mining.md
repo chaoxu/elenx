@@ -17,7 +17,7 @@ Elenx later implemented a generic returned-tool-submission projection and settle
 
 ## Elenx boundary used in the study
 
-Elenx at [`a27a2d9`](https://gitea.lab/chaoxu/elenx/commit/a27a2d9) is a durable semantic kernel, not an agent framework. It stores exact candidate bytes, records calls and admitted tool effects before execution, preserves interrupted effects as unknown, binds verdicts to fresh successful candidate-scoped calls, and derives verification from the append-only log. The bundled Pi runner records one provider-final telemetry leaf per logical provider operation. Applications own orchestration, verifier construction, context policy, budgets, filesystem policy, and promotion.
+Elenx at historical revision `a27a2d9` is a durable semantic kernel, not an agent framework. It stores exact candidate bytes, records calls and admitted tool effects before execution, preserves interrupted effects as unknown, binds verdicts to fresh successful candidate-scoped calls, and derives verification from the append-only log. The bundled Pi runner records one provider-final telemetry leaf per logical provider operation. Applications own orchestration, verifier construction, context policy, budgets, filesystem policy, and promotion.
 
 Five constraints decide whether a package mechanism fits:
 

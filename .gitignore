@@ -1,7 +1,9 @@
 node_modules/
 coverage/
+runs/
 *.db
 *.db-shm
 *.db-wal
+.coordinator.lock*
 *.tgz
 .playwright-mcp/

@@ -11,7 +11,7 @@ The kernel enforces identity, durability, crash semantics, and accounting contra
 The v1 kernel requires Bun 1.3.13 or newer. Applications define tool schemas with Zod:
 
 ```sh
-bun add git+https://gitea.lab/chaoxu/elenx.git#v0.7.13 zod@4.4.3
+bun add github:chaoxu/elenx zod@4.4.3
 ```
 
 Elenx exposes Pi types directly. Keep TypeScript's `skipLibCheck` enabled while Pi's provider SDK declarations require it.
@@ -35,17 +35,17 @@ This research record is repository-only; the package contains only maintained co
 
 The deterministic verifier example is [`examples/v1/scripted-verifier.ts`](examples/v1/scripted-verifier.ts). [`examples/v1/pi-smoke.ts`](examples/v1/pi-smoke.ts) exercises the LLM-verdict path with a real Pi model.
 
-## Companion solver
+## Solver
 
-[`elenx-solve`](https://gitea.lab/chaoxu/elenx-solve) supplies the `exploration-v13` protocol. Its working memory separates citable mathematical claims from operational route records. A fresh terminal proof audit checks the complete claim closure, optional reconstruction derives the result from the same declared claim graph used for comparison, and a separate delivery audit checks the exact standalone answer bytes. The `none`, `claims`, and `claims-and-routes` memory policies run the same resumable loop while controlling which working state reaches later explorers.
+[`packages/solve`](packages/solve) supplies the `exploration-v14` protocol. Its working memory separates citable mathematical claims from operational route records. A fresh terminal proof audit checks the complete claim closure, optional reconstruction derives the result from the same declared claim graph used for comparison, and a separate delivery audit checks the exact standalone answer bytes. The `none`, `claims`, and `claims-and-routes` memory policies run the same resumable loop while controlling which working state reaches later explorers.
 
-[`docs/design.md`](docs/design.md) defines the governing design direction. [`elenx-solve/docs/protocol.md`](https://gitea.lab/chaoxu/elenx-solve/src/branch/main/docs/protocol.md) remains the authority for exact runtime behavior.
+[`docs/design.md`](docs/design.md) defines the governing design direction. [`packages/solve/docs/protocol.md`](packages/solve/docs/protocol.md) remains the authority for exact runtime behavior.
 
 ## Development
 
 ```sh
 bun install --frozen-lockfile
-bun run check
+bun run check:all
 ```
 
-The check runs formatting, strict TypeScript, a consumer compile, the full test suite, and a tarball-installed consumer smoke.
+The check runs formatting, strict TypeScript, consumer compilation, both test suites, package checks, and the solver CLI smoke.

@@ -1,6 +1,6 @@
 # Elenx policy hypotheses
 
-Status: experimental plan, 2026-08-23. [`design.md`](design.md) defines the boundary. The companion [`elenx-solve` protocol](https://gitea.lab/chaoxu/elenx-solve/src/branch/main/docs/protocol.md) defines current runtime behavior.
+Status: experimental plan, 2026-08-23. [`design.md`](design.md) defines the boundary. The [`elenx-solve` protocol](../packages/solve/docs/protocol.md) defines current runtime behavior.
 
 ## Objective
 
