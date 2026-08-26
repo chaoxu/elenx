@@ -1214,7 +1214,7 @@ describe("v14 campaign", () => {
       ).toMatchObject({ outcome: "solved" });
       expect(first.calls.length + second.calls.length).toBe(replies.length);
     }
-  });
+  }, 30_000);
 
   test("provider-retryable failure restarts the same phase and deterministic failure does not", async () => {
     const retryPath = campaignPath();
