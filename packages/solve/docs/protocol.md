@@ -176,6 +176,8 @@ The schema requires unique IDs, present roots and dependencies, acyclicity, and 
 
 The derivation call never receives the candidate argument, routes, support artifacts, audit history, or verdicts. Its comparison verdict names the exact derivation call.
 
+A comparison FAIL is candidate-fatal. A comparison INCONCLUSIVE permits exactly one fresh candidate-blind derivation under a distinct retry label, followed by one comparison of that retry against the same candidate; the retry comparison's verdict is final. The candidate is verified only through comparison PASS, so a mistaken retry still has to survive the comparator on the merits.
+
 ## Standalone delivery
 
 Passing modular gates launches one delivery assembler using the explorer profile. Its input contains the exact task, verified resolution, complete mathematical support closure, and sourced premise statements. It returns one standalone answer.

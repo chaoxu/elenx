@@ -1312,57 +1312,78 @@ function resolveReconstructionGate(
     state,
     premises,
   ).declaredEvidence;
-  const derivation: Extract<
-    CandidateModelPhase,
-    { readonly kind: "reconstruction" }
-  > = {
-    kind: "reconstruction",
-    label: reconstructionLabel(),
-    after,
-    candidate,
-    verifier,
-    premises,
-    declaredEvidence,
-    state,
-  };
-  const submission = findSubmission(records, {
-    label: derivation.label,
-    after,
-    candidate: candidate.id,
-    turn: reconstructionStructuredCall(task, derivation),
-  });
-  if (submission === undefined) return { pending: derivation };
-  const reconstruction: ReconstructionRecord = {
-    call: submission.call,
-    settled: submission.settled,
-    ...submission.value,
-  };
-  const comparison: Extract<
-    CandidateModelPhase,
-    { readonly kind: "comparison" }
-  > = {
-    kind: "comparison",
-    label: resolutionAuditLabel("reconstruction"),
-    after: reconstruction.settled,
-    candidate,
-    verifier,
-    reconstruction,
-    premises,
-    declaredEvidence,
-    state,
-  };
-  const verdict = requireVerdict(
-    records,
-    candidate.id,
-    comparison.label,
-    "reconstruction",
-    comparison,
-    reconstruction.settled,
-    comparisonStructuredCall(task, comparison),
-  );
-  return "kind" in verdict
-    ? { pending: verdict, reconstruction }
-    : { verdict, reconstruction };
+  let deriveAfter = after;
+  let reconstruction: ReconstructionRecord | undefined;
+  for (const attempt of [1, 2] as const) {
+    const derivation: Extract<
+      CandidateModelPhase,
+      { readonly kind: "reconstruction" }
+    > = {
+      kind: "reconstruction",
+      label: reconstructionLabel(attempt),
+      after: deriveAfter,
+      candidate,
+      verifier,
+      premises,
+      declaredEvidence,
+      state,
+    };
+    const submission = findSubmission(records, {
+      label: derivation.label,
+      after: deriveAfter,
+      candidate: candidate.id,
+      turn: reconstructionStructuredCall(task, derivation),
+    });
+    if (submission === undefined) {
+      return reconstruction === undefined
+        ? { pending: derivation }
+        : { pending: derivation, reconstruction };
+    }
+    reconstruction = {
+      call: submission.call,
+      settled: submission.settled,
+      ...submission.value,
+    };
+    const comparison: Extract<
+      CandidateModelPhase,
+      { readonly kind: "comparison" }
+    > = {
+      kind: "comparison",
+      label: resolutionAuditLabel("reconstruction"),
+      after: reconstruction.settled,
+      candidate,
+      verifier,
+      reconstruction,
+      premises,
+      declaredEvidence,
+      state,
+    };
+    const retryDerive =
+      attempt === 1
+        ? firstCallSeq(
+            records,
+            reconstructionLabel(2),
+            candidate.id,
+            reconstruction.settled,
+          )
+        : undefined;
+    const verdict = requireVerdict(
+      records,
+      candidate.id,
+      comparison.label,
+      "reconstruction",
+      comparison,
+      reconstruction.settled,
+      comparisonStructuredCall(task, comparison),
+      retryDerive,
+    );
+    if ("kind" in verdict) return { pending: verdict, reconstruction };
+    if (attempt === 2 || verdict.verdict !== "INCONCLUSIVE") {
+      return { verdict, reconstruction };
+    }
+    deriveAfter = verdict.record;
+  }
+  throw new Error("reconstruction attempts exhausted without a verdict");
 }
 
 function resolveGate(
@@ -1557,6 +1578,7 @@ function requireVerdict<S extends z.ZodType<VerifierToolSubmission>>(
   pending: ModelPhase,
   after: EntryId,
   turn: StructuredCall<S>,
+  before?: EntryId,
 ): VerdictRecord | Phase {
   const raw = findSubmission(records, {
     label,
@@ -1575,6 +1597,7 @@ function requireVerdict<S extends z.ZodType<VerifierToolSubmission>>(
     verifier,
     after,
     submitted,
+    before,
   );
   if (recorded !== undefined) return recorded;
   if (submitted === undefined) return pending;
@@ -1595,6 +1618,7 @@ function recordedVerdict(
   after: EntryId,
   submitted:
     { readonly call: EntryId; readonly value: VerifierSubmission } | undefined,
+  before?: EntryId,
 ): VerdictRecord | undefined {
   const calls = new Map(
     records
@@ -1606,6 +1630,7 @@ function recordedVerdict(
     const call = calls.get(entry.call);
     return call?.kind === "call" &&
       call.seq > after &&
+      (before === undefined || call.seq < before) &&
       call.candidate === candidate &&
       call.label === label
       ? [{ entry, call }]
@@ -1641,6 +1666,25 @@ function recordedVerdict(
 
 function verdictEvidence(submission: VerifierSubmission): Json {
   return "audit" in submission ? submission.audit : submission.report;
+}
+
+function firstCallSeq(
+  records: readonly Entry[],
+  label: string,
+  candidate: EntryId,
+  after: EntryId,
+): EntryId | undefined {
+  for (const entry of records) {
+    if (
+      entry.kind === "call" &&
+      entry.seq > after &&
+      entry.label === label &&
+      entry.candidate === candidate
+    ) {
+      return entry.seq;
+    }
+  }
+  return undefined;
 }
 
 function findSubmission<S extends z.ZodType>(
@@ -2528,11 +2572,19 @@ function admissionAuditRequest(
             : { retryCondition: item.retryCondition }),
         },
   );
+  const supportArtifactCalls = new Set(
+    support.artifacts.map(({ call }) => call),
+  );
   const sourcePackets = [
     ...new Set(
       items.flatMap((item) => (item.type === "route" ? [item.originCall] : [])),
     ),
-  ].map((call) => ({ call, packet: sourceArtifact(state, call) }));
+  ].map((call) => ({
+    call,
+    packet: supportArtifactCalls.has(call)
+      ? "identical to the support artifact with this call id"
+      : sourceArtifact(state, call),
+  }));
   const prompt = `${renderTask(task)}\n\nExact changed claims and routes with recursively collected claim support:\n${JSON.stringify(
     { targets, support, sourcePackets },
     null,
@@ -2616,10 +2668,8 @@ function mathematicalSourceArtifact(state: State, call: EntryId): unknown {
   }
   for (const candidate of state.candidates) {
     if (candidate.verdicts.some((verdict) => verdict.call === call)) {
-      const source = state.explorations.find(
-        ({ call: sourceCall }) =>
-          sourceCall === candidate.envelope.sourceReport,
-      );
+      // envelope.newArgument is the source explorer report verbatim, so a
+      // separate sourceArgument copy would duplicate the same bytes.
       return {
         call,
         resolution: candidate.envelope,
@@ -2631,9 +2681,6 @@ function mathematicalSourceArtifact(state: State, call: EntryId): unknown {
                 report: candidate.reconstruction.report,
               },
             }),
-        ...(source === undefined
-          ? {}
-          : { sourceArgument: source.value.rawReport }),
       };
     }
   }

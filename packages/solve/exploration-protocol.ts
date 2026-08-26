@@ -1002,7 +1002,9 @@ export function callActivity(label: string): {
   }
   if (parts[0] === "audit" && parts[1] === "resolution") {
     const method = resolutionMethod.safeParse(parts[2]);
-    const derives = parts.length === 4 && parts[3] === "derive";
+    const derives =
+      parts[3] === "derive" &&
+      (parts.length === 4 || (parts.length === 5 && parts[4] === "retry"));
     if (
       !method.success ||
       (parts.length !== 3 && !derives) ||
@@ -1070,8 +1072,9 @@ export function resolutionAuditLabel(auditor: string): string {
   return `${prefix}/audit/resolution/${resolutionMethod.parse(auditor)}`;
 }
 
-export function reconstructionLabel(): string {
-  return `${resolutionAuditLabel("reconstruction")}/derive`;
+export function reconstructionLabel(attempt: 1 | 2 = 1): string {
+  const base = `${resolutionAuditLabel("reconstruction")}/derive`;
+  return attempt === 1 ? base : `${base}/retry`;
 }
 
 export function deliveryAssemblyLabel(): string {

@@ -178,6 +178,13 @@ const comparisonPass: Reply = {
     reconstructionCall: latestCall(campaign, "/reconstruction/derive"),
   }),
 };
+const comparisonInconclusive: Reply = {
+  submission: (campaign: Campaign): Json => ({
+    verdict: "INCONCLUSIVE",
+    report: "The smallest unchecked obligation is an omitted case branch.",
+    reconstructionCall: latestCall(campaign, "/reconstruction/derive"),
+  }),
+};
 function deliveryAudit(
   verdict: "PASS" | "FAIL" | "INCONCLUSIVE" = "PASS",
 ): Reply {
@@ -820,6 +827,104 @@ describe("v14 campaign", () => {
     )[1];
     expect(laterProof?.prompt).toContain(`${sentinel}: a complete proof.`);
     expect(laterProof?.prompt).not.toContain("verdicts");
+    expect(laterProof?.prompt.split("First candidate.")).toHaveLength(2);
+  });
+
+  test("an inconclusive comparison earns one fresh reconstruction retry", async () => {
+    const path = campaignPath();
+    const deps = dependencies([
+      firstReport,
+      retainBatch,
+      admissionPass,
+      completeReport,
+      premisePass,
+      { submission: finalAudit() },
+      reconstruction,
+      comparisonInconclusive,
+      reconstruction,
+      comparisonPass,
+      { submission: { answer: standalone } },
+      deliveryAudit(),
+    ]);
+    const report = await start(
+      {
+        problem,
+        completionCriteria: criteria,
+        campaignPath: path,
+        settings: runSettings(),
+      },
+      deps,
+    );
+    expect(report.outcome).toBe("solved");
+    const derives = deps.calls.filter(({ label }) =>
+      label?.endsWith("/reconstruction/derive"),
+    );
+    const retries = deps.calls.filter(({ label }) =>
+      label?.endsWith("/reconstruction/derive/retry"),
+    );
+    const comparisons = deps.calls.filter(({ label }) =>
+      label?.endsWith("/reconstruction"),
+    );
+    expect(derives).toHaveLength(1);
+    expect(retries).toHaveLength(1);
+    expect(comparisons).toHaveLength(2);
+    expect(retries[0]?.prompt).not.toContain(candidate);
+
+    const retryRow = inspectCampaign(path).calls.find(({ label }) =>
+      label.endsWith("/reconstruction/derive/retry"),
+    );
+    expect(retryRow).toMatchObject({
+      role: "resolution-audit",
+      audit: {
+        target: "resolution",
+        method: "reconstruction",
+        stage: "derive",
+      },
+    });
+
+    const resumed = dependencies([]);
+    expect(
+      await resume({ campaignPath: path, settings: runSettings() }, resumed),
+    ).toMatchObject({ outcome: "solved", delivery: report.delivery });
+    expect(resumed.calls).toHaveLength(0);
+  });
+
+  test("a second inconclusive comparison fails the candidate without a third sample", async () => {
+    const path = campaignPath();
+    const deps = dependencies([
+      firstReport,
+      retainBatch,
+      admissionPass,
+      completeReport,
+      premisePass,
+      { submission: finalAudit() },
+      reconstruction,
+      comparisonInconclusive,
+      reconstruction,
+      comparisonInconclusive,
+    ]);
+    const report = await start(
+      {
+        problem,
+        completionCriteria: criteria,
+        campaignPath: path,
+        settings: runSettings(),
+      },
+      deps,
+    );
+    expect(report.outcome).toBe("paused");
+    const inspection = inspectCampaign(path);
+    expect(inspection.phase).toBe("coordinator");
+    expect(inspection.resolutions[0]!.status.verified).toBe(false);
+    expect(inspection.resolutions[0]!.feedback?.verdicts.at(-1)).toMatchObject({
+      verifier: "reconstruction",
+      verdict: "INCONCLUSIVE",
+    });
+    expect(
+      deps.calls.filter(({ label }) =>
+        label?.includes("/reconstruction/derive"),
+      ),
+    ).toHaveLength(2);
   });
 
   test("terminal and delivery support preserve sanitized admission-audit mathematics", async () => {
@@ -1137,6 +1242,31 @@ describe("v14 campaign", () => {
     expect(audit?.prompt).toContain(sentinel);
     expect(audit?.prompt).toContain('"sourcePackets"');
     expect(audit?.prompt.split(sentinel)).toHaveLength(2);
+  });
+
+  test("route admission references a source packet already in claim support", async () => {
+    const path = campaignPath();
+    const deps = dependencies([firstReport, retainBatch, admissionPass]);
+    expect(
+      await start(
+        {
+          problem,
+          completionCriteria: criteria,
+          campaignPath: path,
+          settings: runSettings(),
+        },
+        deps,
+      ),
+    ).toMatchObject({ outcome: "paused", phase: "explorer" });
+    const audit = deps.calls.find(({ label }) =>
+      label?.includes("/audit/admission/"),
+    );
+    expect(audit?.prompt).toContain(
+      "identical to the support artifact with this call id",
+    );
+    const packetText =
+      "Checking when consecutive factors give a positive prime leaves";
+    expect(audit?.prompt.split(packetText)).toHaveLength(2);
   });
 
   test("resume after assembly never repeats the assembler", async () => {
