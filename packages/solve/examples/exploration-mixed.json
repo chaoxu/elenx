@@ -1,0 +1,30 @@
+{
+  "protocol": "exploration-v15",
+  "maxContextTokens": 200000,
+  "maxHandoffTokens": 24000,
+  "explorerGuidance": [],
+  "explorer": {
+    "provider": "openai-codex",
+    "model": "gpt-5.6-sol",
+    "reasoning": "max"
+  },
+  "handoffVerifier": {
+    "provider": "openai-codex",
+    "model": "gpt-5.6-luna",
+    "reasoning": "high"
+  },
+  "premiseVerifier": {
+    "provider": "openai-codex",
+    "model": "gpt-5.6-sol",
+    "reasoning": "max"
+  },
+  "sourceChecker": {
+    "model": "gpt-5.6-sol",
+    "reasoning": "max"
+  },
+  "proofVerifier": {
+    "provider": "openai-codex",
+    "model": "gpt-5.6-sol",
+    "reasoning": "max"
+  }
+}
