@@ -80,6 +80,7 @@ export function runSettings(overrides: Partial<Settings> = {}): Settings {
     protocol: "exploration-v15",
     maxContextTokens: 200_000,
     maxHandoffTokens: 24_000,
+    maxRepairDepth: null,
     explorerGuidance: [],
     explorer: selection(explorerModel),
     handoffVerifier: selection(handoffModel),
@@ -113,6 +114,7 @@ export interface Reply {
   readonly error?: string;
   readonly providerRetryable?: boolean;
   readonly throwAfter?: string;
+  readonly costUsd?: number;
 }
 
 export type SourceReply =
@@ -235,7 +237,7 @@ async function respond(
   reply: Reply,
 ): Promise<PiResult> {
   const state = reply.state ?? "succeeded";
-  const telemetry = fakePiTelemetry(options, state);
+  const telemetry = fakePiTelemetry(options, state, reply.costUsd);
   const receipt = await campaign.call(
     {
       label: options.label,

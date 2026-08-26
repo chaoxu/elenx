@@ -143,6 +143,7 @@ function freezeTask(
     completionCriteria: request.completionCriteria,
     maxContextTokens: value.maxContextTokens,
     maxHandoffTokens: value.maxHandoffTokens,
+    maxRepairDepth: value.maxRepairDepth,
     guidance: resolveGuidance(value.explorerGuidance),
     explorer: resolveProfile(models, value.explorer),
     handoffVerifier: resolveProfile(models, value.handoffVerifier),
@@ -224,6 +225,8 @@ interface CandidateRecord {
   readonly originCall: EntryId;
   readonly answer: string;
   readonly verdicts: readonly VerdictRecord[];
+  readonly parent?: EntryId;
+  readonly repairDepth: number;
 }
 
 interface State {
@@ -312,6 +315,11 @@ type Phase =
       readonly kind: "solved";
       readonly candidate: EntryId;
       readonly state: State;
+    }
+  | {
+      readonly kind: "repair-limit";
+      readonly candidate: EntryId;
+      readonly state: State;
     };
 
 interface StructuredCall<S extends z.ZodType = z.ZodType> {
@@ -331,6 +339,7 @@ function derivePhase(reader: Reader, task: Task): Phase {
   let context = initialContext();
   let after = records[0]?.seq ?? 0;
   let label = explorerLabel();
+  let repair: { readonly parent: EntryId; readonly depth: number } | undefined;
   for (let steps = 0; steps <= records.length + 1; steps += 1) {
     const explorerPhase: Extract<ModelPhase, { kind: "explorer" }> = {
       kind: "explorer",
@@ -385,23 +394,34 @@ function derivePhase(reader: Reader, task: Task): Phase {
       context = { kind: "handoff", value };
       after = reviewed.settled;
       label = explorerLabel(reviewed.call);
+      repair = undefined;
       continue;
     }
 
-    const candidate = findCandidate(
+    const found = findCandidate(
       reader,
       explored.value.answer,
       explored.settled,
       explored.call,
     );
-    if (candidate === undefined) {
+    if (found === undefined) {
       return { kind: "create-candidate", answer: explored.value.answer, state };
     }
+    const candidate =
+      repair === undefined
+        ? found
+        : { ...found, parent: repair.parent, repairDepth: repair.depth };
     const outcome = resolveCandidate(records, reader, task, candidate, state);
     if ("pending" in outcome) return outcome.pending;
     state.candidates.push(outcome.candidate);
     if (outcome.solved) {
       return { kind: "solved", candidate: candidate.id, state };
+    }
+    if (
+      task.maxRepairDepth !== null &&
+      candidate.repairDepth >= task.maxRepairDepth
+    ) {
+      return { kind: "repair-limit", candidate: candidate.id, state };
     }
     const defect = outcome.candidate.verdicts.at(-1);
     if (defect === undefined) throw new Error("failed candidate has no defect");
@@ -412,6 +432,7 @@ function derivePhase(reader: Reader, task: Task): Phase {
     };
     after = defect.record;
     label = explorerLabel(defect.call);
+    repair = { parent: candidate.id, depth: candidate.repairDepth + 1 };
   }
   throw new Error("exploration-v15 replay exceeded its transition bound");
 }
@@ -603,9 +624,13 @@ function findCandidate(
     ) {
       throw new Error("candidate verifier contract changed");
     }
-    return [{ id: entry.seq, originCall, answer, verdicts: [] }];
+    return [
+      { id: entry.seq, originCall, answer, verdicts: [], repairDepth: 0 },
+    ];
   });
-  if (matches.length > 1) throw new Error("duplicate candidate bytes");
+  // Identical bytes may recur when a repair resubmits the rejected answer.
+  // Journal order is deterministic, so each submission owns the earliest
+  // candidate entry after its own settled call.
   return matches[0];
 }
 
@@ -1125,6 +1150,14 @@ async function runCampaign(
         campaign.recordVerdict(phase.call, phase.verdict, phase.evidence);
         continue;
       }
+      if (phase.kind === "repair-limit") {
+        return {
+          outcome: "paused",
+          phase: "repair-limit",
+          candidate: phase.candidate,
+          reason: `candidate ${phase.candidate} reached the frozen repair depth ceiling`,
+        };
+      }
       if (dependencies.pauseRequested?.()) {
         return { outcome: "paused", phase: phase.kind };
       }
@@ -1216,6 +1249,12 @@ function cacheKeyFor(
 export function snapshot(reader: Reader, task: Task) {
   const phase = derivePhase(reader, task);
   const records = reader.records();
+  const pendingCandidate =
+    phase.kind === "premise-audit" ||
+    phase.kind === "source-check" ||
+    phase.kind === "proof-audit"
+      ? phase.candidate
+      : undefined;
   const candidates = records
     .filter(
       (entry): entry is Extract<Entry, { readonly kind: "candidate" }> =>
@@ -1229,15 +1268,23 @@ export function snapshot(reader: Reader, task: Task) {
           exploration.submission.action === "submit" &&
           exploration.submission.answer === answer,
       );
-      const replayed = phase.state.candidates.find(
-        ({ id }) => id === entry.seq,
-      );
+      const replayed =
+        phase.state.candidates.find(({ id }) => id === entry.seq) ??
+        (pendingCandidate?.id === entry.seq ? pendingCandidate : undefined);
       return {
         id: entry.seq,
         ...(origin === undefined ? {} : { originCall: origin.call }),
         answer,
         verdicts: replayed?.verdicts ?? [],
         status: deriveCandidateStatus(records, entry.seq),
+        ...(replayed === undefined
+          ? {}
+          : {
+              repairDepth: replayed.repairDepth,
+              ...(replayed.parent === undefined
+                ? {}
+                : { parent: replayed.parent }),
+            }),
       };
     });
   return {

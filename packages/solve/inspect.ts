@@ -169,6 +169,47 @@ export function inspectCampaign(path: string, options: InspectionOptions = {}) {
         spend: spendByCall.get(call.seq),
       };
     });
+    const candidatesById = new Map(
+      semantic.candidates.map((row) => [row.id, row]),
+    );
+    const candidates = semantic.candidates.map((row) => {
+      const originRow = callRows.find((call) => call.seq === row.originCall);
+      const turnRows = [
+        ...(originRow === undefined ? [] : [originRow]),
+        ...callRows.filter((call) => call.candidate === row.id),
+      ];
+      const measured = turnRows.flatMap((call) =>
+        call.spend !== undefined && "measuredUsage" in call.spend
+          ? [call.spend.measuredUsage]
+          : [],
+      );
+      const parentRow =
+        row.parent === undefined ? undefined : candidatesById.get(row.parent);
+      const triggeringDefect = parentRow?.verdicts.at(-1)?.verifier;
+      return {
+        ...row,
+        calls: turnRows.map(({ seq }) => seq),
+        elapsedMs: turnRows.reduce((total, call) => total + call.elapsedMs, 0),
+        ...(measured.length === 0
+          ? {}
+          : {
+              totalTokens: measured.reduce(
+                (total, usage) => total + usage.totalTokens,
+                0,
+              ),
+              estimatedCostUsd: measured.reduce(
+                (total, usage) => total + usage.estimatedCostUsd,
+                0,
+              ),
+            }),
+        ...(parentRow === undefined
+          ? {}
+          : {
+              ...(triggeringDefect === undefined ? {} : { triggeringDefect }),
+              regeneration: regenerationSummary(parentRow.answer, row.answer),
+            }),
+      };
+    });
     const last = records.at(-1);
     return {
       protocol: task.protocol,
@@ -176,6 +217,7 @@ export function inspectCampaign(path: string, options: InspectionOptions = {}) {
       completionCriteria: task.completionCriteria,
       maxContextTokens: task.maxContextTokens,
       maxHandoffTokens: task.maxHandoffTokens,
+      maxRepairDepth: task.maxRepairDepth,
       guidance: task.guidance,
       profiles: {
         explorer: publicProfile(task.explorer),
@@ -189,6 +231,7 @@ export function inspectCampaign(path: string, options: InspectionOptions = {}) {
       lastAtMs: last?.atMs ?? declaration.atMs,
       observedAtMs,
       ...semantic,
+      candidates,
       calls: callRows,
       spend: spend.summary,
       concurrency: concurrency(callRows),
@@ -242,6 +285,35 @@ function publicProfile(profile: {
     provider: profile.provider,
     model: profile.model,
     reasoning: profile.reasoning,
+  };
+}
+
+function regenerationSummary(parent: string, answer: string) {
+  const parentLines = parent.split("\n");
+  const answerLines = answer.split("\n");
+  let sharedPrefixLines = 0;
+  while (
+    sharedPrefixLines < parentLines.length &&
+    sharedPrefixLines < answerLines.length &&
+    parentLines[sharedPrefixLines] === answerLines[sharedPrefixLines]
+  ) {
+    sharedPrefixLines += 1;
+  }
+  let sharedSuffixLines = 0;
+  while (
+    sharedSuffixLines < parentLines.length - sharedPrefixLines &&
+    sharedSuffixLines < answerLines.length - sharedPrefixLines &&
+    parentLines[parentLines.length - 1 - sharedSuffixLines] ===
+      answerLines[answerLines.length - 1 - sharedSuffixLines]
+  ) {
+    sharedSuffixLines += 1;
+  }
+  return {
+    answerBytes: new TextEncoder().encode(answer).length,
+    parentLines: parentLines.length,
+    answerLines: answerLines.length,
+    sharedPrefixLines,
+    sharedSuffixLines,
   };
 }
 

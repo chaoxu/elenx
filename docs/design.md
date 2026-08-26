@@ -57,4 +57,4 @@ State derives from the journal. Resume reconciles settled explorer submissions, 
 
 ## Growth rule
 
-V15 deliberately omits note search, adaptive verification depth, parallel exploration, transcript reuse, reconstruction, formal tools, and richer stopping rules. Each remains an independent measured experiment. The kernel grows only when several applications need the same mechanical invariant.
+V15 deliberately omits note search, adaptive verification depth, parallel exploration, transcript reuse, reconstruction, and formal tools. Each remains an independent measured experiment. Stopping stays minimal: the only frozen stopping rule is the default-off repair-depth ceiling, and richer stopping policy remains deferred. The kernel grows only when several applications need the same mechanical invariant.

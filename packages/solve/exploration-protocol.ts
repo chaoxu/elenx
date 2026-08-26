@@ -19,6 +19,7 @@ const sourceProfile = z.strictObject({
   reasoning: piReasoning,
 });
 const positiveInteger = z.number().int().positive();
+const nonnegativeInteger = z.number().int().min(0);
 const nonblank = z.string().refine((value) => value.trim().length > 0, {
   message: "must contain non-whitespace text",
 });
@@ -33,6 +34,7 @@ export const settingsSchema = z
     protocol: z.literal(protocolName),
     maxContextTokens: positiveInteger.default(200_000),
     maxHandoffTokens: positiveInteger.default(24_000),
+    maxRepairDepth: nonnegativeInteger.nullable().default(null),
     explorerGuidance: userGuidance.default([]),
     explorer: modelProfile,
     handoffVerifier: modelProfile,
@@ -58,6 +60,7 @@ export const taskSchema = z
     completionCriteria: nonblank,
     maxContextTokens: positiveInteger,
     maxHandoffTokens: positiveInteger,
+    maxRepairDepth: nonnegativeInteger.nullable().default(null),
     guidance: z.array(guidanceModule),
     explorer: runtimeProfile,
     handoffVerifier: runtimeProfile,

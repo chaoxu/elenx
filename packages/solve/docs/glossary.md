@@ -22,6 +22,7 @@ A separate name requires distinct bytes, authority, or lifecycle.
 | **continuation**       | Transcript-preserving provider request after an output-length stop.                                          |
 | **recovery**           | Repeated operational work after interruption or provider failure.                                            |
 | **repair**             | New mathematical bytes created after semantic failure.                                                       |
+| **repair depth**       | Count of consecutive direct repairs from a line's original candidate; bounded by `maxRepairDepth`.           |
 | **profile**            | Frozen provider, model, reasoning, API, and base URL for one Pi model mode.                                  |
 | **projection**         | Allowlisted immutable fields supplied to one call.                                                           |
 

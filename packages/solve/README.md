@@ -19,7 +19,7 @@ The settings file freezes four Pi profiles and one isolated source-checker confi
 - isolated source-checker model and reasoning
 - exact proof verifier
 
-`maxContextTokens` bounds every model request. `maxHandoffTokens` bounds the packet crossing between explorers.
+`maxContextTokens` bounds every model request. `maxHandoffTokens` bounds the packet crossing between explorers. `maxRepairDepth`, `null` by default, bounds consecutive repairs of one failed candidate line; reaching it reports `repair-limit`.
 
 Every Pi call uses SSE, one required terminal tool, serial tool submission, eight output-length continuations, and one provider recovery. Provider-retryable phase failures restart from journal state with capped backoff.
 

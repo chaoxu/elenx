@@ -7,7 +7,7 @@ V15 explores through reviewed one-use handoffs and verifies one exact standalone
 Starting a campaign freezes:
 
 - exact problem and completion criteria
-- context and handoff ceilings
+- context, handoff, and repair-depth ceilings
 - resolved explorer guidance
 - explorer, handoff-verifier, premise-verifier, and proof-verifier profiles
 - isolated source-checker model and reasoning
@@ -58,6 +58,8 @@ The campaign reaches `solved` only when both required labels have candidate-boun
 
 Failed candidates remain immutable. The next explorer receives the exact rejected candidate and one bounded defect. Premise failures expose only the statement plus its refutation, application defect, unresolved source gap, or citation-mismatch detail. Premise inventories, source-search reports and transcripts, nonblocking source fields, previous PASS prose, and exploration history remain excluded. A repair is another complete candidate and repeats both gates.
 
+A candidate submitted from a failure context records its parent candidate and repair depth: the original candidate of a line has depth zero, and each direct repair adds one. A handoff resets the line whatever its review verdict. The frozen `maxRepairDepth` setting, `null` by default, bounds consecutive repairs of one line: when a candidate at that depth fails, the campaign reports `repair-limit` instead of dispatching another explorer, and zero forbids repair entirely. The report is terminal for the frozen campaign, since raising the ceiling requires a new campaign. Spend stays uncapped in the runtime; external drivers own monetary budgets.
+
 ## Recovery
 
 State is reconstructed from the append-only journal. Resume reconciles settled tool submissions, candidates, source calls, and verdicts before dispatching the first unresolved phase.
@@ -74,7 +76,7 @@ The first interrupt pauses after the active turn settles. The second aborts the 
 
 ## Inspection and export
 
-Inspection exposes explorer submissions, all stored notes, reviewed handoffs, candidate bytes, candidate status, model calls, source activity, concurrency, and measured provider spend. Exact requests and raw source output require `--include-inputs`.
+Inspection exposes explorer submissions, all stored notes, reviewed handoffs, candidate bytes, candidate status, model calls, source activity, concurrency, and measured provider spend. Each replayed candidate row carries its repair depth plus its originating and gate calls with their summed elapsed time and measured Pi usage; isolated source-check usage stays on the call row rather than in those sums. A repair additionally carries its parent candidate, triggering defect gate, and a regeneration summary of shared prefix and suffix lines against the parent, including while its own gates are still pending. Exact requests and raw source output require `--include-inputs`.
 
 Export requires one solved candidate and writes its immutable bytes without decoration or an added newline.
 

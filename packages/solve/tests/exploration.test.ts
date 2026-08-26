@@ -201,6 +201,184 @@ describe("v15 campaign", () => {
     expect(repairPrompt).not.toContain('"record"');
   });
 
+  test("repair lineage and regeneration metrics are inspectable", async () => {
+    const path = campaignPath();
+    const repaired = `${candidate}\nMoreover, the parity argument covers every integer sign case.`;
+    const deps = dependencies([
+      { ...submitCandidate, costUsd: 0.01 },
+      { ...noPremises, costUsd: 0.01 },
+      {
+        submission: { verdict: "FAIL", report: "PROOF_DEFECT" },
+        costUsd: 0.01,
+      },
+      {
+        submission: { action: "submit", answer: repaired },
+        costUsd: 0.01,
+      },
+      { ...noPremises, costUsd: 0.01 },
+      { ...proofPass, costUsd: 0.01 },
+    ]);
+    const report = await start(
+      {
+        problem,
+        completionCriteria: criteria,
+        campaignPath: path,
+        settings: runSettings(),
+      },
+      deps,
+    );
+    expect(report).toMatchObject({ outcome: "solved" });
+    const inspection = inspectCampaign(path);
+    expect(inspection.maxRepairDepth).toBe(null);
+    expect(inspection.candidates).toHaveLength(2);
+    const [first, second] = inspection.candidates;
+    expect(first).toMatchObject({ repairDepth: 0 });
+    expect(first).not.toHaveProperty("parent");
+    expect(first).not.toHaveProperty("regeneration");
+    expect(second).toMatchObject({
+      parent: first!.id,
+      repairDepth: 1,
+      triggeringDefect: "proof",
+      regeneration: {
+        answerBytes: new TextEncoder().encode(repaired).length,
+        parentLines: 1,
+        answerLines: 2,
+        sharedPrefixLines: 1,
+        sharedSuffixLines: 0,
+      },
+    });
+    expect(second!.calls).toHaveLength(3);
+    expect(second!.calls).toContain(second!.originCall!);
+    expect(second!.elapsedMs).toBeGreaterThanOrEqual(0);
+    expect(second!.totalTokens).toBe(60);
+    expect(second!.estimatedCostUsd).toBeCloseTo(0.03, 10);
+    expect(first!.totalTokens).toBe(60);
+  });
+
+  test("a repair resubmitting the rejected bytes stays replayable", async () => {
+    const path = campaignPath();
+    const deps = dependencies([
+      submitCandidate,
+      noPremises,
+      { submission: { verdict: "FAIL", report: "PROOF_DEFECT" } },
+      submitCandidate,
+      noPremises,
+      { submission: { verdict: "FAIL", report: "SECOND_DEFECT" } },
+    ]);
+    const settings = runSettings({ maxRepairDepth: 1 });
+    const report = await start(
+      {
+        problem,
+        completionCriteria: criteria,
+        campaignPath: path,
+        settings,
+      },
+      deps,
+    );
+    expect(report).toMatchObject({ outcome: "paused", phase: "repair-limit" });
+    const inspection = inspectCampaign(path);
+    expect(inspection.phase).toBe("repair-limit");
+    expect(inspection.candidates).toHaveLength(2);
+    expect(inspection.candidates[0]!.answer).toBe(
+      inspection.candidates[1]!.answer,
+    );
+    expect(inspection.candidates[1]).toMatchObject({
+      parent: inspection.candidates[0]!.id,
+      repairDepth: 1,
+    });
+
+    const resumed = dependencies([]);
+    expect(
+      await resume({ campaignPath: path, settings }, resumed),
+    ).toMatchObject({ outcome: "paused", phase: "repair-limit" });
+    expect(resumed.calls).toHaveLength(0);
+  });
+
+  test("a zero repair ceiling forbids repair entirely", async () => {
+    const path = campaignPath();
+    const deps = dependencies([
+      submitCandidate,
+      noPremises,
+      { submission: { verdict: "FAIL", report: "PROOF_DEFECT" } },
+    ]);
+    const report = await start(
+      {
+        problem,
+        completionCriteria: criteria,
+        campaignPath: path,
+        settings: runSettings({ maxRepairDepth: 0 }),
+      },
+      deps,
+    );
+    expect(report).toMatchObject({ outcome: "paused", phase: "repair-limit" });
+    expect(deps.calls).toHaveLength(3);
+  });
+
+  test("a pending repair candidate already shows its lineage", async () => {
+    const path = campaignPath();
+    const repaired = `${candidate}\nThe missing sign case is now argued.`;
+    const deps = dependencies([
+      submitCandidate,
+      noPremises,
+      { submission: { verdict: "FAIL", report: "PROOF_DEFECT" } },
+      { submission: { action: "submit", answer: repaired } },
+    ]);
+    const report = await start(
+      {
+        problem,
+        completionCriteria: criteria,
+        campaignPath: path,
+        settings: runSettings(),
+      },
+      deps,
+    );
+    expect(report).toMatchObject({ outcome: "paused", phase: "premise-audit" });
+    const inspection = inspectCampaign(path);
+    const pending = inspection.candidates.at(-1);
+    expect(pending).toMatchObject({
+      repairDepth: 1,
+      parent: inspection.candidates[0]!.id,
+      triggeringDefect: "proof",
+    });
+    expect(pending!.regeneration).toBeDefined();
+    expect(pending!.verdicts).toHaveLength(0);
+  });
+
+  test("the frozen repair depth ceiling stops a failing line deterministically", async () => {
+    const path = campaignPath();
+    const repaired = `${candidate}\nThe repaired case split still fails.`;
+    const deps = dependencies([
+      submitCandidate,
+      noPremises,
+      { submission: { verdict: "FAIL", report: "PROOF_DEFECT" } },
+      { submission: { action: "submit", answer: repaired } },
+      noPremises,
+      { submission: { verdict: "FAIL", report: "SECOND_DEFECT" } },
+    ]);
+    const settings = runSettings({ maxRepairDepth: 1 });
+    const report = await start(
+      {
+        problem,
+        completionCriteria: criteria,
+        campaignPath: path,
+        settings,
+      },
+      deps,
+    );
+    expect(report).toMatchObject({ outcome: "paused", phase: "repair-limit" });
+    expect(deps.calls).toHaveLength(6);
+    const inspection = inspectCampaign(path);
+    expect(inspection.maxRepairDepth).toBe(1);
+    expect(inspection.candidates.at(-1)).toMatchObject({ repairDepth: 1 });
+    expect(inspection.candidates.at(-1)!.id).toBe(report.candidate!);
+
+    const resumed = dependencies([]);
+    expect(
+      await resume({ campaignPath: path, settings }, resumed),
+    ).toMatchObject({ outcome: "paused", phase: "repair-limit" });
+    expect(resumed.calls).toHaveLength(0);
+  });
+
   test("premise failures expose only harness-selected repair fields", async () => {
     const path = campaignPath();
     const premise = {
