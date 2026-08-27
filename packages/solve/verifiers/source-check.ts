@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import {
   mkdir,
   mkdtemp,
@@ -493,6 +494,53 @@ const disabledFeatures = [
   "workspace_dependencies",
 ] as const;
 
+const providerId = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/u;
+const environmentKey = /^[A-Z][A-Z0-9_]{0,63}$/u;
+const usageTag = /^[A-Za-z0-9][A-Za-z0-9._:/@+\-]{0,127}$/u;
+
+function codexLbConfig(environment: NodeJS.ProcessEnv): readonly string[] {
+  const provider = environment["ELENX_SOURCE_CODEX_PROVIDER"];
+  const baseUrl = environment["ELENX_SOURCE_CODEX_BASE_URL"];
+  const apiKeyEnvironment = environment["ELENX_SOURCE_CODEX_API_KEY_ENV"];
+  const tag = environment["ELENX_LAB_CODEX_LB_USAGE_TAG"];
+  const values = [provider, baseUrl, apiKeyEnvironment, tag];
+  if (values.every((value) => value === undefined)) return [];
+  if (values.some((value) => value === undefined)) {
+    throw new Error(
+      "incomplete Elenx source-check Codex provider configuration",
+    );
+  }
+  if (!providerId.test(provider!))
+    throw new Error("invalid source-check provider ID");
+  if (!environmentKey.test(apiKeyEnvironment!)) {
+    throw new Error("invalid source-check API-key environment name");
+  }
+  if (!usageTag.test(tag!)) throw new Error("invalid source-check usage tag");
+  const parsedBaseUrl = new URL(baseUrl!);
+  if (!["http:", "https:"].includes(parsedBaseUrl.protocol)) {
+    throw new Error("source-check base URL must use HTTP or HTTPS");
+  }
+  const prefix = `model_providers.${provider}`;
+  return [
+    "-c",
+    `model_provider=${JSON.stringify(provider)}`,
+    "-c",
+    `${prefix}.name="openai"`,
+    "-c",
+    `${prefix}.base_url=${JSON.stringify(parsedBaseUrl.toString().replace(/\/$/u, ""))}`,
+    "-c",
+    `${prefix}.wire_api="responses"`,
+    "-c",
+    `${prefix}.supports_websockets=false`,
+    "-c",
+    `${prefix}.env_key=${JSON.stringify(apiKeyEnvironment)}`,
+    "-c",
+    `${prefix}.http_headers."X-Codex-LB-Usage-Tag"=${JSON.stringify(tag)}`,
+    "-c",
+    `${prefix}.http_headers."X-Codex-LB-Required-Capability"="usage_tag_v1"`,
+  ];
+}
+
 export function codexSourceCheck(
   options: {
     readonly command?: string;
@@ -515,10 +563,15 @@ export function codexSourceCheck(
         inherited["CODEX_HOME"] ??
           join(inherited["HOME"] ?? homedir(), ".codex"),
       );
-      await symlink(
-        await realpath(join(inheritedHome, "auth.json")),
-        join(codexHome, "auth.json"),
-      );
+      const inheritedAuth = join(inheritedHome, "auth.json");
+      if (existsSync(inheritedAuth)) {
+        await symlink(
+          await realpath(inheritedAuth),
+          join(codexHome, "auth.json"),
+        );
+      } else {
+        await writeFile(join(codexHome, "auth.json"), "{}\n", { mode: 0o600 });
+      }
       const env: NodeJS.ProcessEnv = { ...inherited, CODEX_HOME: codexHome };
       delete env["CODEX_REMOTE_PAYLOAD"];
       delete env["CODEX_THREAD_ID"];
@@ -554,6 +607,7 @@ export function codexSourceCheck(
           "--ignore-user-config",
           "--ignore-rules",
           "--strict-config",
+          ...codexLbConfig(env),
           "--skip-git-repo-check",
           "--sandbox",
           "read-only",

@@ -141,6 +141,61 @@ test("Codex source search isolates context and preserves auditable output", asyn
   }
 });
 
+test("Codex source search uses the explicit codex-lb provider and usage tag", async () => {
+  const fixture = await fixtureEnvironment();
+  try {
+    const result = await codexSourceCheck({
+      command: fakeCodex,
+      environment: {
+        ...fixture.environment,
+        CODEX_LB_API_KEY: "test-only",
+        ELENX_SOURCE_CODEX_PROVIDER: "codex-lb",
+        ELENX_SOURCE_CODEX_BASE_URL: "http://127.0.0.1:2455/backend-api/codex",
+        ELENX_SOURCE_CODEX_API_KEY_ENV: "CODEX_LB_API_KEY",
+        ELENX_LAB_CODEX_LB_USAGE_TAG: "experiment/run/attempt-1",
+      },
+    })(request);
+    expect(result.state).toBe("succeeded");
+    const execution = (await captures(fixture.capture))[1]!;
+    const args = execution.args as string[];
+    const configs = args.flatMap((argument, index) =>
+      argument === "-c" ? [args[index + 1]] : [],
+    );
+    expect(configs).toContain('model_provider="codex-lb"');
+    expect(configs).toContain(
+      'model_providers.codex-lb.http_headers."X-Codex-LB-Usage-Tag"="experiment/run/attempt-1"',
+    );
+    expect(configs).toContain(
+      'model_providers.codex-lb.env_key="CODEX_LB_API_KEY"',
+    );
+  } finally {
+    await rm(fixture.directory, { recursive: true, force: true });
+  }
+});
+
+test("environment-key source auth does not require a persistent Codex login", async () => {
+  const fixture = await fixtureEnvironment();
+  try {
+    await rm(join(fixture.environment.CODEX_HOME!, "auth.json"));
+    const result = await codexSourceCheck({
+      command: fakeCodex,
+      environment: {
+        ...fixture.environment,
+        CODEX_LB_API_KEY: "test-only",
+        ELENX_SOURCE_CODEX_PROVIDER: "codex-lb",
+        ELENX_SOURCE_CODEX_BASE_URL: "http://127.0.0.1:2455/backend-api/codex",
+        ELENX_SOURCE_CODEX_API_KEY_ENV: "CODEX_LB_API_KEY",
+        ELENX_LAB_CODEX_LB_USAGE_TAG: "experiment/run/attempt-1",
+      },
+    })(request);
+    expect(result.state).toBe("succeeded");
+    const execution = (await captures(fixture.capture))[1]!;
+    expect(execution.homeEntries).toEqual(["auth.json"]);
+  } finally {
+    await rm(fixture.directory, { recursive: true, force: true });
+  }
+});
+
 test("malformed Codex JSONL retains its valid prefix for inspection", async () => {
   const fixture = await fixtureEnvironment("malformed");
   try {

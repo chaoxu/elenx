@@ -2,6 +2,7 @@
 
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
+import { isAbsolute } from "node:path";
 import { parseArgs } from "node:util";
 
 import { resume, settings, start, type Settings } from "./exploration";
@@ -70,7 +71,7 @@ async function main(args: readonly string[]): Promise<void> {
   }
   const settings = await readSettingsFile(positionals.at(-1)!);
   const { ModelRuntime } = await import("@earendil-works/pi-coding-agent");
-  const runtime = await ModelRuntime.create({ modelsPath: null });
+  const runtime = await ModelRuntime.create(modelRuntimeOptions(process.env));
   await requireCredentials(runtime, providers(settings));
   const models = withSerialToolCalls(runtime);
   const controller = new AbortController();
@@ -124,6 +125,17 @@ async function main(args: readonly string[]): Promise<void> {
     process.off("SIGINT", stop);
     process.off("SIGTERM", stop);
   }
+}
+
+export function modelRuntimeOptions(environment: NodeJS.ProcessEnv): {
+  readonly modelsPath: string | null;
+} {
+  const modelsPath = environment["ELENX_MODELS_PATH"];
+  if (modelsPath === undefined) return { modelsPath: null };
+  if (!isAbsolute(modelsPath)) {
+    throw new Error("ELENX_MODELS_PATH must be absolute");
+  }
+  return { modelsPath };
 }
 
 // run resumes with the same file arguments it started with; a problem or
