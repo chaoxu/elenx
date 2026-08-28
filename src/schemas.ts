@@ -78,6 +78,7 @@ export const entry = z.union([
     ...base,
     kind: z.literal(ENTRY_KINDS.call),
     label: z.string().min(1),
+    role: z.string().min(1).optional(),
     candidate: entryId.optional(),
     request: json,
     tools: z.array(tool).readonly(),

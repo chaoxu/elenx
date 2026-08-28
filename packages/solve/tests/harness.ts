@@ -249,6 +249,7 @@ async function respond(
   const receipt = await campaign.call(
     {
       label: options.label,
+      ...(options.role === undefined ? {} : { role: options.role }),
       request: fakePiRequest(options),
       ...(options.candidate === undefined
         ? {}

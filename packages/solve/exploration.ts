@@ -352,6 +352,10 @@ type Phase =
       readonly state: State;
     };
 
+function phaseRole(phase: ModelPhase): string {
+  return phase.kind === "recall" ? "archivist" : phase.kind;
+}
+
 interface StructuredCall<S extends z.ZodType = z.ZodType> {
   readonly profile: RuntimeProfile;
   readonly key: string;
@@ -1140,6 +1144,7 @@ async function executePhase(
     const receipt = await campaign.call(
       {
         label: phase.label,
+        role: phaseRole(phase),
         candidate: phase.candidate.id,
         request: jsonSnapshot(phase.request),
         ...(dependencies.signal === undefined
@@ -1193,6 +1198,7 @@ async function executePhase(
     {
       ...prepared,
       label: phase.label,
+      role: phaseRole(phase),
       ...(phase.kind === "premise-audit" || phase.kind === "proof-audit"
         ? { candidate: phase.candidate.id }
         : {}),

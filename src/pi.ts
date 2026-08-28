@@ -60,6 +60,7 @@ export interface PiRunOptions {
   readonly models: PiModels;
   readonly model: Model<Api>;
   readonly label: string;
+  readonly role?: string;
   readonly system?: string;
   readonly prompt: string;
   readonly reasoning?: ThinkingLevel;
@@ -854,6 +855,7 @@ function withPromptCacheKey(payload: unknown, cacheKey: string | undefined) {
 interface PiCallExecutionOptions {
   readonly request: z.output<typeof piRequest>;
   readonly label: string;
+  readonly role?: string;
   readonly candidate?: EntryId;
   readonly tools?: readonly Tool[];
   readonly models: PiModels;
@@ -872,6 +874,7 @@ async function runPiCall(
   const receipt = await campaign.call(
     {
       label: options.label,
+      ...(options.role === undefined ? {} : { role: options.role }),
       ...(options.candidate === undefined
         ? {}
         : { candidate: options.candidate }),
@@ -1052,6 +1055,7 @@ export async function runPi(
   return runPiCall(campaign, {
     request: parsed,
     label: options.label,
+    ...(options.role === undefined ? {} : { role: options.role }),
     ...(options.candidate === undefined
       ? {}
       : { candidate: options.candidate }),

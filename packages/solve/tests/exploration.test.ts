@@ -482,6 +482,7 @@ describe("v15 campaign", () => {
 
     const archivistPrompt = deps.calls[2]!.prompt;
     expect(deps.calls[2]!.label).toContain("/recall/");
+    expect(deps.calls[2]!.role).toBe("archivist");
     expect(archivistPrompt).toContain("Durable note archive");
     expect(archivistPrompt).toContain("OLD_OBSTRUCTION_NOTE");
     expect(archivistPrompt).toContain("CARRIED_NOTE");
@@ -563,9 +564,11 @@ describe("v15 campaign", () => {
     expect(report).toMatchObject({ outcome: "solved" });
     expect(deps.calls).toHaveLength(6);
     expect(deps.calls[0]!.label).toContain("/explorer/initial");
+    expect(deps.calls[0]!.role).toBe("explorer");
     expect(
       deps.calls.filter(({ label }) => label?.includes("/recall/")),
     ).toHaveLength(1);
+    expect(deps.calls[2]!.role).toBe("archivist");
     expect(deps.calls[3]!.prompt).not.toContain("Recalled notes");
   });
 

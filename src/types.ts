@@ -70,6 +70,7 @@ export interface Reader {
 
 export interface CallOptions {
   readonly label: string;
+  readonly role?: string;
   readonly candidate?: EntryId;
   readonly request: Json;
   readonly tools?: readonly Tool[];

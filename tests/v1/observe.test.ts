@@ -75,6 +75,7 @@ test("projects opaque application data, calls, candidates, and verdicts", async 
     const { call } = await campaign.call(
       {
         label: "proof",
+        role: "proof-auditor",
         candidate,
         request: { custom: true },
       },
@@ -92,6 +93,7 @@ test("projects opaque application data, calls, candidates, and verdicts", async 
     calls: [
       {
         label: "proof",
+        role: "proof-auditor",
         settlement: "returned",
         candidateId: 2,
         tools: [],

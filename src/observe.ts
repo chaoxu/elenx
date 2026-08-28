@@ -54,6 +54,7 @@ export interface CoreCampaignSummaryV1 {
 export interface CoreCallObservationV1 {
   readonly id: EntryId;
   readonly label: string;
+  readonly role?: string;
   readonly candidateId?: EntryId;
   readonly startedAtMs: number;
   readonly settledAtMs?: number;
@@ -328,6 +329,7 @@ function projectCall(
   return {
     id: call.seq,
     label: call.label,
+    ...(call.role === undefined ? {} : { role: call.role }),
     ...(call.candidate === undefined ? {} : { candidateId: call.candidate }),
     startedAtMs: call.atMs,
     ...(result === undefined ? {} : { settledAtMs: result.atMs }),

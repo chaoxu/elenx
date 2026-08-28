@@ -113,6 +113,10 @@ class CampaignWriter extends CampaignReader implements Campaign {
     runner: (context: CallContext) => Promise<unknown>,
   ): Promise<CallReceipt> {
     const label = z.string().min(1).parse(options.label);
+    const role =
+      options.role === undefined
+        ? undefined
+        : z.string().min(1).parse(options.role);
     const candidate =
       options.candidate === undefined
         ? undefined
@@ -124,6 +128,7 @@ class CampaignWriter extends CampaignReader implements Campaign {
     const start = this.journal.append({
       kind: "call",
       label,
+      ...(role === undefined ? {} : { role }),
       ...(candidate === undefined ? {} : { candidate }),
       request,
       tools: prepared.map(({ declaration }) => declaration),

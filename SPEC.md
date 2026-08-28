@@ -35,7 +35,7 @@ Every record has a positive `seq`, an informational nonnegative `atMs`, and one 
 |---|---|
 | `campaign` | application id and JSON configuration |
 | `candidate` | exact material bytes and frozen nonempty verifier set |
-| `call` | label, optional candidate sequence, exact JSON request, and selected tool declarations |
+| `call` | label, optional stable role, optional candidate sequence, exact JSON request, and selected tool declarations |
 | `tool-call` | call sequence, optional provider source id, tool name, and validated JSON input |
 | `call-result` | parent call sequence and either returned JSON or thrown error text |
 | `tool-result` | parent tool-call sequence and either returned JSON or thrown error text |
@@ -48,6 +48,7 @@ Rows and public values are validated with closed Zod schemas. The row primary ke
 ```ts
 interface CallOptions {
   readonly label: string;
+  readonly role?: string;
   readonly candidate?: EntryId;
   readonly request: Json;
   readonly tools?: readonly Tool[];
@@ -64,7 +65,7 @@ interface CallContext {
 campaign.call(options, runner): Promise<{ call: EntryId; output: Json }>
 ```
 
-`call` validates and snapshots the optional candidate sequence, request, and each tool declaration, appends `call`, and then invokes `runner` with that recorded request. It appends one `call-result` if the runner settles. A crash may leave only the call row. Labels are application vocabulary; package projections recognize their own records through strict versioned request discriminators rather than a reserved namespace.
+`call` validates and snapshots the optional role, optional candidate sequence, request, and each tool declaration, appends `call`, and then invokes `runner` with that recorded request. It appends one `call-result` if the runner settles. A crash may leave only the call row. Labels identify specific operations and retain their application semantics. Roles identify stable application actors so observers can group changing call labels without interpreting application vocabulary. Package projections recognize their own records through strict versioned request discriminators rather than a reserved namespace.
 
 A tool is defined with `defineTool({ name, description, input, replay: "safe", run })`, where `input` is a Zod schema. The replay declaration asserts that every valid repetition after an interrupted phase is harmless. Pure and read-only actions qualify; a write qualifies only when an application-stable semantic key or reconciliation rule survives phase restart. Calls reject unclassified tools before writing a call row. Elenx records `z.toJSONSchema(input)`. An audited wrapper parses each invocation with the same schema, appends `tool-call` before `run` executes, and passes `run` the containing call sequence, tool-call sequence, optional provider source ID, and abort signal. It appends one `tool-result` after settlement. Invalid arguments do not run `run`. Schema getters and refinements are allowed and must be pure. Transforms are unsupported because the frozen JSON Schema cannot represent them. The call stops accepting new tool invocations when its runner settles and waits for every admitted tool invocation before writing its result. `close()` refuses while a local call remains active.
 
