@@ -6,14 +6,18 @@ import { isAbsolute } from "node:path";
 import { parseArgs } from "node:util";
 
 import { resume, settings, start, type Settings } from "./exploration";
+import { executionContract, executionReport } from "./execution-contract";
 import { exportAnswer, inspectCampaign } from "./inspect";
 import { withSerialToolCalls } from "./serial-tools";
 
 export type { SolveDependencies, SolveModels } from "./runtime";
 export { resume, settings, start } from "./exploration";
 export type { Report, Settings } from "./exploration";
+export { executionContract } from "./execution-contract";
+export type { ExecutionContract, ExecutionReport } from "./execution-contract";
 
 const usage = `Usage:
+  elenx-solve contract
   elenx-solve run PROBLEM.md CRITERIA.md CAMPAIGN.db SETTINGS.json
   elenx-solve start PROBLEM.md CRITERIA.md CAMPAIGN.db SETTINGS.json
   elenx-solve resume CAMPAIGN.db SETTINGS.json
@@ -46,6 +50,13 @@ async function main(args: readonly string[]): Promise<void> {
     return;
   }
   const [command, ...positionals] = parsed.positionals;
+  if (command === "contract") {
+    if (positionals.length !== 0 || parsed.values["include-inputs"] === true) {
+      throw new Error(usage);
+    }
+    writeJson(executionContract);
+    return;
+  }
   if (command === "inspect") {
     if (positionals.length !== 1) throw new Error(usage);
     writeJson(
@@ -118,7 +129,7 @@ async function main(args: readonly string[]): Promise<void> {
         : command === "start"
           ? await startOnce()
           : await resumeOnce(positionals[0]!);
-    writeJson(report);
+    writeJson(executionReport(report));
     if (report.outcome === "interrupted") process.exitCode = 130;
     if (report.outcome === "call-failure") process.exitCode = 1;
   } finally {

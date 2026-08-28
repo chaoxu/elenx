@@ -59,6 +59,10 @@ try {
     [process.execPath, "run", "node_modules/elenx-solve/solve.ts", "--help"],
     consumer,
   );
+  await run(
+    [process.execPath, "run", "node_modules/elenx-solve/solve.ts", "contract"],
+    consumer,
+  );
 } finally {
   await rm(temporary, { recursive: true, force: true });
 }

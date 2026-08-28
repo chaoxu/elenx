@@ -25,6 +25,16 @@ Every Pi call uses SSE, one required terminal tool, serial tool submission, eigh
 
 Stable per-role prompt-cache keys are separate from random per-call transport sessions.
 
+## Execution contract
+
+External run managers read the versioned CLI contract without loading credentials or opening a campaign:
+
+```sh
+bun solve.ts contract
+```
+
+The contract identifies the application protocol, exact `run` argument order, report schema, and terminal conditions. Every CLI run report carries the same schema version, application ID, and protocol. A manager freezes this object with the run and refuses a checkout or worker image that reports a different contract.
+
 ## Resume, inspect, and export
 
 ```sh
