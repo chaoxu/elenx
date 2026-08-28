@@ -75,6 +75,10 @@ import {
   PI_TELEMETRY_SCHEMA_VERSIONS, piTelemetry, runPi,
   type PiResult, type PiSpend,
 } from "elenx/pi";
+import {
+  inspectCoreCampaign, inspectCoreCampaignSummary,
+  type CoreCampaignObservationV1, type CoreCampaignSummaryV1,
+} from "elenx/observe";
 import { z } from "zod";
 
 const campaign = createCampaign("consumer.db", "packed-consumer", null);
@@ -92,7 +96,8 @@ void [entryIdSchema, verdictSchema, openCampaign, openReader,
   returnedToolSubmission, ELENX_PI_TELEMETRY_SCHEMA, PI_TELEMETRY_SCHEMA_VERSIONS,
   piReasoning, piRequestAttempts, piTelemetry, runPi];
 void (undefined as unknown as CallReceipt | Campaign | Entry | Json | Verdict |
-  PiResult | PiSpend);
+  PiResult | PiSpend | CoreCampaignObservationV1 | CoreCampaignSummaryV1);
+void [inspectCoreCampaign, inspectCoreCampaignSummary];
 `,
   );
   await run([process.execPath, "install", "--ignore-scripts"], consumer);

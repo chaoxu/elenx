@@ -48,43 +48,57 @@ export function deriveCandidateStatus(
   records: readonly Entry[],
   candidate: EntryId,
 ): CandidateStatus {
-  const declaration = records.find(
-    (entry) => entry.kind === "candidate" && entry.seq === candidate,
-  );
-  if (declaration?.kind !== "candidate") {
+  const status = deriveCandidateStatuses(records).get(candidate);
+  if (status === undefined) {
     throw new Error(`candidate not found: ${candidate}`);
   }
+  return status;
+}
+
+export function deriveCandidateStatuses(
+  records: readonly Entry[],
+): ReadonlyMap<EntryId, CandidateStatus> {
   const calls = new Map(
     records
       .filter((entry) => entry.kind === "call")
       .map((entry) => [entry.seq, entry]),
   );
-  const verdicts = records.flatMap((entry) => {
-    if (entry.kind !== "verdict") return [];
+  const verdicts = new Map<
+    EntryId,
+    Map<string, { pass?: EntryId; failed: boolean }>
+  >();
+  for (const entry of records) {
+    if (entry.kind !== "verdict") continue;
     const call = calls.get(entry.call);
-    return call?.kind === "call" && call.candidate === candidate
-      ? [{ entry, verifier: call.label }]
-      : [];
-  });
-  const missing: string[] = [];
-  const failed: string[] = [];
-  const passes: EntryId[] = [];
-  for (const verifier of declaration.requiredVerifiers) {
-    const values = verdicts.filter((value) => value.verifier === verifier);
-    const pass = values.find((value) => value.entry.verdict === "PASS");
-    if (pass === undefined) {
-      missing.push(verifier);
-    } else {
-      passes.push(pass.entry.seq);
+    if (call?.kind !== "call" || call.candidate === undefined) continue;
+    const byVerifier = verdicts.get(call.candidate) ?? new Map();
+    const outcome = byVerifier.get(call.label) ?? { failed: false };
+    if (entry.verdict === "PASS" && outcome.pass === undefined) {
+      outcome.pass = entry.seq;
     }
-    if (values.some((value) => value.entry.verdict === "FAIL")) {
-      failed.push(verifier);
-    }
+    if (entry.verdict === "FAIL") outcome.failed = true;
+    byVerifier.set(call.label, outcome);
+    verdicts.set(call.candidate, byVerifier);
   }
-  return {
-    verified: missing.length === 0 && failed.length === 0,
-    missing,
-    failed,
-    passes,
-  };
+  const statuses = new Map<EntryId, CandidateStatus>();
+  for (const declaration of records) {
+    if (declaration.kind !== "candidate") continue;
+    const values = verdicts.get(declaration.seq);
+    const missing: string[] = [];
+    const failed: string[] = [];
+    const passes: EntryId[] = [];
+    for (const verifier of declaration.requiredVerifiers) {
+      const outcome = values?.get(verifier);
+      if (outcome?.pass === undefined) missing.push(verifier);
+      else passes.push(outcome.pass);
+      if (outcome?.failed === true) failed.push(verifier);
+    }
+    statuses.set(declaration.seq, {
+      verified: missing.length === 0 && failed.length === 0,
+      missing,
+      failed,
+      passes,
+    });
+  }
+  return statuses;
 }

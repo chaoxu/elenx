@@ -20,7 +20,8 @@
   ],
   "exports": {
     ".": "./src/index.ts",
-    "./pi": "./src/pi.ts"
+    "./pi": "./src/pi.ts",
+    "./observe": "./src/observe.ts"
   },
   "scripts": {
     "format": "prettier --write . --ignore-path .prettierignore",

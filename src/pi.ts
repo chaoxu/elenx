@@ -466,6 +466,12 @@ function spendSummary(operations: readonly PiSpendOperation[]) {
   };
 }
 
+export function summarizePiSpend(
+  operations: readonly PiSpendOperation[],
+): PiSpendSummary {
+  return spendSummary(operations);
+}
+
 export type PiSpendSummary = ReturnType<typeof spendSummary>;
 
 export function derivePiSpend(entries: readonly Entry[]) {
