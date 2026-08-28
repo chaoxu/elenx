@@ -502,10 +502,15 @@ function codexLbConfig(environment: NodeJS.ProcessEnv): readonly string[] {
   const provider = environment["ELENX_SOURCE_CODEX_PROVIDER"];
   const baseUrl = environment["ELENX_SOURCE_CODEX_BASE_URL"];
   const apiKeyEnvironment = environment["ELENX_SOURCE_CODEX_API_KEY_ENV"];
+  // The three source-specific vars decide whether the source-checker uses a
+  // custom Codex provider. The usage tag is shared with the explorer, so it
+  // must not by itself force this config: an explorer running through codex-lb
+  // sets the tag while the source-checker stays on native OAuth (codex-lb's
+  // API-key proxy does not provision the server-side web_search tool).
+  const source = [provider, baseUrl, apiKeyEnvironment];
+  if (source.every((value) => value === undefined)) return [];
   const tag = environment["ELENX_LAB_CODEX_LB_USAGE_TAG"];
-  const values = [provider, baseUrl, apiKeyEnvironment, tag];
-  if (values.every((value) => value === undefined)) return [];
-  if (values.some((value) => value === undefined)) {
+  if (source.some((value) => value === undefined) || tag === undefined) {
     throw new Error(
       "incomplete Elenx source-check Codex provider configuration",
     );

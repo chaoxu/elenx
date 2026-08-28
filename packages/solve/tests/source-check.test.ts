@@ -173,6 +173,31 @@ test("Codex source search uses the explicit codex-lb provider and usage tag", as
   }
 });
 
+test("an explorer usage tag alone keeps the source-checker on native Codex", async () => {
+  const fixture = await fixtureEnvironment();
+  try {
+    const result = await codexSourceCheck({
+      command: fakeCodex,
+      environment: {
+        ...fixture.environment,
+        ELENX_LAB_CODEX_LB_USAGE_TAG: "experiment/run/attempt-1",
+      },
+    })(request);
+    expect(result.state).toBe("succeeded");
+    const execution = (await captures(fixture.capture))[1]!;
+    const args = execution.args as string[];
+    const configs = args.flatMap((argument, index) =>
+      argument === "-c" ? [args[index + 1]] : [],
+    );
+    expect(configs).not.toContain('model_provider="codex-lb"');
+    expect(configs.some((value) => value?.startsWith("model_provider="))).toBe(
+      false,
+    );
+  } finally {
+    await rm(fixture.directory, { recursive: true, force: true });
+  }
+});
+
 test("environment-key source auth does not require a persistent Codex login", async () => {
   const fixture = await fixtureEnvironment();
   try {
