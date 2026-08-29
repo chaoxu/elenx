@@ -3,7 +3,8 @@
 // into the note projection, resolves every settled phase in order, and
 // stops at the first unresolved one. runCampaign dispatches the fold's
 // phase; snapshot projects the rest for the CLI. Everything here is pure
-// over the journal: matching re-derives the exact frozen bytes in turns.ts.
+// over the journal. Matching re-derives the frozen bytes in turns.ts, and
+// the defect-text builders below author frozen bytes of their own.
 
 import { isDeepStrictEqual } from "node:util";
 
@@ -29,8 +30,12 @@ import {
   type TriageSubmission,
   type VerificationMode,
 } from "./exploration-protocol";
+// The external-premises mode reuses the audited premise and source machinery
+// verbatim, scoped to one note's exact text instead of a whole candidate.
 import {
   boundaryLabel,
+  callParameters,
+  candidateVerifierLabels,
   curationLabel,
   curationTurn,
   estimatedTextTokens,
@@ -159,7 +164,7 @@ export type ModelPhase =
       readonly view: ServeView;
     };
 
-export type Phase =
+type Phase =
   | ModelPhase
   | {
       readonly kind: "create-candidate";
@@ -187,6 +192,12 @@ export function phaseRole(phase: ModelPhase): string {
   if (phase.kind === "note-source-check") return "source-check";
   return phase.kind;
 }
+
+// ---------------------------------------------------------------------------
+// Frozen defect texts. These strings become finding and report bytes that
+// flow into later prompts and journal evidence, so they are replay-frozen
+// exactly like the call surface in turns.ts.
+// ---------------------------------------------------------------------------
 
 function mechanicalFinding(
   goal: string,
@@ -227,6 +238,71 @@ function batteryFinding(
     text: `Goal candidate ${candidate} for note ${goal} failed boundary verification.\n\nFailing verdicts:\n${JSON.stringify(quoted, null, 2)}`,
     basedOn: [],
   };
+}
+
+function defectReport(report: string, details: unknown): string {
+  return `${report}\n\nExact blocking findings:\n${JSON.stringify(details, null, 2)}`;
+}
+
+function premiseRepairFindings(findings: readonly PremiseFinding[]): Json[] {
+  const selected: Json[] = [];
+  for (const finding of findings) {
+    if (finding.standing === "REFUTED") {
+      selected.push({
+        statement: finding.statement,
+        standing: finding.standing,
+        refutation: finding.refutation,
+      });
+    }
+    if (finding.standing === "MISAPPLIED") {
+      selected.push({
+        statement: finding.statement,
+        standing: finding.standing,
+        defect: finding.defect,
+      });
+    }
+  }
+  return selected;
+}
+
+function sourceRepairFindings(
+  resolutions: readonly SourceResolution[],
+): Json[] {
+  const selected: Json[] = [];
+  for (const resolution of resolutions) {
+    if (resolution.standing === "REFUTED") {
+      selected.push({
+        statement: resolution.statement,
+        standing: resolution.standing,
+        refutation: resolution.refutation,
+      });
+    }
+    if (resolution.standing === "MISAPPLIED") {
+      selected.push({
+        statement: resolution.statement,
+        standing: resolution.standing,
+        defect: resolution.defect,
+      });
+    }
+    if (resolution.standing === "UNRESOLVED") {
+      selected.push({
+        statement: resolution.statement,
+        standing: resolution.standing,
+        gap: resolution.gap,
+      });
+    }
+    if (
+      resolution.standing === "SOURCED" &&
+      resolution.candidateCitationMatch === "MISMATCH"
+    ) {
+      selected.push({
+        statement: resolution.statement,
+        standing: "CITATION_MISMATCH",
+        defect: resolution.candidateCitationCheck,
+      });
+    }
+  }
+  return selected;
 }
 
 interface NoteModeContext {
@@ -536,10 +612,6 @@ function resolveBoundary(
   return { candidate: result, solved };
 }
 
-export function candidateVerifierLabels(): string[] {
-  return boundaryModes.map((mode) => boundaryLabel(mode)).sort();
-}
-
 function findCandidate(
   reader: Reader,
   answer: string,
@@ -686,9 +758,7 @@ function matchesStructuredCall(
       system: turn.system,
       prompt: turn.prompt,
       reasoning: turn.profile.reasoning,
-      stopAfterToolResult: true,
-      maxRecoveries: 1,
-      maxLengthContinuations: 8,
+      ...callParameters,
       cacheKey: turn.cacheKey,
     }) &&
     isDeepStrictEqual(entry.tools, [
@@ -755,71 +825,6 @@ export function jsonSnapshot(value: unknown): Json {
   const encoded = JSON.stringify(value);
   if (encoded === undefined) throw new TypeError("value is not JSON");
   return JSON.parse(encoded) as Json;
-}
-
-function defectReport(report: string, details: unknown): string {
-  return `${report}\n\nExact blocking findings:\n${JSON.stringify(details, null, 2)}`;
-}
-
-function premiseRepairFindings(findings: readonly PremiseFinding[]): Json[] {
-  const selected: Json[] = [];
-  for (const finding of findings) {
-    if (finding.standing === "REFUTED") {
-      selected.push({
-        statement: finding.statement,
-        standing: finding.standing,
-        refutation: finding.refutation,
-      });
-    }
-    if (finding.standing === "MISAPPLIED") {
-      selected.push({
-        statement: finding.statement,
-        standing: finding.standing,
-        defect: finding.defect,
-      });
-    }
-  }
-  return selected;
-}
-
-function sourceRepairFindings(
-  resolutions: readonly SourceResolution[],
-): Json[] {
-  const selected: Json[] = [];
-  for (const resolution of resolutions) {
-    if (resolution.standing === "REFUTED") {
-      selected.push({
-        statement: resolution.statement,
-        standing: resolution.standing,
-        refutation: resolution.refutation,
-      });
-    }
-    if (resolution.standing === "MISAPPLIED") {
-      selected.push({
-        statement: resolution.statement,
-        standing: resolution.standing,
-        defect: resolution.defect,
-      });
-    }
-    if (resolution.standing === "UNRESOLVED") {
-      selected.push({
-        statement: resolution.statement,
-        standing: resolution.standing,
-        gap: resolution.gap,
-      });
-    }
-    if (
-      resolution.standing === "SOURCED" &&
-      resolution.candidateCitationMatch === "MISMATCH"
-    ) {
-      selected.push({
-        statement: resolution.statement,
-        standing: "CITATION_MISMATCH",
-        defect: resolution.candidateCitationCheck,
-      });
-    }
-  }
-  return selected;
 }
 
 // Standing is derived, never stored: a triage plan and its mode verdicts

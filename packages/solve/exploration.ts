@@ -1,3 +1,8 @@
+// The exploration-v17 public API and runtime loop: start and resume freeze
+// the task, and runCampaign folds the journal (fold.ts) and dispatches each
+// first unresolved phase as a fresh model call built from the frozen surface
+// in turns.ts.
+
 import { isDeepStrictEqual } from "node:util";
 
 import {
@@ -22,13 +27,7 @@ import {
   type Settings,
   type Task,
 } from "./exploration-protocol";
-import {
-  candidateVerifierLabels,
-  foldCampaign,
-  jsonSnapshot,
-  phaseRole,
-  type ModelPhase,
-} from "./fold";
+import { foldCampaign, jsonSnapshot, phaseRole, type ModelPhase } from "./fold";
 import {
   CallFailure,
   DEFAULT_CALL_FAILURE_RETRY,
@@ -39,9 +38,11 @@ import {
   type SolveModels,
 } from "./runtime";
 import {
+  callParameters,
+  candidateVerifierLabels,
   curationTurn,
   ensureContextFits,
-  ensureSourceContextFits,
+  estimatedTextTokens,
   explorerTurn,
   initialView,
   premiseTurn,
@@ -53,6 +54,7 @@ import {
 import {
   runCodexSourceCheck,
   sourceCheckResultFor,
+  type SourceCheckRequest,
 } from "./verifiers/source-check";
 
 export const settings = settingsSchema;
@@ -187,9 +189,7 @@ async function structuredTurn(
     system: turn.system,
     prompt: turn.prompt,
     tools: [tool],
-    stopAfterToolResult: true,
-    maxRecoveries: 1,
-    maxLengthContinuations: 8,
+    ...callParameters,
   });
   if (result.state !== "succeeded") {
     throw new CallFailure(
@@ -214,6 +214,42 @@ async function structuredTurn(
       "failed",
       error instanceof Error ? error.message : String(error),
     );
+  }
+}
+
+function ensureSourceContextFits(
+  task: Task,
+  request: SourceCheckRequest,
+): void {
+  const tokens = [
+    request.developerInstructions,
+    request.prompt,
+    JSON.stringify(request.outputSchema),
+  ].reduce((total, text) => total + estimatedTextTokens(text), 0);
+  if (tokens > task.maxContextTokens) {
+    throw new Error(
+      `source-check context estimate ${tokens} exceeds maxContextTokens ${task.maxContextTokens}`,
+    );
+  }
+}
+
+function turnForPhase(
+  task: Task,
+  phase: Exclude<ModelPhase, { kind: "note-source-check" }>,
+): StructuredCall {
+  switch (phase.kind) {
+    case "explorer":
+      return explorerTurn(task, phase.view);
+    case "curation":
+      return curationTurn(task, phase.view);
+    case "triage":
+      return triageTurn(task, phase.view);
+    case "serve":
+      return serveTurn(task, phase.view);
+    case "verify":
+      return phase.view.mode === "external-premises"
+        ? premiseTurn(task, phase.view.text, phase.view.premises)
+        : verdictTurn(task, phase.view);
   }
 }
 
@@ -267,18 +303,7 @@ async function executePhase(
     }
     return;
   }
-  const turn =
-    phase.kind === "explorer"
-      ? explorerTurn(task, phase.view)
-      : phase.kind === "curation"
-        ? curationTurn(task, phase.view)
-        : phase.kind === "triage"
-          ? triageTurn(task, phase.view)
-          : phase.kind === "serve"
-            ? serveTurn(task, phase.view)
-            : phase.view.mode === "external-premises"
-              ? premiseTurn(task, phase.view.text, phase.view.premises)
-              : verdictTurn(task, phase.view);
+  const turn = turnForPhase(task, phase);
   ensureContextFits(task, turn);
   const prepared = prepare(turn.key, turn.profile);
   await structuredTurn(

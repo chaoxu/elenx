@@ -1,8 +1,10 @@
-// The exploration-v17 call surface: views, system prompts, prompt
-// renderers, tool bindings, labels, and cache keys — every byte a model call
-// is built from. All of it is replay-frozen: the fold re-derives these exact
-// bytes to match journaled calls, so any change here breaks replay of
-// existing campaigns and needs a protocol bump.
+// The exploration-v17 call surface: views, system prompts, prompt renderers,
+// tool bindings, labels, cache keys, and the per-call transport parameters —
+// the bytes a model call is built from, which the fold re-derives to match
+// journaled calls. Changing any of them breaks replay of existing campaigns
+// and needs a protocol bump. The token-budget helpers at the bottom are not
+// journaled bytes, but estimatedTextTokens is still replay-determining: a
+// changed estimate moves where an existing journal folds to index-limit.
 
 import { createHash } from "node:crypto";
 
@@ -30,14 +32,11 @@ import {
   type RuntimeProfile,
   type Task,
 } from "./exploration-protocol";
-// The external-premises mode reuses the audited premise and source machinery
-// verbatim, scoped to one note's exact text instead of a whole candidate.
 import {
   premiseAuditPrompt,
   premiseAuditSystem,
   premiseSubmissionFor,
 } from "./verifiers/premise-audit";
-import type { SourceCheckRequest } from "./verifiers/source-check";
 
 export interface PremiseStatement {
   readonly id: string;
@@ -117,23 +116,15 @@ export interface StructuredCall<S extends z.ZodType = z.ZodType> {
   readonly cacheKey: string;
 }
 
-function cacheKeyFor(
-  task: Task,
-  role: string,
-  profile: RuntimeProfile,
-): string {
-  return createHash("sha256")
-    .update(
-      JSON.stringify({
-        protocol: task.protocol,
-        problem: task.problem,
-        completionCriteria: task.completionCriteria,
-        role,
-        profile,
-      }),
-    )
-    .digest("hex");
-}
+// The frozen transport parameters of every structured call: written into
+// each journaled request and byte-matched on replay, so the write side
+// (structuredTurn) and the read side (matchesStructuredCall) must spread
+// this one object.
+export const callParameters = {
+  stopAfterToolResult: true,
+  maxRecoveries: 1,
+  maxLengthContinuations: 8,
+} as const;
 
 const prefix = `${applicationId}/${protocolName}`;
 
@@ -167,7 +158,11 @@ export function boundaryLabel(mode: string): string {
   return `${prefix}/candidate/${mode}`;
 }
 
-const premiseTool = "submit_premises";
+// The candidate's required-verifier contract: journaled with every candidate
+// entry and re-derived on replay, which throws on any mismatch.
+export function candidateVerifierLabels(): string[] {
+  return boundaryModes.map((mode) => boundaryLabel(mode)).sort();
+}
 
 function explorerSystem(): string {
   return [
@@ -383,6 +378,8 @@ export function verdictTurn(task: Task, view: VerifyView) {
   );
 }
 
+const premiseTool = "submit_premises";
+
 export function premiseTurn(
   task: Task,
   text: string,
@@ -398,6 +395,24 @@ export function premiseTurn(
     "Inventory unresolved external premises in the exact candidate",
     premiseSubmissionFor(text),
   );
+}
+
+function cacheKeyFor(
+  task: Task,
+  role: string,
+  profile: RuntimeProfile,
+): string {
+  return createHash("sha256")
+    .update(
+      JSON.stringify({
+        protocol: task.protocol,
+        problem: task.problem,
+        completionCriteria: task.completionCriteria,
+        role,
+        profile,
+      }),
+    )
+    .digest("hex");
 }
 
 function structuredCall<S extends z.ZodType>(
@@ -440,22 +455,6 @@ export function ensureContextFits(task: Task, turn: StructuredCall): void {
   if (tokens > task.maxContextTokens) {
     throw new Error(
       `${turn.key} context estimate ${tokens} exceeds maxContextTokens ${task.maxContextTokens}`,
-    );
-  }
-}
-
-export function ensureSourceContextFits(
-  task: Task,
-  request: SourceCheckRequest,
-): void {
-  const tokens = [
-    request.developerInstructions,
-    request.prompt,
-    JSON.stringify(request.outputSchema),
-  ].reduce((total, text) => total + estimatedTextTokens(text), 0);
-  if (tokens > task.maxContextTokens) {
-    throw new Error(
-      `source-check context estimate ${tokens} exceeds maxContextTokens ${task.maxContextTokens}`,
     );
   }
 }
