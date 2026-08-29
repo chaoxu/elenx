@@ -34,15 +34,15 @@ export const explorerModel = {
   id: "explorer-v1",
   provider: "explorer",
 };
-export const handoffModel = {
+export const curatorModel = {
   ...baseModel,
-  id: "handoff-v1",
-  provider: "handoff",
+  id: "curator-v1",
+  provider: "curator",
 };
-export const premiseModel = {
+export const triageModel = {
   ...baseModel,
-  id: "premise-v1",
-  provider: "premise",
+  id: "triage-v1",
+  provider: "triage",
 };
 export const sourceModel = {
   ...baseModel,
@@ -50,24 +50,17 @@ export const sourceModel = {
   provider: "openai-codex",
   api: "openai-codex-responses",
 };
-export const proofModel = {
+export const verifierModel = {
   ...baseModel,
-  id: "proof-v1",
-  provider: "proof",
+  id: "verifier-v1",
+  provider: "verifier",
 };
-export const archivistModel = {
-  ...baseModel,
-  id: "archivist-v1",
-  provider: "archivist",
-};
-
 const modelsList = [
   explorerModel,
-  handoffModel,
-  premiseModel,
+  curatorModel,
+  triageModel,
   sourceModel,
-  proofModel,
-  archivistModel,
+  verifierModel,
 ] as const;
 
 export const problem = "Prove that the sum of two even integers is even.";
@@ -88,9 +81,9 @@ export function runSettings(overrides: Partial<Settings> = {}): Settings {
     maxIndexTokens: 100_000,
     explorerGuidance: [],
     explorer: selection(explorerModel),
-    curator: selection(handoffModel),
-    triage: selection(premiseModel),
-    verifier: selection(proofModel),
+    curator: selection(curatorModel),
+    triage: selection(triageModel),
+    verifier: selection(verifierModel),
     sourceChecker: {
       model: sourceModel.id,
       reasoning: "high",

@@ -141,6 +141,17 @@ test("a full cycle mints, triages, verifies, serves, and solves at the boundary"
     "goal: the sum of two even integers is even",
   );
 
+  // the goal note's basedOn premises reach the boundary premise auditor as
+  // established givens, and the system prompt carries the guard sentence
+  const premiseAudit = drive.calls[13]!;
+  expect(premiseAudit.prompt).toContain(
+    "Given premises, already established for this audit; do not inventory them:",
+  );
+  expect(premiseAudit.prompt).toContain("lemma: an even integer is 2k");
+  expect(premiseAudit.system).toContain(
+    "Treat any listed given premises as already established for this audit and never inventory them.",
+  );
+
   // statuses
   expect(statuses[0]).toStartWith("exploration (index ~");
   expect(statuses).toContain("triage");
@@ -244,7 +255,6 @@ test("a failed boundary battery recycles as a defect finding with failure contex
         plans: [{ note: "n2", modes: [], rationale: "defect record" }],
       },
     },
-    { submission: { objective: "repair the gap" } },
     { submission: { findings: [{ text: "Repair attempt for the gap." }] } },
   ]);
   const report = await start(
@@ -258,17 +268,24 @@ test("a failed boundary battery recycles as a defect finding with failure contex
   );
 
   expect(report.outcome).toBe("paused");
-  expect(drive.calls).toHaveLength(10);
+  expect(drive.calls).toHaveLength(9);
+  // exactly one serve: the defect segment hands straight to an explorer
+  expect(
+    drive.calls.filter((call) => call.label.includes("/serve/")),
+  ).toHaveLength(1);
   // the defect curation quotes the failing verdict
   const defectCuration = drive.calls[6]!.prompt;
   expect(defectCuration).toContain("failed boundary verification");
   expect(defectCuration).toContain("gap at step 3");
-  // the next explorer carries the failure context
-  const nextExplorer = drive.calls[9]!.prompt;
-  expect(nextExplorer).toContain(
+  // the post-defect explorer follows the defect curation with failure context
+  const nextExplorer = drive.calls[8]!;
+  expect(nextExplorer.label).toMatch(
+    /^elenx-solve\/exploration-v17\/explorer\/\d+$/,
+  );
+  expect(nextExplorer.prompt).toContain(
     "Goal declaration that failed boundary verification",
   );
-  expect(nextExplorer).toContain("gap at step 3");
+  expect(nextExplorer.prompt).toContain("gap at step 3");
 });
 
 test("a goal on an unverified ancestor is rejected mechanically, without battery calls", async () => {
@@ -401,4 +418,104 @@ test("a tiny maxIndexTokens ends the campaign as index-limit and resumes without
   );
   expect(resumed.outcome).toBe("index-limit");
   expect(again.calls).toHaveLength(0);
+});
+
+test("the index tripwire also fires at a defect-segment curation entry", async () => {
+  const path = campaignPath();
+  const bigSummary = `wide note: ${"the pairing route needs every residue class tracked separately; ".repeat(12)}`;
+  const drive = dependencies([
+    {
+      submission: {
+        findings: [{ text: goalText }, { text: routeText, basedOn: [] }],
+      },
+    },
+    {
+      submission: {
+        filings: [
+          { finding: 1, summary: "goal statement, unsupported" },
+          { finding: 2, summary: bigSummary },
+        ],
+      },
+    },
+    {
+      submission: {
+        plans: [
+          { note: "n1", modes: ["proof-audit"], rationale: "derivation" },
+          { note: "n2", modes: [], rationale: "process note" },
+        ],
+      },
+    },
+    { submission: { verdict: "PASS", report: "note audit holds" } },
+    { submission: { goalNote: "n1" } },
+    // the battery failure refutes n1; the surviving wide n2 trips the wire
+    { submission: { verdict: "FAIL", report: "gap at step 3" } },
+  ]);
+  const report = await start(
+    {
+      problem,
+      completionCriteria: criteria,
+      campaignPath: path,
+      settings: runSettings({ maxIndexTokens: 30 }),
+    },
+    drive,
+  );
+  expect(report).toMatchObject({
+    outcome: "index-limit",
+    phase: "index-limit",
+  });
+  // the tripwire fired before the defect curation could dispatch
+  expect(drive.calls).toHaveLength(6);
+  expect(
+    drive.calls.filter((call) => call.label.includes("/curation/")),
+  ).toHaveLength(1);
+});
+
+test("a finding based on a refuted note mints with that edge dropped", async () => {
+  const path = campaignPath();
+  const drive = dependencies([
+    { submission: { findings: [{ text: "Claim: 1 = 2 after rescaling." }] } },
+    {
+      submission: {
+        filings: [{ finding: 1, summary: "claim: 1 equals 2" }],
+      },
+    },
+    {
+      submission: {
+        plans: [{ note: "n1", modes: ["refutation"], rationale: "attack it" }],
+      },
+    },
+    { submission: { verdict: "FAIL", report: "concrete counterexample" } },
+    { submission: { objective: "restart without the claim" } },
+    { submission: { findings: [{ text: goalText, basedOn: ["n1"] }] } },
+    { submission: { filings: [{ finding: 1, summary: "goal statement" }] } },
+    {
+      submission: {
+        plans: [
+          { note: "n2", modes: ["proof-audit"], rationale: "derivation" },
+        ],
+      },
+    },
+    { submission: { verdict: "PASS", report: "derivation holds" } },
+    { submission: { goalNote: "n2" } },
+    // the edge onto refuted n1 was dropped, so the battery starts instead of
+    // a mechanical unverified-ancestor rejection
+    { submission: { verdict: "FAIL", report: "boundary gap" } },
+  ]);
+  const report = await start(
+    {
+      problem,
+      completionCriteria: criteria,
+      campaignPath: path,
+      settings: runSettings(),
+    },
+    drive,
+  );
+  expect(report.outcome).toBe("paused");
+  expect(drive.calls).toHaveLength(11);
+  expect(
+    drive.calls.some((call) => call.label.includes("/candidate/proof-audit")),
+  ).toBe(true);
+  for (const call of drive.calls) {
+    expect(call.prompt).not.toContain("unverified ancestors");
+  }
 });

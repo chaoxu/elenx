@@ -24,10 +24,11 @@ const usage = `Usage:
   elenx-solve inspect [--include-inputs] CAMPAIGN.db
   elenx-solve export CAMPAIGN.db
 
-Run a serial exploration-v15 campaign. Every cross-explorer handoff is reviewed
-before reuse. Submitted answers receive isolated external-premise verification
-and a fresh audit of the exact standalone bytes. Pause and resume are safe.
-Inspect prints state and accounting. Export writes only the accepted candidate.
+Run a serial exploration-v17 campaign. Fresh explorers report findings; a
+curator files every finding and serves each turn's working set; one
+verification subsystem audits notes as they enter and decides completion at a
+declared goal note. Pause and resume are safe. Inspect prints state and
+accounting. Export writes the verified goal note and its ancestor closure.
 
 run starts the campaign, or resumes it when CAMPAIGN.db already exists, so a
 killed process restarts with the identical invocation. The campaign runner retries

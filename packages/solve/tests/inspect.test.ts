@@ -102,7 +102,7 @@ test("inspection exposes the v17 policy on a fresh campaign", async () => {
     calls: [],
   });
   expect(inspectCampaign(path).profiles.triage).toMatchObject({
-    model: "premise-v1",
+    model: "triage-v1",
   });
 });
 

@@ -16,7 +16,7 @@ The curator is one role with two call sites. Ingest files every reported finding
 
 ## Verification subsystem
 
-One subsystem, two call sites: conditional verification inside, unconditional authority at the boundary — same verifier, same modes, same verdict schema.
+The verification invariant in [`protocol.md`](protocol.md) governs both call sites.
 
 Triage plans; mode verifiers judge. Verifiers alone touch standing: every standing transition derives from their journaled plans and verdicts, and nothing else in the system can refute, verify, or resurrect a note. At the boundary the battery — every mode plus `criteria-match` — is the sole acceptance authority. Guidance cannot reach any of it: it is advisory text for explorers only.
 
