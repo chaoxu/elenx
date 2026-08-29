@@ -7,7 +7,7 @@ import {
 } from "elenx/pi";
 
 import { callActivity, parseCampaign } from "./exploration-protocol";
-import { snapshot, type CampaignSnapshot } from "./exploration";
+import { snapshot, type CampaignSnapshot } from "./fold";
 import {
   sourceCheckRequest,
   sourceEventPrefix,
