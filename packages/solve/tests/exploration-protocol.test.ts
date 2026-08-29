@@ -397,16 +397,4 @@ describe("v17 campaign parsing", () => {
       ).toThrow(`unsupported elenx-solve protocol: ${protocol}`);
     }
   });
-
-  test("an unknown protocol is unsupported", () => {
-    expect(() =>
-      parseCampaign({
-        seq: 1,
-        atMs: 1,
-        kind: "campaign",
-        application: "elenx-solve",
-        config: { protocol: "exploration-v99" },
-      }),
-    ).toThrow("unsupported elenx-solve protocol: exploration-v99");
-  });
 });

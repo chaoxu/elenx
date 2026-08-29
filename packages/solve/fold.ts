@@ -980,8 +980,7 @@ export function foldCampaign(reader: Reader, task: Task): CampaignFold {
     const selected: { id: string; text: string }[] = [];
     for (const id of requested) {
       if (refuted.has(id) || selected.some((note) => note.id === id)) continue;
-      const note = notes.get(id);
-      if (note !== undefined) selected.push({ id, text: note.text });
+      selected.push({ id, text: noteOf(id).text });
     }
     return selected;
   };

@@ -1,5 +1,5 @@
 import { Database, SQLiteError } from "bun:sqlite";
-import { lstatSync, realpathSync } from "node:fs";
+import { realpathSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 
 import { builtinPi, type PiRunOptions } from "elenx/pi";
@@ -37,8 +37,6 @@ export const DEFAULT_CALL_FAILURE_RETRY: CallFailureRetry = {
   maxDelayMs: 600_000,
 };
 
-export type CampaignState = "running" | "not-running" | "unknown";
-
 function runnerLockPath(campaignPath: string): string {
   let canonicalPath: string;
   try {
@@ -51,40 +49,6 @@ function runnerLockPath(campaignPath: string): string {
     );
   }
   return `${canonicalPath}.runner.lock`;
-}
-
-export function campaignState(campaignPath: string): CampaignState {
-  let lockPath: string;
-  try {
-    lockPath = runnerLockPath(campaignPath);
-  } catch {
-    return "unknown";
-  }
-
-  try {
-    const lock = lstatSync(lockPath);
-    if (lock.isSymbolicLink() || !lock.isFile()) return "unknown";
-  } catch (error) {
-    return (error as NodeJS.ErrnoException).code === "ENOENT"
-      ? "not-running"
-      : "unknown";
-  }
-
-  let lock: Database | undefined;
-  try {
-    lock = new Database(lockPath, { readonly: true, strict: true });
-    lock.run("PRAGMA busy_timeout = 0");
-    lock.query("PRAGMA schema_version").get();
-    return "not-running";
-  } catch (error) {
-    return error instanceof SQLiteError &&
-      (error.code?.startsWith("SQLITE_BUSY") ||
-        error.code?.startsWith("SQLITE_LOCKED"))
-      ? "running"
-      : "unknown";
-  } finally {
-    lock?.close(false);
-  }
 }
 
 export async function withCampaignLock<T>(
