@@ -379,6 +379,74 @@ test("a finding based on a refuted note mints with that edge dropped", async () 
   }
 });
 
+test("a note-mode external premise resolves through the source check and verifies", async () => {
+  const noteText =
+    "The bound follows from closure under addition, giving r+s an integer.";
+  const premise = {
+    statement: "The integers are closed under addition.",
+    hypotheses: ["r and s are integers"],
+    application: "The bound needs r+s to be an integer.",
+    answerQuote: "r+s an integer",
+    standing: "UNRESOLVED",
+    refutationAttempt: "No counterexample: integer addition is total.",
+    gap: "Needs an authoritative source for closure under addition.",
+  };
+  const resolution = {
+    statement: "The integers are closed under addition.",
+    standing: "SOURCED",
+    citation: "Standard algebra reference",
+    url: "https://example.test/algebra",
+    locator: "Chapter 1, Theorem 1.1",
+    exactQuote: "r+s an integer",
+    sourceMatch: "The theorem states closure of the integers under addition.",
+    candidateCitationMatch: "NONE",
+    candidateCitationCheck: "The note cites no source for this premise.",
+    refutationAttempt: "No counterexample found in the source.",
+    application: "APPLIES",
+    applicationCheck: "Closure applies directly to r+s.",
+  } as const;
+  const { drive, report } = await startCampaign(
+    [
+      turn([{ text: noteText }]),
+      curation([{ finding: 1, summary: "claim: bound via closure" }]),
+      triage([
+        {
+          note: "n1",
+          modes: ["external-premises"],
+          rationale: "external lemma",
+        },
+      ]),
+      {
+        submission: {
+          report: "One external premise needs sourcing.",
+          premises: [premise],
+        },
+      },
+      serve([], "build on the sourced claim"),
+      turn([{ text: "Next direction on the verified bound." }]),
+    ],
+    { sourceReplies: [sourceResult([resolution])] },
+  );
+
+  expect(report.outcome).toBe("paused");
+  expect(drive.calls).toHaveLength(6);
+  expect(drive.sourceCalls).toHaveLength(1);
+  expect(drive.sourceCalls[0]!.premises).toEqual([
+    {
+      statement: "The integers are closed under addition.",
+      hypotheses: ["r and s are integers"],
+      application: "The bound needs r+s to be an integer.",
+      answerQuote: "r+s an integer",
+    },
+  ]);
+  // the premise audit ran under the note's verify label, and the sourced
+  // PASS completes the plan: the next explorer sees the note verified
+  expect(drive.calls[3]!.label).toMatch(
+    /^elenx-solve\/exploration-v17\/verify\/n1\/external-premises\//,
+  );
+  expect(drive.calls[5]!.prompt).toContain('"standing": "verified"');
+});
+
 test("a boundary premise resolves through the isolated source check and solves", async () => {
   const premise = {
     statement: "The integers are closed under addition.",
