@@ -77,6 +77,7 @@ import {
   premiseSubmissionFor,
   premiseVerdict,
   type PremiseFinding,
+  type PremiseSubmission,
   type UnresolvedPremise,
 } from "./verifiers/premise-audit";
 import {
@@ -413,7 +414,7 @@ async function derivePhase(reader: Reader, task: Task): Promise<Phase> {
     // Plain-JS id bookkeeping mirrors the store so dependency wiring and
     // liveness filters stay synchronous; summaries, texts, and standings live
     // in the store.
-    const known: string[] = [];
+    const known = new Set<string>();
     const refuted = new Set<string>();
     const parents = new Map<string, readonly string[]>();
     const versionAt = new Map<string, EntryId>();
@@ -465,7 +466,6 @@ async function derivePhase(reader: Reader, task: Task): Promise<Phase> {
     const foldCuration = async (
       findings: readonly Finding[],
       curated: {
-        readonly call: EntryId;
         readonly settled: EntryId;
         readonly value: CurationSubmission;
       },
@@ -495,7 +495,7 @@ async function derivePhase(reader: Reader, task: Task): Promise<Phase> {
         }
         mintCount += 1;
         const id = `n${mintCount}`;
-        known.push(id);
+        known.add(id);
         const dependsOn = finding.basedOn.filter(
           (parent) => knownBefore.has(parent) && !refuted.has(parent),
         );
@@ -917,8 +917,6 @@ function resolveNoteMode(
   };
 }
 
-type PremiseAudit = z.output<ReturnType<typeof premiseSubmissionFor>>;
-
 // The external-premises cascade shared by note verification and the boundary
 // battery: the audited offline premise inventory, then isolated source
 // verification for unresolved premises, folded into one verdict over the
@@ -947,7 +945,7 @@ function resolvePremiseCascade(
       readonly settled: EntryId;
       readonly verdict: Assessment["verdict"];
       readonly report: string;
-      readonly offline: PremiseAudit;
+      readonly offline: PremiseSubmission;
       readonly source?: {
         readonly report: string;
         readonly resolutions: readonly SourceResolution[];
@@ -956,9 +954,7 @@ function resolvePremiseCascade(
   const offline = findSubmission(records, {
     label: options.label,
     after: options.after,
-    ...(options.candidate === undefined
-      ? {}
-      : { candidate: options.candidate }),
+    candidate: options.candidate,
     turn: premiseTurn(task, options.text, options.premises),
   });
   if (offline === undefined) return { pending: "offline" };
@@ -990,9 +986,7 @@ function resolvePremiseCascade(
   const source = findSourceCheck(records, {
     label: options.label,
     after: offline.settled,
-    ...(options.candidate === undefined
-      ? {}
-      : { candidate: options.candidate }),
+    candidate: options.candidate,
     request,
   });
   if (source === undefined) {
@@ -1056,21 +1050,31 @@ function resolveBoundary(
         provenance: candidate.id,
       });
       if ("pending" in outcome) {
+        if (outcome.pending === "offline") {
+          return {
+            pending: {
+              kind: "verify",
+              label,
+              after,
+              view,
+              candidate: candidate.id,
+            },
+          };
+        }
         return {
-          pending:
-            outcome.pending === "offline"
-              ? { kind: "verify", label, after, view, candidate: candidate.id }
-              : {
-                  kind: "note-source-check",
-                  label,
-                  after: outcome.after,
-                  note: candidate.goalNote,
-                  request: outcome.request,
-                  candidate: candidate.id,
-                },
+          pending: {
+            kind: "note-source-check",
+            label,
+            after: outcome.after,
+            note: candidate.goalNote,
+            request: outcome.request,
+            candidate: candidate.id,
+          },
         };
       }
       call = outcome.call;
+      // Both evidence shapes are journal-frozen; replay must reproduce the
+      // recorded bytes exactly, so do not unify them.
       evidence = jsonSnapshot(
         outcome.source === undefined
           ? {
@@ -1177,7 +1181,7 @@ function findSourceCheck(
   options: {
     readonly label: string;
     readonly after: EntryId;
-    readonly candidate?: EntryId;
+    readonly candidate?: EntryId | undefined;
     readonly request: SourceCheckRequest;
   },
 ):
@@ -1600,7 +1604,7 @@ function findSubmission<S extends z.ZodType>(
   options: {
     readonly label: string;
     readonly after: EntryId;
-    readonly candidate?: EntryId;
+    readonly candidate?: EntryId | undefined;
     readonly turn: StructuredCall<S>;
   },
 ):

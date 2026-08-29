@@ -124,6 +124,8 @@ test("a full cycle mints, triages, verifies, serves, and solves at the boundary"
   // never projected into any prompt
   for (const call of drive.calls) {
     expect(call.prompt).not.toContain("own derivation");
+    expect(call.prompt).not.toContain("process note");
+    expect(call.prompt).not.toContain("goal derivation");
     expect(call.prompt).not.toContain("derivation holds");
   }
 
@@ -277,6 +279,7 @@ test("a retryable provider failure re-derives the phase and retries the call", a
   );
   // the retry re-derives the same phase and re-issues identical call bytes
   expect(drive.calls[1]!.label).toBe(drive.calls[0]!.label);
+  expect(drive.calls[1]!.system).toBe(drive.calls[0]!.system);
   expect(drive.calls[1]!.prompt).toBe(drive.calls[0]!.prompt);
 });
 

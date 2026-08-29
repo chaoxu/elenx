@@ -59,6 +59,7 @@ const premiseSubmission = z.strictObject({
   report: nonblankText,
   premises: z.array(premiseFinding),
 });
+export type PremiseSubmission = z.output<typeof premiseSubmission>;
 
 export function premiseSubmissionFor(answer: string) {
   return premiseSubmission.superRefine(({ premises }, context) => {

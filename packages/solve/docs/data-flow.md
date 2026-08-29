@@ -108,6 +108,6 @@ Excluded:
 
 ## Tests
 
-Behavior tests drive scripted campaigns through the real loop and assert directly on the dispatched prompt bytes: required material appears and excluded material stays out — the reconstruction prompt withholds the goal text, a refuted note's text leaves the next explorer's index, and triage rationales and note verdict reports appear in no prompt at all.
+Behavior tests drive scripted campaigns through the real loop and assert directly on the dispatched prompt bytes: required material appears and excluded material stays out — the reconstruction prompt withholds the goal text, a refuted note leaves the next explorer's index, and triage rationales and note verdict reports appear in no prompt at all.
 
 Inspection exposes exact requests only under `--include-inputs`. No runtime role can request raw journal history.

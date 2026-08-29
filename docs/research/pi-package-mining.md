@@ -1,6 +1,6 @@
 # Mining Pi packages for Elenx
 
-Status: dated research record, pinned 2026-08-15. This file is not current design or roadmap authority. See [`../design.md`](../design.md) for the design boundary and [`../../SPEC.md`](../../SPEC.md) for the kernel contract.
+Status: dated research record, pinned 2026-08-15. This file is not current design or roadmap authority. See [`../design.md`](../design.md) for the historical `exploration-v15` design boundary and [`../../SPEC.md`](../../SPEC.md) for the kernel contract.
 
 This study examines six Pi packages as possible sources of mechanisms for Elenx. It is pinned to the published packages and source revisions below; package behavior outside those revisions is not covered.
 

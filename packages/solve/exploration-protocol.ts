@@ -200,9 +200,8 @@ export function curationSubmissionFor(
         }
         seen.add(entry.finding);
         if (entry.refines !== undefined) {
-          // One version per note per curation keeps the {id, at}-keyed
-          // history append-only: a second same-turn revision would land on
-          // the same journal seq and silently replace the first.
+          // One version per note per curation: a second same-turn revision
+          // would share the first's journal seq and silently replace it.
           if (refined.has(entry.refines)) {
             ctx.addIssue({
               code: "custom",

@@ -1,6 +1,6 @@
 # Known-solution problems as failure diagnostics
 
-Status: recorded method, 2026-08-23. [`../hypotheses.md`](../hypotheses.md) defines the experiment order this method feeds.
+Status: recorded method, 2026-08-23. The historical [`../hypotheses.md`](../hypotheses.md) defined the `exploration-v15` experiment order this method was designed to feed.
 
 ## Why known-solution problems
 
@@ -12,4 +12,4 @@ Because the true proof is available, failure analysis can be counterfactual rath
 
 ## Benchmark hill climbing
 
-A collection of such problems (implemented in a separate benchmark project) supports hill climbing on the exploration policy: formulate a hypothesis, change one policy choice, rerun the benchmark, and measure how theorem-proving ability moves. The M1/M2/M3-versus-M0 comparison in [`../hypotheses.md`](../hypotheses.md) is the first hypothesis in this loop; hypotheses produced by proof-guided transcript analysis queue behind it. The growth rule in [`../design.md`](../design.md) already requires that machinery enter as a measured variation, and this method supplies both the measurement and the candidate variations.
+A collection of such problems (implemented in a separate benchmark project) supports hill climbing on the exploration policy: formulate a hypothesis, change one policy choice, rerun the benchmark, and measure how theorem-proving ability moves. The M1/M2/M3-versus-M0 comparison in [`../hypotheses.md`](../hypotheses.md) was the first planned hypothesis in this loop; hypotheses produced by proof-guided transcript analysis queue behind it. The growth rule in [`../design.md`](../design.md) already required that machinery enter as a measured variation, and this method supplies both the measurement and the candidate variations.

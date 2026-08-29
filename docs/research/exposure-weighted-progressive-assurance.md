@@ -1,6 +1,6 @@
 # Exposure-weighted progressive assurance
 
-Status: deferred research direction, 2026-08-21. This note is not current runtime behavior, a kernel proposal, or an implementation plan. [`../design.md`](../design.md) defines the current solver boundary, [`../hypotheses.md`](../hypotheses.md) defines the active experiment order, and [`pi-package-mining.md`](pi-package-mining.md#assurance-observations) records candidate observation schemas that may support this work later.
+Status: deferred research direction, 2026-08-21. This note is not current runtime behavior, a kernel proposal, or an implementation plan. [`../design.md`](../design.md) defined the retired `exploration-v15` solver boundary, [`../hypotheses.md`](../hypotheses.md) its experiment order (both historical), and [`pi-package-mining.md`](pi-package-mining.md#assurance-observations) records candidate observation schemas that may support this work later.
 
 ## Claim
 
