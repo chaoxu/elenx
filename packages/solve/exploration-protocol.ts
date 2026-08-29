@@ -29,6 +29,11 @@ const guidanceModule = z.strictObject({
 });
 const noteId = z.string().regex(/^n[1-9][0-9]*$/u);
 
+function noteIdIn(ids: readonly string[], message: string) {
+  const known = new Set(ids);
+  return noteId.refine((value) => known.has(value), { message });
+}
+
 const boundsRefinement = (
   {
     maxContextTokens,
@@ -154,10 +159,7 @@ export function curationSubmissionFor(
   findingCount: number,
   existingNoteIds: readonly string[],
 ) {
-  const known = new Set(existingNoteIds);
-  const knownNote = noteId.refine((value) => known.has(value), {
-    message: "unknown note id",
-  });
+  const knownNote = noteIdIn(existingNoteIds, "unknown note id");
   const filing = z
     .strictObject({
       finding: positiveIndex.max(findingCount),
@@ -241,17 +243,14 @@ export const verificationModes = [
   "refutation",
   "external-premises",
 ] as const;
-export const verificationMode = z.enum(verificationModes);
+const verificationMode = z.enum(verificationModes);
 export type VerificationMode = z.output<typeof verificationMode>;
 
 // The boundary battery: every mode, plus the boundary-only criteria match.
 export const boundaryModes = [...verificationModes, "criteria-match"] as const;
 
 export function triageSubmissionFor(newNoteIds: readonly string[]) {
-  const fresh = new Set(newNoteIds);
-  const freshNote = noteId.refine((value) => fresh.has(value), {
-    message: "not a note of this triage batch",
-  });
+  const freshNote = noteIdIn(newNoteIds, "not a note of this triage batch");
   const plan = z.strictObject({
     note: freshNote,
     modes: z.array(verificationMode),
@@ -308,10 +307,7 @@ export type Assessment = z.output<typeof assessment>;
 // ---------------------------------------------------------------------------
 
 export function serveSubmissionFor(liveNoteIds: readonly string[]) {
-  const known = new Set(liveNoteIds);
-  const knownNote = noteId.refine((value) => known.has(value), {
-    message: "unknown note id",
-  });
+  const knownNote = noteIdIn(liveNoteIds, "unknown note id");
   return z
     .strictObject({
       expand: z.array(knownNote).default([]),

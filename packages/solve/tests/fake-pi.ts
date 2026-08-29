@@ -45,8 +45,7 @@ export function fakePiRequest(options: PiRunOptions): Json {
 
 export function fakePiTelemetry(
   options: PiRunOptions,
-  outcome: Outcome = "succeeded",
-  costUsd?: number,
+  outcome: Outcome,
 ): PiTelemetry {
   const stopped =
     outcome === "succeeded"
@@ -82,16 +81,6 @@ export function fakePiTelemetry(
           "pi.ai.model": options.model.id,
           "pi.ai.api": options.model.api,
           "pi.ai.response.stop_reason": stopped,
-          ...(costUsd === undefined
-            ? {}
-            : {
-                "pi.ai.usage.input_tokens": 10,
-                "pi.ai.usage.output_tokens": 10,
-                "pi.ai.usage.cache_read_tokens": 0,
-                "pi.ai.usage.cache_write_tokens": 0,
-                "pi.ai.usage.total_tokens": 20,
-                "pi.ai.usage.cost": costUsd,
-              }),
         },
         events: [],
         status: { status: outcome === "succeeded" ? "ok" : "error" },

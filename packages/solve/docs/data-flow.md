@@ -79,9 +79,9 @@ Every mode receives the exact task and one terminal assessment tool, then exactl
 
 - `proof-audit` — the note's exact text and statement, with its `basedOn` statements given as premises
 - `reconstruction` — the note's statement and its premise statements only, never its derivation
-- `refutation` — the note's exact statement and text
-- `criteria-match` (boundary only) — the goal note's statement and the completion criteria
-- `external-premises` — the note's exact text for premise inventory; unresolved premises go to the source checker
+- `refutation` — the note's exact statement and text, with its `basedOn` statements given as premises
+- `criteria-match` (boundary only) — the goal note's statement and the completion criteria, with its `basedOn` statements given as premises
+- `external-premises` — the note's exact text for premise inventory, with its `basedOn` statements given as established premises; unresolved premises go to the source checker
 
 Excluded from every mode:
 
@@ -108,6 +108,6 @@ Excluded:
 
 ## Tests
 
-Projection tests use unique sentinels for index entries, working-set texts, findings, plans, and verdict reports. Every test asserts that required sentinels appear and forbidden sentinels do not.
+Behavior tests drive scripted campaigns through the real loop and assert directly on the dispatched prompt bytes: required material appears and excluded material stays out — the reconstruction prompt withholds the goal text, a refuted note's text leaves the next explorer's index, and triage rationales and note verdict reports appear in no prompt at all.
 
 Inspection exposes exact requests only under `--include-inputs`. No runtime role can request raw journal history.

@@ -56,7 +56,7 @@ const unresolved = z.strictObject({
   gap: nonblankText,
 });
 
-export const sourceResolution = z.discriminatedUnion("standing", [
+const sourceResolution = z.discriminatedUnion("standing", [
   sourced,
   refuted,
   misapplied,
@@ -68,7 +68,7 @@ const sourceSubmission = z.strictObject({
   report: nonblankText,
   resolutions: z.array(sourceResolution).min(1),
 });
-export type SourceSubmission = z.output<typeof sourceSubmission>;
+type SourceSubmission = z.output<typeof sourceSubmission>;
 
 function sourceSubmissionFor(
   premises: readonly z.output<typeof sourcePremise>[],
@@ -152,7 +152,7 @@ function normalizeTransport(
 }
 
 const jsonValue = z.json();
-export type JsonValue = z.output<typeof jsonValue>;
+type JsonValue = z.output<typeof jsonValue>;
 
 export const sourceCheckRequest = z
   .strictObject({

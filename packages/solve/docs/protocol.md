@@ -18,15 +18,15 @@ Every Pi profile freezes provider, model ID, requested reasoning, API, and base 
 
 The store materializes events folded from the journal: curator filings mint notes and record refinements, triage submissions record verification plans, and verifier calls record per-mode verdicts. It is rebuilt in memory from the journal on every start and resume; deleting it loses nothing. Note IDs are `n1`, `n2`, … in fold order, and each event carries the journal sequence that produced it, so the fold is deterministic and replay reproduces the store exactly.
 
-A note holds one finding: `summary` is the index entry, and `text` is the finding's exact reported bytes — the curator writes summaries but never rewrites findings. A refinement appends a new version; the current view serves the latest and history retains every version. Dependency edges come from the findings' own `basedOn` references, never from curator judgment. Datalog carries the graph work: ancestor closure, refutation cascade, and cycle detection.
+A note holds one finding: `summary` is the index entry, and `text` is the finding's exact reported bytes — the curator writes summaries but never rewrites findings. A refinement appends a new version; the current view serves the latest and the journal retains every version. Dependency edges come from the findings' own `basedOn` references, never from curator judgment. Datalog carries the graph work behind the mechanical gates: ancestor closure and cycle detection.
 
-Standing is derived, never stored. A plan and its verdicts apply to the note version they were issued against; a revision stales them and the note returns to `conjecture` until re-triaged. Any valid `FAIL` refutes the note and removes it from the live index; an empty valid plan marks a process `report`; a valid plan whose every mode holds a valid `PASS` marks the note `verified` — conditionally on its `basedOn` statements, which is what gives the cascade meaning. Everything else is a `conjecture`.
+Standing is derived, never stored. A plan and its verdicts apply to the note version they were issued against; a revision stales them and the note returns to `conjecture` until re-triaged. Any valid `FAIL` refutes the note and removes it from the live index; an empty valid plan marks a process `report`; a valid plan whose every mode holds a valid `PASS` marks the note `verified` — conditionally on its `basedOn` statements, which is why the boundary demands a fully verified ancestor closure. Everything else is a `conjecture`.
 
 ## Explorer turn
 
 Every explorer is one fresh bounded call with one terminal tool and no retrieval access. It receives the task, guidance, the complete standing-annotated live index, and the working set the curator served: full texts chosen at serve time, plus the transient objective when present. It reports findings — each self-contained free text with the note IDs it builds on — plus one optional next objective and optional note IDs to request expanded next turn. Results, failed attempts, and open questions are all findings.
 
-There is no submit path and no repair mode. A boundary failure returns to the explorer as ordinary served context: the refuted goal note is gone from the index and the failure finding stands in its place.
+There is no submit path and no repair mode. A boundary failure returns to the explorer as ordinary served context: a `FAIL` verdict removes the goal note from the index, and the failure finding stands in its place either way.
 
 ## Curation
 
@@ -49,7 +49,7 @@ After every ingest, one fresh triage call plans each newly minted or revised not
 
 An empty plan marks a process report. The loop executes each planned mode as its own fresh verifier call returning `PASS`, `FAIL`, or `INCONCLUSIVE` with a report. Triage and mode verdicts are journal events; the store derives standing from them.
 
-The boundary battery runs when serve declares the goal. Triage has no discretion there: every mode runs, plus the boundary-only `criteria-match` — does the goal note's statement answer the exact completion criteria. Two mechanical checks precede the battery: the goal note's transitive `basedOn` closure is fully verified, and the dependency graph it closes over is acyclic. All verdicts `PASS` → `solved`, terminal. The verified tower is the result, and the goal note's bytes are the kernel candidate its acceptance verdicts bind to. Any failure is a verdict event that re-enters through ingest like every other finding.
+The boundary battery runs when serve declares the goal. Triage has no discretion there: every mode runs, plus the boundary-only `criteria-match` — does the goal note's statement answer the exact completion criteria. Three mechanical checks precede the battery: the declared goal note is not a process report, its transitive `basedOn` closure is fully verified, and the dependency graph it closes over is acyclic. All verdicts `PASS` → `solved`, terminal. The verified tower is the result, and the goal note's bytes are the kernel candidate its acceptance verdicts bind to. Any failure is a verdict event that re-enters through ingest like every other finding.
 
 ## External assembly
 

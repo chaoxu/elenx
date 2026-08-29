@@ -23,9 +23,9 @@ The API and campaign schema are experimental. Campaigns are accepted only when t
 | Question | Authority |
 | --- | --- |
 | What does the kernel guarantee? | [`SPEC.md`](SPEC.md) |
-| What design boundary guides solver policies? | [`docs/design.md`](docs/design.md) |
+| What design boundary guided the retired `exploration-v15` solver? | [`docs/design.md`](docs/design.md) (historical) |
 | How do I build an application? | [`docs/application-author.md`](docs/application-author.md) |
-| Which solver policies should we test? | [`docs/hypotheses.md`](docs/hypotheses.md) |
+| Which `exploration-v15` policies were to be tested? | [`docs/hypotheses.md`](docs/hypotheses.md) (historical) |
 
 Dated research is kept outside the current guidance:
 
@@ -39,7 +39,7 @@ The deterministic verifier example is [`examples/v1/scripted-verifier.ts`](examp
 
 [`packages/solve`](packages/solve) supplies the `exploration-v17` protocol. Fresh explorers report findings over a verified, standing-annotated note index; a curator files every finding and serves each turn's working set; one verification subsystem audits notes as they enter and decides completion when the curator points at a verified goal note. The verified tower is the result; rendering it into a document is external tooling.
 
-[`docs/design.md`](docs/design.md) defines the governing design direction. [`packages/solve/docs/protocol.md`](packages/solve/docs/protocol.md) remains the authority for exact runtime behavior.
+[`packages/solve/docs/`](packages/solve/docs/) is the current protocol documentation, with [`packages/solve/docs/protocol.md`](packages/solve/docs/protocol.md) the authority for exact runtime behavior. [`docs/design.md`](docs/design.md) and [`docs/hypotheses.md`](docs/hypotheses.md) are historical design background for the retired `exploration-v15` protocol.
 
 ## Development
 

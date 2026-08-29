@@ -54,7 +54,12 @@ import {
   type VerificationMode,
 } from "./exploration-protocol";
 
-import { NoteStore, type Standing, type StandingEntry } from "./notes";
+import {
+  NoteStore,
+  deriveStanding,
+  type Standing,
+  type StandingEntry,
+} from "./notes";
 import {
   CallFailure,
   DEFAULT_CALL_FAILURE_RETRY,
@@ -214,7 +219,6 @@ export interface TriageRecord {
 export interface NoteVerdictRecord {
   readonly note: string;
   readonly mode: string;
-  readonly call: EntryId;
   readonly settled: EntryId;
   readonly verdict: Assessment["verdict"];
   readonly report: string;
@@ -228,11 +232,9 @@ export interface ServeRecord {
 
 export interface VerdictRecord {
   readonly mode: string;
-  readonly call: EntryId;
   readonly record: EntryId;
   readonly verdict: Assessment["verdict"];
   readonly report: string;
-  readonly evidence: Json;
 }
 
 export interface CandidateRecord {
@@ -291,7 +293,6 @@ interface ExplorerView {
 interface CuratorView {
   readonly index: readonly StandingEntry[];
   readonly findings: readonly Finding[];
-  readonly liveIds: readonly string[];
 }
 
 interface TriageView {
@@ -304,7 +305,6 @@ interface TriageView {
 
 interface ServeView {
   readonly index: readonly StandingEntry[];
-  readonly liveIds: readonly string[];
   readonly turns: number;
   readonly hints: {
     readonly expand: readonly string[];
@@ -331,21 +331,18 @@ type ModelPhase =
       readonly after: EntryId;
       readonly view: ExplorerView;
       readonly indexTokens: number;
-      readonly state: State;
     }
   | {
       readonly kind: "curation";
       readonly label: string;
       readonly after: EntryId;
       readonly view: CuratorView;
-      readonly state: State;
     }
   | {
       readonly kind: "triage";
       readonly label: string;
       readonly after: EntryId;
       readonly view: TriageView;
-      readonly state: State;
     }
   | {
       readonly kind: "verify";
@@ -353,7 +350,6 @@ type ModelPhase =
       readonly after: EntryId;
       readonly view: VerifyView;
       readonly candidate?: EntryId;
-      readonly state: State;
     }
   | {
       readonly kind: "note-source-check";
@@ -362,14 +358,12 @@ type ModelPhase =
       readonly note: string;
       readonly request: SourceCheckRequest;
       readonly candidate?: EntryId;
-      readonly state: State;
     }
   | {
       readonly kind: "serve";
       readonly label: string;
       readonly after: EntryId;
       readonly view: ServeView;
-      readonly state: State;
     };
 
 type Phase =
@@ -377,7 +371,6 @@ type Phase =
   | {
       readonly kind: "create-candidate";
       readonly answer: string;
-      readonly state: State;
     }
   | {
       readonly kind: "record-verdict";
@@ -385,17 +378,14 @@ type Phase =
       readonly call: EntryId;
       readonly verdict: Assessment["verdict"];
       readonly evidence: Json;
-      readonly state: State;
     }
   | {
       readonly kind: "solved";
       readonly candidate: EntryId;
-      readonly state: State;
     }
   | {
       readonly kind: "index-limit";
       readonly tokens: number;
-      readonly state: State;
     };
 
 function phaseRole(phase: ModelPhase): string {
@@ -416,16 +406,11 @@ interface StructuredCall<S extends z.ZodType = z.ZodType> {
   readonly cacheKey: string;
 }
 
-function noteOrdinal(id: string): number {
-  return Number(id.slice(1));
-}
-
 async function derivePhase(reader: Reader, task: Task): Promise<Phase> {
   const records = reader.records();
-  const state = emptyState();
-  const store = await NoteStore.open("mem");
+  const store = await NoteStore.open();
   try {
-    // Plain-JS id bookkeeping mirrors the store so schema construction and
+    // Plain-JS id bookkeeping mirrors the store so dependency wiring and
     // liveness filters stay synchronous; summaries, texts, and standings live
     // in the store.
     const known: string[] = [];
@@ -433,6 +418,7 @@ async function derivePhase(reader: Reader, task: Task): Promise<Phase> {
     const parents = new Map<string, readonly string[]>();
     const versionAt = new Map<string, EntryId>();
     let mintCount = 0;
+    let turnCount = 0;
     let cursor = records[0]?.seq ?? 0;
     let explorerCallLabel = explorerLabel();
     let objective: string | undefined;
@@ -441,8 +427,6 @@ async function derivePhase(reader: Reader, task: Task): Promise<Phase> {
     let failure: ExplorerView["failure"];
     let hints: ServeView["hints"] = { expand: [] };
 
-    // known is pushed in mint order, so this list is already ordinal-sorted.
-    const liveIds = () => known.filter((id) => !refuted.has(id));
     const standingOf = async (): Promise<Map<string, Standing>> => {
       const entries = await store.standings();
       return new Map(entries.map((entry) => [entry.id, entry.standing]));
@@ -526,13 +510,6 @@ async function derivePhase(reader: Reader, task: Task): Promise<Phase> {
         versionAt.set(id, curated.settled);
         minted.push(id);
       }
-      state.curations.push({
-        call: curated.call,
-        settled: curated.settled,
-        submission: curated.value,
-        minted,
-        refined,
-      });
       recentIds = [...minted, ...refined];
       return [...minted, ...refined];
     };
@@ -549,15 +526,13 @@ async function derivePhase(reader: Reader, task: Task): Promise<Phase> {
 
     outer: for (;;) {
       guard();
-      const index = (await store.liveIndex()).sort(
-        (a, b) => noteOrdinal(a.id) - noteOrdinal(b.id),
-      );
+      const index = await store.liveIndex();
       const indexTokens = estimatedTextTokens(renderIndexBlock(index));
       if (indexTokens > task.maxIndexTokens) {
-        return { kind: "index-limit", tokens: indexTokens, state };
+        return { kind: "index-limit", tokens: indexTokens };
       }
       const view: ExplorerView = {
-        first: state.turns.length === 0,
+        first: turnCount === 0,
         index,
         expanded: await expandedNotes(),
         ...(objective === undefined ? {} : { objective }),
@@ -569,7 +544,6 @@ async function derivePhase(reader: Reader, task: Task): Promise<Phase> {
         after: cursor,
         view,
         indexTokens,
-        state,
       };
       const explored = findSubmission(records, {
         label: explorerCallLabel,
@@ -577,11 +551,7 @@ async function derivePhase(reader: Reader, task: Task): Promise<Phase> {
         turn: explorerTurn(task, view),
       });
       if (explored === undefined) return explorerPhase;
-      state.turns.push({
-        call: explored.call,
-        settled: explored.settled,
-        submission: explored.value,
-      });
+      turnCount += 1;
       failure = undefined;
       hints = {
         expand: explored.value.expand,
@@ -597,28 +567,24 @@ async function derivePhase(reader: Reader, task: Task): Promise<Phase> {
 
       for (;;) {
         guard();
-        const curationIndex = (await store.liveIndex()).sort(
-          (a, b) => noteOrdinal(a.id) - noteOrdinal(b.id),
-        );
+        const curationIndex = await store.liveIndex();
         // The tripwire re-fires at every curation entry: defect segments grow
         // the index without passing the outer explorer check.
         const curationTokens = estimatedTextTokens(
           renderIndexBlock(curationIndex),
         );
         if (curationTokens > task.maxIndexTokens) {
-          return { kind: "index-limit", tokens: curationTokens, state };
+          return { kind: "index-limit", tokens: curationTokens };
         }
         const curatorView: CuratorView = {
           index: curationIndex,
           findings,
-          liveIds: liveIds(),
         };
         const curationPhase: Extract<ModelPhase, { kind: "curation" }> = {
           kind: "curation",
           label: curationLabel(curationTrigger),
           after: curationAfter,
           view: curatorView,
-          state,
         };
         const curated = findSubmission(records, {
           label: curationPhase.label,
@@ -645,19 +611,13 @@ async function derivePhase(reader: Reader, task: Task): Promise<Phase> {
             label: triageLabel(curated.call),
             after: curated.settled,
             view: triagePhaseView,
-            state,
           };
           const triaged = findSubmission(records, {
             label: triagePhase.label,
             after: triagePhase.after,
-            turn: triageTurn(task, triagePhaseView, batch),
+            turn: triageTurn(task, triagePhaseView),
           });
           if (triaged === undefined) return triagePhase;
-          state.triages.push({
-            call: triaged.call,
-            settled: triaged.settled,
-            submission: triaged.value,
-          });
           for (const plan of triaged.value.plans) {
             await store.applyPlan({
               id: plan.note,
@@ -686,7 +646,7 @@ async function derivePhase(reader: Reader, task: Task): Promise<Phase> {
               if (version === undefined) {
                 throw new Error(`fold lost the version of note ${id}`);
               }
-              const outcome = await resolveNoteMode(records, task, {
+              const outcome = resolveNoteMode(records, task, {
                 note: id,
                 statement,
                 text,
@@ -695,10 +655,8 @@ async function derivePhase(reader: Reader, task: Task): Promise<Phase> {
                 version,
                 trigger: triaged.call,
                 after: pipelineCursor,
-                state,
               });
               if ("pending" in outcome) return outcome.pending;
-              state.noteVerdicts.push(outcome.record);
               await store.applyVerdict({
                 id,
                 mode,
@@ -724,13 +682,10 @@ async function derivePhase(reader: Reader, task: Task): Promise<Phase> {
           continue outer;
         }
 
-        const serveIndex = (await store.liveIndex()).sort(
-          (a, b) => noteOrdinal(a.id) - noteOrdinal(b.id),
-        );
+        const serveIndex = await store.liveIndex();
         const serveView: ServeView = {
           index: serveIndex,
-          liveIds: liveIds(),
-          turns: state.turns.length,
+          turns: turnCount,
           hints,
         };
         const servePhase: Extract<ModelPhase, { kind: "serve" }> = {
@@ -738,7 +693,6 @@ async function derivePhase(reader: Reader, task: Task): Promise<Phase> {
           label: serveLabel(serveTrigger),
           after: pipelineCursor,
           view: serveView,
-          state,
         };
         const served = findSubmission(records, {
           label: servePhase.label,
@@ -746,11 +700,6 @@ async function derivePhase(reader: Reader, task: Task): Promise<Phase> {
           turn: serveTurn(task, serveView),
         });
         if (served === undefined) return servePhase;
-        state.serves.push({
-          call: served.call,
-          settled: served.settled,
-          submission: served.value,
-        });
 
         if (served.value.goalNote === undefined) {
           objective = served.value.objective;
@@ -797,15 +746,13 @@ async function derivePhase(reader: Reader, task: Task): Promise<Phase> {
           goal,
         );
         if (found === undefined) {
-          return { kind: "create-candidate", answer: goalText, state };
+          return { kind: "create-candidate", answer: goalText };
         }
-        const outcome = await resolveBoundary(records, task, found, {
+        const outcome = resolveBoundary(records, task, found, {
           statement: await summaryOf(goal),
           premises: await premisesOf(parents.get(goal) ?? []),
-          state,
         });
         if ("pending" in outcome) return outcome.pending;
-        state.candidates.push(outcome.candidate);
         for (const verdict of outcome.candidate.verdicts) {
           await store.applyVerdict({
             id: goal,
@@ -817,7 +764,7 @@ async function derivePhase(reader: Reader, task: Task): Promise<Phase> {
           if (verdict.verdict === "FAIL") refuted.add(goal);
         }
         if (outcome.solved) {
-          return { kind: "solved", candidate: found.id, state };
+          return { kind: "solved", candidate: found.id };
         }
         const failing = outcome.candidate.verdicts.filter(
           (verdict) => verdict.verdict !== "PASS",
@@ -898,16 +845,13 @@ interface NoteModeContext {
   readonly version: EntryId;
   readonly trigger: EntryId;
   readonly after: EntryId;
-  readonly state: State;
 }
 
-async function resolveNoteMode(
+function resolveNoteMode(
   records: readonly Entry[],
   task: Task,
   context: NoteModeContext,
-): Promise<
-  { readonly pending: Phase } | { readonly record: NoteVerdictRecord }
-> {
+): { readonly pending: Phase } | { readonly record: NoteVerdictRecord } {
   const label = verifyLabel(context.note, context.mode, context.trigger);
   const view: VerifyView = {
     note: context.note,
@@ -916,14 +860,13 @@ async function resolveNoteMode(
     premises: context.premises,
     mode: context.mode,
   };
+  const phase: Extract<ModelPhase, { kind: "verify" }> = {
+    kind: "verify",
+    label,
+    after: context.after,
+    view,
+  };
   if (context.mode !== "external-premises") {
-    const phase: Extract<ModelPhase, { kind: "verify" }> = {
-      kind: "verify",
-      label,
-      after: context.after,
-      view,
-      state: context.state,
-    };
     const judged = findSubmission(records, {
       label,
       after: context.after,
@@ -934,7 +877,6 @@ async function resolveNoteMode(
       record: {
         note: context.note,
         mode: context.mode,
-        call: judged.call,
         settled: judged.settled,
         verdict: judged.value.verdict,
         report: judged.value.report,
@@ -942,111 +884,153 @@ async function resolveNoteMode(
     };
   }
 
-  // external-premises: the audited premise inventory, then isolated source
-  // verification for unresolved premises, folded into one mode verdict.
-  const phase: Extract<ModelPhase, { kind: "verify" }> = {
-    kind: "verify",
+  // For a note-level source check the request's candidate field carries the
+  // note's current version seq as deterministic provenance.
+  const outcome = resolvePremiseCascade(records, task, {
+    subject: "note",
+    text: context.text,
+    premises: context.premises,
     label,
     after: context.after,
-    view,
-    state: context.state,
-  };
-  const offline = findSubmission(records, {
-    label,
-    after: context.after,
-    turn: premiseTurn(task, context.text, context.premises),
+    provenance: context.version,
   });
-  if (offline === undefined) return { pending: phase };
-  const initial = premiseVerdict(offline.value.premises);
-  if (initial === "FAIL") {
+  if ("pending" in outcome) {
+    if (outcome.pending === "offline") return { pending: phase };
     return {
-      record: {
+      pending: {
+        kind: "note-source-check",
+        label,
+        after: outcome.after,
         note: context.note,
-        mode: context.mode,
-        call: offline.call,
-        settled: offline.settled,
-        verdict: "FAIL",
-        report: defectReport(
-          "Offline premise verification rejected the note.",
-          premiseRepairFindings(offline.value.premises),
-        ),
+        request: outcome.request,
       },
     };
   }
-  if (initial === "PASS") {
+  return {
+    record: {
+      note: context.note,
+      mode: context.mode,
+      settled: outcome.settled,
+      verdict: outcome.verdict,
+      report: outcome.report,
+    },
+  };
+}
+
+type PremiseAudit = z.output<ReturnType<typeof premiseSubmissionFor>>;
+
+// The external-premises cascade shared by note verification and the boundary
+// battery: the audited offline premise inventory, then isolated source
+// verification for unresolved premises, folded into one verdict over the
+// subject text.
+function resolvePremiseCascade(
+  records: readonly Entry[],
+  task: Task,
+  options: {
+    readonly subject: "note" | "candidate";
+    readonly text: string;
+    readonly premises: readonly PremiseStatement[];
+    readonly label: string;
+    readonly after: EntryId;
+    readonly candidate?: EntryId;
+    readonly provenance: EntryId;
+  },
+):
+  | { readonly pending: "offline" }
+  | {
+      readonly pending: "source";
+      readonly after: EntryId;
+      readonly request: SourceCheckRequest;
+    }
+  | {
+      readonly call: EntryId;
+      readonly settled: EntryId;
+      readonly verdict: Assessment["verdict"];
+      readonly report: string;
+      readonly offline: PremiseAudit;
+      readonly source?: {
+        readonly report: string;
+        readonly resolutions: readonly SourceResolution[];
+      };
+    } {
+  const offline = findSubmission(records, {
+    label: options.label,
+    after: options.after,
+    ...(options.candidate === undefined
+      ? {}
+      : { candidate: options.candidate }),
+    turn: premiseTurn(task, options.text, options.premises),
+  });
+  if (offline === undefined) return { pending: "offline" };
+  const initial = premiseVerdict(offline.value.premises);
+  if (initial !== "INCONCLUSIVE") {
     return {
-      record: {
-        note: context.note,
-        mode: context.mode,
-        call: offline.call,
-        settled: offline.settled,
-        verdict: "PASS",
-        report: offline.value.report,
-      },
+      call: offline.call,
+      settled: offline.settled,
+      verdict: initial,
+      report:
+        initial === "FAIL"
+          ? defectReport(
+              `Offline premise verification rejected the ${options.subject}.`,
+              premiseRepairFindings(offline.value.premises),
+            )
+          : offline.value.report,
+      offline: offline.value,
     };
   }
   const unresolved = offline.value.premises.filter(
     (item): item is UnresolvedPremise => item.standing === "UNRESOLVED",
   );
-  // For a note-level source check the request's candidate field carries the
-  // note's current version seq as deterministic provenance.
   const request = sourceCheckRequestFor(
-    context.version,
+    options.provenance,
     offline.call,
     unresolved,
     task.sourceChecker,
   );
-  const sourcePhase: Extract<ModelPhase, { kind: "note-source-check" }> = {
-    kind: "note-source-check",
-    label,
-    after: offline.settled,
-    note: context.note,
-    request,
-    state: context.state,
-  };
   const source = findSourceCheck(records, {
-    label,
+    label: options.label,
     after: offline.settled,
+    ...(options.candidate === undefined
+      ? {}
+      : { candidate: options.candidate }),
     request,
   });
-  if (source === undefined) return { pending: sourcePhase };
+  if (source === undefined) {
+    return { pending: "source", after: offline.settled, request };
+  }
   const verdict = sourceCheckVerdict(
     request.premises,
     source.result.resolutions,
   );
   return {
-    record: {
-      note: context.note,
-      mode: context.mode,
-      call: source.call,
-      settled: source.settled,
-      verdict,
-      report:
-        verdict === "FAIL"
-          ? defectReport(
-              "Source verification rejected the note.",
-              sourceRepairFindings(source.result.resolutions),
-            )
-          : source.result.report,
-    },
+    call: source.call,
+    settled: source.settled,
+    verdict,
+    report:
+      verdict === "FAIL"
+        ? defectReport(
+            `Source verification rejected the ${options.subject}.`,
+            sourceRepairFindings(source.result.resolutions),
+          )
+        : source.result.report,
+    offline: offline.value,
+    source: source.result,
   };
 }
 
 interface BoundaryContext {
   readonly statement: string;
   readonly premises: readonly PremiseStatement[];
-  readonly state: State;
 }
 
-async function resolveBoundary(
+function resolveBoundary(
   records: readonly Entry[],
   task: Task,
   candidate: CandidateRecord,
   context: BoundaryContext,
-): Promise<
+):
   | { readonly pending: Phase }
-  | { readonly candidate: CandidateRecord; readonly solved: boolean }
-> {
+  | { readonly candidate: CandidateRecord; readonly solved: boolean } {
   const verdicts: VerdictRecord[] = [];
   let after: EntryId = candidate.id;
   for (const mode of boundaryModes) {
@@ -1062,91 +1046,45 @@ async function resolveBoundary(
     let call: EntryId;
     let evidence: Json;
     if (mode === "external-premises") {
-      const offline = findSubmission(records, {
+      const outcome = resolvePremiseCascade(records, task, {
+        subject: "candidate",
+        text: candidate.answer,
+        premises: context.premises,
         label,
         after,
         candidate: candidate.id,
-        turn: premiseTurn(task, candidate.answer, context.premises),
+        provenance: candidate.id,
       });
-      if (offline === undefined) {
+      if ("pending" in outcome) {
         return {
-          pending: {
-            kind: "verify",
-            label,
-            after,
-            view,
-            candidate: candidate.id,
-            state: context.state,
-          },
+          pending:
+            outcome.pending === "offline"
+              ? { kind: "verify", label, after, view, candidate: candidate.id }
+              : {
+                  kind: "note-source-check",
+                  label,
+                  after: outcome.after,
+                  note: candidate.goalNote,
+                  request: outcome.request,
+                  candidate: candidate.id,
+                },
         };
       }
-      const initial = premiseVerdict(offline.value.premises);
-      call = offline.call;
-      evidence = jsonSnapshot({
-        report: offline.value.report,
-        premises: offline.value.premises,
-        resolutions: [],
-      });
-      assessed = {
-        verdict: initial,
-        report:
-          initial === "FAIL"
-            ? defectReport(
-                "Offline premise verification rejected the candidate.",
-                premiseRepairFindings(offline.value.premises),
-              )
-            : offline.value.report,
-      };
-      if (initial === "INCONCLUSIVE") {
-        const unresolved = offline.value.premises.filter(
-          (item): item is UnresolvedPremise => item.standing === "UNRESOLVED",
-        );
-        const request = sourceCheckRequestFor(
-          candidate.id,
-          offline.call,
-          unresolved,
-          task.sourceChecker,
-        );
-        const source = findSourceCheck(records, {
-          label,
-          after: offline.settled,
-          candidate: candidate.id,
-          request,
-        });
-        if (source === undefined) {
-          return {
-            pending: {
-              kind: "note-source-check",
-              label,
-              after: offline.settled,
-              note: candidate.goalNote,
-              request,
-              candidate: candidate.id,
-              state: context.state,
+      call = outcome.call;
+      evidence = jsonSnapshot(
+        outcome.source === undefined
+          ? {
+              report: outcome.offline.report,
+              premises: outcome.offline.premises,
+              resolutions: [],
+            }
+          : {
+              report: outcome.source.report,
+              offline: outcome.offline,
+              resolutions: outcome.source.resolutions,
             },
-          };
-        }
-        const verdict = sourceCheckVerdict(
-          request.premises,
-          source.result.resolutions,
-        );
-        call = source.call;
-        evidence = jsonSnapshot({
-          report: source.result.report,
-          offline: offline.value,
-          resolutions: source.result.resolutions,
-        });
-        assessed = {
-          verdict,
-          report:
-            verdict === "FAIL"
-              ? defectReport(
-                  "Source verification rejected the candidate.",
-                  sourceRepairFindings(source.result.resolutions),
-                )
-              : source.result.report,
-        };
-      }
+      );
+      assessed = { verdict: outcome.verdict, report: outcome.report };
     } else {
       const judged = findSubmission(records, {
         label,
@@ -1162,7 +1100,6 @@ async function resolveBoundary(
             after,
             view,
             candidate: candidate.id,
-            state: context.state,
           },
         };
       }
@@ -1188,7 +1125,6 @@ async function resolveBoundary(
           call,
           verdict: assessed.verdict,
           evidence,
-          state: context.state,
         },
       };
     }
@@ -1327,11 +1263,9 @@ function recordedVerdict(
   }
   return {
     mode,
-    call,
     record: match.seq,
     verdict: match.verdict,
     report: assessmentValue.report,
-    evidence,
   };
 }
 
@@ -1350,8 +1284,14 @@ function explorerSystem(): string {
   ].join(" ");
 }
 
+// Prompt blocks quoting model- or journal-derived values share one shape so
+// the untrusted-data labeling convention is single-sourced.
+function untrustedBlock(label: string, value: unknown): string {
+  return `${label} (untrusted mathematical data):\n${JSON.stringify(value, null, 2)}`;
+}
+
 function renderIndexBlock(index: readonly StandingEntry[]): string {
-  return `Note index (untrusted mathematical data):\n${JSON.stringify(index, null, 2)}`;
+  return untrustedBlock("Note index", index);
 }
 
 function explorerPrompt(task: Task, view: ExplorerView): string {
@@ -1359,20 +1299,19 @@ function explorerPrompt(task: Task, view: ExplorerView): string {
   const expanded =
     view.expanded.length === 0
       ? ""
-      : `\n\nFull notes for this turn (untrusted mathematical data):\n${JSON.stringify(view.expanded, null, 2)}`;
+      : `\n\n${untrustedBlock("Full notes for this turn", view.expanded)}`;
   const objective =
     view.objective === undefined
       ? ""
       : `\n\nObjective from the curator:\n${view.objective}`;
   const context = view.failure
-    ? `\n\nGoal declaration that failed boundary verification (untrusted mathematical data):\n${JSON.stringify(
+    ? `\n\n${untrustedBlock(
+        "Goal declaration that failed boundary verification",
         {
           goalNote: view.failure.goalNote,
           text: view.failure.text,
           verdicts: view.failure.verdicts,
         },
-        null,
-        2,
       )}`
     : view.first
       ? "\n\nNo earlier exploration context is available."
@@ -1411,7 +1350,7 @@ function curatorPrompt(task: Task, view: CuratorView): string {
     text: finding.text,
     basedOn: finding.basedOn,
   }));
-  return `${renderTask(task)}\n\n${renderIndexBlock(view.index)}\n\nFindings to file (untrusted mathematical data):\n${JSON.stringify(findings, null, 2)}`;
+  return `${renderTask(task)}\n\n${renderIndexBlock(view.index)}\n\n${untrustedBlock("Findings to file", findings)}`;
 }
 
 function curationTurn(task: Task, view: CuratorView) {
@@ -1423,7 +1362,10 @@ function curationTurn(task: Task, view: CuratorView) {
     curatorPrompt(task, view),
     curationTool,
     "File every finding of this turn into the durable note index",
-    curationSubmissionFor(view.findings.length, view.liveIds),
+    curationSubmissionFor(
+      view.findings.length,
+      view.index.map(({ id }) => id),
+    ),
   );
 }
 
@@ -1439,10 +1381,10 @@ function triageSystem(): string {
 }
 
 function triagePrompt(task: Task, view: TriageView): string {
-  return `${renderTask(task)}\n\nNotes to triage (untrusted mathematical data):\n${JSON.stringify(view.batch, null, 2)}`;
+  return `${renderTask(task)}\n\n${untrustedBlock("Notes to triage", view.batch)}`;
 }
 
-function triageTurn(task: Task, view: TriageView, batch: readonly string[]) {
+function triageTurn(task: Task, view: TriageView) {
   return structuredCall(
     task,
     task.triage,
@@ -1451,7 +1393,7 @@ function triageTurn(task: Task, view: TriageView, batch: readonly string[]) {
     triagePrompt(task, view),
     triageTool,
     "Plan the verification of every note in this batch",
-    triageSubmissionFor(batch),
+    triageSubmissionFor(view.batch.map((note) => note.id)),
   );
 }
 
@@ -1467,7 +1409,7 @@ function serveSystem(): string {
 }
 
 function servePrompt(task: Task, view: ServeView): string {
-  return `${renderTask(task)}\n\n${renderIndexBlock(view.index)}\n\nCompleted explorer turns: ${view.turns}\n\nHints from the last explorer (untrusted mathematical data):\n${JSON.stringify(view.hints, null, 2)}`;
+  return `${renderTask(task)}\n\n${renderIndexBlock(view.index)}\n\nCompleted explorer turns: ${view.turns}\n\n${untrustedBlock("Hints from the last explorer", view.hints)}`;
 }
 
 function serveTurn(task: Task, view: ServeView) {
@@ -1479,7 +1421,7 @@ function serveTurn(task: Task, view: ServeView) {
     servePrompt(task, view),
     serveTool,
     "Serve the next explorer or declare the goal note",
-    serveSubmissionFor(view.liveIds),
+    serveSubmissionFor(view.index.map(({ id }) => id)),
   );
 }
 
@@ -1813,11 +1755,7 @@ async function executePhase(
       : phase.kind === "curation"
         ? curationTurn(task, phase.view)
         : phase.kind === "triage"
-          ? triageTurn(
-              task,
-              phase.view,
-              phase.view.batch.map((note) => note.id),
-            )
+          ? triageTurn(task, phase.view)
           : phase.kind === "serve"
             ? serveTurn(task, phase.view)
             : phase.view.mode === "external-premises"
@@ -2111,9 +2049,10 @@ function sourceRepairFindings(
 // Synchronous campaign snapshot for inspection.
 //
 // The CLI projects campaigns synchronously, so this mirror re-runs the exact
-// derivePhase walk with plain maps in place of the Cozo store. KEEP IN
-// LOCKSTEP with derivePhase, resolveNoteMode, resolveBoundary, and the
-// standing derivation in notes.ts: same matching, same order, same rules.
+// derivePhase walk with plain maps in place of the Cozo store. Phase
+// resolution (resolveNoteMode, resolveBoundary) and the standing derivation
+// (notes.ts deriveStanding) are shared; KEEP the fold itself IN LOCKSTEP
+// with derivePhase: same matching, same order, same rules.
 // ---------------------------------------------------------------------------
 
 export interface NoteSnapshot {
@@ -2198,25 +2137,18 @@ export function snapshot(reader: Reader, task: Task): CampaignSnapshot {
   let failure: ExplorerView["failure"];
   let hints: ServeView["hints"] = { expand: [] };
 
-  // Standing derivation in lockstep with notes.ts deriveStanding.
   const standingOf = (id: string): Standing => {
     const note = notes.get(id);
     if (note === undefined) throw new Error(`snapshot lost note ${id}`);
-    const valid = [...(verdictTable.get(id)?.entries() ?? [])].filter(
-      ([, entry]) => entry.at > note.at,
+    return deriveStanding(
+      note.at,
+      plans.get(id),
+      [...(verdictTable.get(id)?.entries() ?? [])].map(([mode, entry]) => ({
+        mode,
+        verdict: entry.verdict,
+        at: entry.at,
+      })),
     );
-    if (valid.some(([, entry]) => entry.verdict === "FAIL")) return "refuted";
-    const plan = plans.get(id);
-    if (plan === undefined || plan.at <= note.at) return "conjecture";
-    if (plan.modes.length === 0) return "report";
-    const passed = new Set(
-      valid
-        .filter(([, entry]) => entry.verdict === "PASS")
-        .map(([mode]) => mode),
-    );
-    return plan.modes.every((mode) => passed.has(mode))
-      ? "verified"
-      : "conjecture";
   };
   const liveIndex = (): StandingEntry[] =>
     order.flatMap((id) => {
@@ -2226,7 +2158,6 @@ export function snapshot(reader: Reader, task: Task): CampaignSnapshot {
       if (note === undefined) throw new Error(`snapshot lost note ${id}`);
       return [{ id, summary: note.summary, standing }];
     });
-  const liveIds = () => order.filter((id) => !refuted.has(id));
   const summaryOf = (id: string): string => {
     const note = notes.get(id);
     if (note === undefined) throw new Error(`snapshot lost note ${id}`);
@@ -2358,240 +2289,6 @@ export function snapshot(reader: Reader, task: Task): CampaignSnapshot {
     ...(solution === undefined ? {} : { solution }),
   });
 
-  // Mirror of resolveNoteMode; returns the pending phase kind or the record.
-  const mirrorNoteMode = (context: {
-    readonly note: string;
-    readonly statement: string;
-    readonly text: string;
-    readonly premises: readonly PremiseStatement[];
-    readonly mode: VerificationMode;
-    readonly version: EntryId;
-    readonly trigger: EntryId;
-    readonly after: EntryId;
-  }):
-    | { readonly pending: CampaignSnapshot["phase"] }
-    | { readonly record: NoteVerdictRecord } => {
-    const label = verifyLabel(context.note, context.mode, context.trigger);
-    const view: VerifyView = {
-      note: context.note,
-      statement: context.statement,
-      text: context.text,
-      premises: context.premises,
-      mode: context.mode,
-    };
-    if (context.mode !== "external-premises") {
-      const judged = findSubmission(records, {
-        label,
-        after: context.after,
-        turn: verdictTurn(task, view),
-      });
-      if (judged === undefined) return { pending: "verify" };
-      return {
-        record: {
-          note: context.note,
-          mode: context.mode,
-          call: judged.call,
-          settled: judged.settled,
-          verdict: judged.value.verdict,
-          report: judged.value.report,
-        },
-      };
-    }
-    const offline = findSubmission(records, {
-      label,
-      after: context.after,
-      turn: premiseTurn(task, context.text, context.premises),
-    });
-    if (offline === undefined) return { pending: "verify" };
-    const initial = premiseVerdict(offline.value.premises);
-    if (initial === "FAIL") {
-      return {
-        record: {
-          note: context.note,
-          mode: context.mode,
-          call: offline.call,
-          settled: offline.settled,
-          verdict: "FAIL",
-          report: defectReport(
-            "Offline premise verification rejected the note.",
-            premiseRepairFindings(offline.value.premises),
-          ),
-        },
-      };
-    }
-    if (initial === "PASS") {
-      return {
-        record: {
-          note: context.note,
-          mode: context.mode,
-          call: offline.call,
-          settled: offline.settled,
-          verdict: "PASS",
-          report: offline.value.report,
-        },
-      };
-    }
-    const unresolved = offline.value.premises.filter(
-      (item): item is UnresolvedPremise => item.standing === "UNRESOLVED",
-    );
-    const request = sourceCheckRequestFor(
-      context.version,
-      offline.call,
-      unresolved,
-      task.sourceChecker,
-    );
-    const source = findSourceCheck(records, {
-      label,
-      after: offline.settled,
-      request,
-    });
-    if (source === undefined) return { pending: "note-source-check" };
-    const verdict = sourceCheckVerdict(
-      request.premises,
-      source.result.resolutions,
-    );
-    return {
-      record: {
-        note: context.note,
-        mode: context.mode,
-        call: source.call,
-        settled: source.settled,
-        verdict,
-        report:
-          verdict === "FAIL"
-            ? defectReport(
-                "Source verification rejected the note.",
-                sourceRepairFindings(source.result.resolutions),
-              )
-            : source.result.report,
-      },
-    };
-  };
-
-  // Mirror of resolveBoundary; returns the pending phase kind or the outcome.
-  const mirrorBoundary = (
-    candidate: CandidateRecord,
-    context: {
-      readonly statement: string;
-      readonly premises: readonly PremiseStatement[];
-    },
-  ):
-    | { readonly pending: CampaignSnapshot["phase"] }
-    | {
-        readonly candidate: CandidateRecord;
-        readonly solved: boolean;
-      } => {
-    const verdicts: VerdictRecord[] = [];
-    let after: EntryId = candidate.id;
-    for (const mode of boundaryModes) {
-      const label = boundaryLabel(mode);
-      const view: VerifyView = {
-        note: candidate.goalNote,
-        statement: context.statement,
-        text: candidate.answer,
-        premises: context.premises,
-        mode,
-      };
-      let assessed: Assessment;
-      let call: EntryId;
-      let evidence: Json;
-      if (mode === "external-premises") {
-        const offline = findSubmission(records, {
-          label,
-          after,
-          candidate: candidate.id,
-          turn: premiseTurn(task, candidate.answer, context.premises),
-        });
-        if (offline === undefined) return { pending: "verify" };
-        const initial = premiseVerdict(offline.value.premises);
-        call = offline.call;
-        evidence = jsonSnapshot({
-          report: offline.value.report,
-          premises: offline.value.premises,
-          resolutions: [],
-        });
-        assessed = {
-          verdict: initial,
-          report:
-            initial === "FAIL"
-              ? defectReport(
-                  "Offline premise verification rejected the candidate.",
-                  premiseRepairFindings(offline.value.premises),
-                )
-              : offline.value.report,
-        };
-        if (initial === "INCONCLUSIVE") {
-          const unresolved = offline.value.premises.filter(
-            (item): item is UnresolvedPremise => item.standing === "UNRESOLVED",
-          );
-          const request = sourceCheckRequestFor(
-            candidate.id,
-            offline.call,
-            unresolved,
-            task.sourceChecker,
-          );
-          const source = findSourceCheck(records, {
-            label,
-            after: offline.settled,
-            candidate: candidate.id,
-            request,
-          });
-          if (source === undefined) return { pending: "note-source-check" };
-          const verdict = sourceCheckVerdict(
-            request.premises,
-            source.result.resolutions,
-          );
-          call = source.call;
-          evidence = jsonSnapshot({
-            report: source.result.report,
-            offline: offline.value,
-            resolutions: source.result.resolutions,
-          });
-          assessed = {
-            verdict,
-            report:
-              verdict === "FAIL"
-                ? defectReport(
-                    "Source verification rejected the candidate.",
-                    sourceRepairFindings(source.result.resolutions),
-                  )
-                : source.result.report,
-          };
-        }
-      } else {
-        const judged = findSubmission(records, {
-          label,
-          after,
-          candidate: candidate.id,
-          turn: verdictTurn(task, view),
-        });
-        if (judged === undefined) return { pending: "verify" };
-        call = judged.call;
-        assessed = judged.value;
-        evidence = judged.value.report;
-      }
-      const recorded = recordedVerdict(
-        records,
-        candidate.id,
-        label,
-        mode,
-        after,
-        call,
-        assessed,
-        evidence,
-      );
-      if (recorded === undefined) return { pending: "record-verdict" };
-      verdicts.push(recorded);
-      after = recorded.record;
-      if (recorded.verdict !== "PASS") {
-        return { candidate: { ...candidate, verdicts }, solved: false };
-      }
-    }
-    const result = { ...candidate, verdicts };
-    const solved = deriveCandidateStatus(records, candidate.id).verified;
-    return { candidate: result, solved };
-  };
-
   let steps = 0;
   const guard = () => {
     steps += 1;
@@ -2650,7 +2347,6 @@ export function snapshot(reader: Reader, task: Task): CampaignSnapshot {
       const curatorView: CuratorView = {
         index: curationIndex,
         findings,
-        liveIds: liveIds(),
       };
       const curated = findSubmission(records, {
         label: curationLabel(curationTrigger),
@@ -2672,7 +2368,7 @@ export function snapshot(reader: Reader, task: Task): CampaignSnapshot {
         const triaged = findSubmission(records, {
           label: triageLabel(curated.call),
           after: curated.settled,
-          turn: triageTurn(task, triageView, batch),
+          turn: triageTurn(task, triageView),
         });
         if (triaged === undefined) return finish("triage");
         state.triages.push({
@@ -2700,7 +2396,7 @@ export function snapshot(reader: Reader, task: Task): CampaignSnapshot {
           for (const mode of modes) {
             const note = notes.get(id);
             if (note === undefined) throw new Error(`snapshot lost note ${id}`);
-            const outcome = mirrorNoteMode({
+            const outcome = resolveNoteMode(records, task, {
               note: id,
               statement,
               text,
@@ -2710,7 +2406,7 @@ export function snapshot(reader: Reader, task: Task): CampaignSnapshot {
               trigger: triaged.call,
               after: pipelineCursor,
             });
-            if ("pending" in outcome) return finish(outcome.pending);
+            if ("pending" in outcome) return finish(outcome.pending.kind);
             state.noteVerdicts.push(outcome.record);
             applyVerdictMirror(
               id,
@@ -2739,7 +2435,6 @@ export function snapshot(reader: Reader, task: Task): CampaignSnapshot {
 
       const serveView: ServeView = {
         index: liveIndex(),
-        liveIds: liveIds(),
         turns: state.turns.length,
         hints,
       };
@@ -2808,11 +2503,11 @@ export function snapshot(reader: Reader, task: Task): CampaignSnapshot {
         goal,
       );
       if (found === undefined) return finish("create-candidate");
-      const outcome = mirrorBoundary(found, {
+      const outcome = resolveBoundary(records, task, found, {
         statement: summaryOf(goal),
         premises: premisesOf(parents.get(goal) ?? []),
       });
-      if ("pending" in outcome) return finish(outcome.pending);
+      if ("pending" in outcome) return finish(outcome.pending.kind);
       state.candidates.push(outcome.candidate);
       for (const verdict of outcome.candidate.verdicts) {
         applyVerdictMirror(

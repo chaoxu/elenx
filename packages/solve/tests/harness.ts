@@ -28,28 +28,28 @@ const baseModel: PiRunOptions["model"] = {
   maxTokens: 20_000,
 };
 
-export const explorerModel = {
+const explorerModel = {
   ...baseModel,
   id: "explorer-v1",
   provider: "explorer",
 };
-export const curatorModel = {
+const curatorModel = {
   ...baseModel,
   id: "curator-v1",
   provider: "curator",
 };
-export const triageModel = {
+const triageModel = {
   ...baseModel,
   id: "triage-v1",
   provider: "triage",
 };
-export const sourceModel = {
+const sourceModel = {
   ...baseModel,
   id: "source-v1",
   provider: "openai-codex",
   api: "openai-codex-responses",
 };
-export const verifierModel = {
+const verifierModel = {
   ...baseModel,
   id: "verifier-v1",
   provider: "verifier",
@@ -62,11 +62,8 @@ const modelsList = [
   verifierModel,
 ] as const;
 
-export const problem = "Prove that the sum of two even integers is even.";
-export const criteria =
-  "Give one standalone proof for arbitrary even integers.";
-export const candidate =
-  "Let a and b be even integers. Then a=2r and b=2s for integers r and s. Hence a+b=2(r+s), and r+s is an integer. Therefore a+b is even.";
+const problem = "Prove that the sum of two even integers is even.";
+const criteria = "Give one standalone proof for arbitrary even integers.";
 
 export function runSettings(overrides: Partial<Settings> = {}): Settings {
   const selection = (model: PiRunOptions["model"]) => ({
@@ -106,16 +103,11 @@ export function cleanupCampaigns(): void {
 }
 
 export interface Reply {
-  readonly submission?: Json | ((campaign: Campaign) => Json);
+  readonly submission?: Json;
   readonly state?: "succeeded" | "failed" | "cancelled";
   readonly error?: string;
   readonly providerRetryable?: boolean;
-  readonly throwAfter?: string;
-  readonly costUsd?: number;
 }
-
-export type SourceReply =
-  SourceCheckResult | ((request: SourceCheckRequest) => SourceCheckResult);
 
 export function sourceResult(
   resolutions: readonly SourceResolution[],
@@ -185,7 +177,7 @@ export function sourceResult(
 
 export function dependencies(
   replies: readonly Reply[],
-  sourceReplies: readonly SourceReply[] = [],
+  sourceReplies: readonly SourceCheckResult[] = [],
 ): SolveDependencies & {
   readonly calls: PiRunOptions[];
   readonly sourceCalls: SourceCheckRequest[];
@@ -212,15 +204,13 @@ export function dependencies(
       if (reply === undefined) throw new Error(`no reply for ${options.label}`);
       expect(options.stopAfterToolResult).toBe(true);
       expect(options.transport).toBe("sse");
-      const result = await respond(campaign, options, reply);
-      if (reply.throwAfter !== undefined) throw new Error(reply.throwAfter);
-      return result;
+      return respond(campaign, options, reply);
     },
     async sourceCheck(request) {
       sourceCalls.push(request);
       const reply = sourceQueue.shift();
       if (reply === undefined) throw new Error("no source reply");
-      return typeof reply === "function" ? reply(request) : reply;
+      return reply;
     },
     calls,
     sourceCalls,
@@ -234,7 +224,7 @@ async function respond(
   reply: Reply,
 ): Promise<PiResult> {
   const state = reply.state ?? "succeeded";
-  const telemetry = fakePiTelemetry(options, state, reply.costUsd);
+  const telemetry = fakePiTelemetry(options, state);
   const receipt = await campaign.call(
     {
       label: options.label,
@@ -247,11 +237,7 @@ async function respond(
     },
     async ({ tools }) => {
       if (reply.submission !== undefined) {
-        const value =
-          typeof reply.submission === "function"
-            ? reply.submission(campaign)
-            : reply.submission;
-        await tools[0]!.execute(value);
+        await tools[0]!.execute(reply.submission);
       }
       return state === "succeeded"
         ? { state, text: "done", transcript: [], telemetry }
@@ -351,7 +337,7 @@ export interface BatteryReports {
   readonly criteria: string;
 }
 
-export const batteryPasses = (reports: BatteryReports): Reply[] => [
+const batteryPasses = (reports: BatteryReports): Reply[] => [
   verdict("PASS", reports.proof),
   verdict("PASS", reports.reconstruction),
   verdict("PASS", reports.refutation),
@@ -427,7 +413,7 @@ export async function startCampaign(
   replies: readonly Reply[],
   options: {
     readonly settings?: Partial<Settings>;
-    readonly sourceReplies?: readonly SourceReply[];
+    readonly sourceReplies?: readonly SourceCheckResult[];
     readonly statuses?: string[];
   } = {},
 ): Promise<{

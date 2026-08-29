@@ -1,6 +1,6 @@
 # Elenx policy hypotheses
 
-Status: experiment plan for `exploration-v15`. [`design.md`](design.md) defines the boundary.
+Status: historical — the experiment plan for the retired `exploration-v15` protocol. [`design.md`](design.md) defines its boundary; the current protocol documentation lives in [`../packages/solve/docs/`](../packages/solve/docs/).
 
 ## Objective
 

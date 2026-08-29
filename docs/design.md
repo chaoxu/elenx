@@ -1,6 +1,6 @@
 # Elenx design
 
-Status: design for the `exploration-v15` solver. [`../SPEC.md`](../SPEC.md) defines kernel guarantees and [`../packages/solve/docs/protocol.md`](../packages/solve/docs/protocol.md) defines exact runtime behavior.
+Status: historical — the design for the retired `exploration-v15` protocol. [`../SPEC.md`](../SPEC.md) defines kernel guarantees; the current protocol documentation lives in [`../packages/solve/docs/`](../packages/solve/docs/).
 
 ## Principle
 

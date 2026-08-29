@@ -3,17 +3,16 @@
 // The campaign journal remains the single source of truth. Curator, triage,
 // and verifier submissions recorded there are folded into events, and this
 // store materializes them for querying: the standing-annotated live index,
-// on-demand full text, version history, and the dependency graph queries the
-// protocol needs (ancestor closure, cycle detection, refutation cascade).
-// Deleting the store and re-applying the journal's events reproduces it
-// exactly; nothing here is authoritative.
+// on-demand full text, and the dependency graph queries the protocol needs
+// (ancestor closure, cycle detection). Deleting the store and re-applying
+// the journal's events reproduces it exactly; nothing here is authoritative.
 //
 // Standing is derived, never stored: a triage plan and its mode verdicts
 // apply to the note version they were issued against, so a revision stales
 // them and the note returns to conjecture until re-triaged. Any valid FAIL
 // refutes; an empty valid plan marks a process report; a valid plan whose
 // every mode holds a valid PASS verifies — conditionally on the note's
-// dependsOn statements, which is what makes the cascade meaningful.
+// dependsOn statements, which the boundary's mechanical gates re-check.
 //
 // Ids and event ordering come from the caller (the campaign loop), which
 // derives them from journal state. The store never invents identity.
@@ -66,15 +65,8 @@ export interface StandingEntry {
   readonly summary: string;
   readonly standing: Standing;
 }
-export interface NoteVersion {
-  readonly at: number;
-  readonly summary: string;
-  readonly text: string;
-}
-
 const RELATIONS = [
   ":create note {id: String => summary: String, text: String, at: Int}",
-  ":create note_history {id: String, at: Int => summary: String, text: String}",
   ":create depends {child: String, parent: String}",
   ":create plan {id: String => modes: String, at: Int}",
   ":create verdict {id: String, mode: String => verdict: String, report: String, at: Int}",
@@ -83,12 +75,9 @@ const RELATIONS = [
 export class NoteStore {
   private constructor(private readonly db: InstanceType<typeof CozoDb>) {}
 
-  /** Open a store. `mem` for a fresh rebuildable projection, `sqlite` to persist. */
-  static async open(
-    engine: "mem" | "sqlite" = "mem",
-    path = "",
-  ): Promise<NoteStore> {
-    const store = new NoteStore(new CozoDb(engine, path));
+  /** Open a fresh in-memory projection, rebuildable from the journal. */
+  static async open(): Promise<NoteStore> {
+    const store = new NoteStore(new CozoDb("mem", ""));
     for (const relation of RELATIONS) {
       try {
         await store.db.run(relation);
@@ -202,58 +191,12 @@ export class NoteStore {
     return first === undefined ? null : (first[0] as string);
   }
 
-  /** Every recorded version of a note, oldest first, for replay and audit. */
-  async history(id: string): Promise<NoteVersion[]> {
-    const result = await this.db.run(
-      "?[at, summary, text] := *note_history{id, at, summary, text}, id = $id :order at",
-      { id },
-    );
-    return result.rows.map((row) => ({
-      at: row[0] as number,
-      summary: row[1] as string,
-      text: row[2] as string,
-    }));
-  }
-
-  /** Verdicts valid for the current version of a note, for reports and audit. */
-  async verdicts(id: string): Promise<NoteVerdict[]> {
-    const version = await this.db.run("?[at] := *note{id, at}, id = $id", {
-      id,
-    });
-    const current = version.rows[0]?.[0] as number | undefined;
-    if (current === undefined) return [];
-    const result = await this.db.run(
-      "?[mode, verdict, report, at] := *verdict{id, mode, verdict, report, at}, id = $id :order mode",
-      { id },
-    );
-    return result.rows
-      .filter((row) => (row[3] as number) > current)
-      .map((row) => ({
-        id,
-        mode: row[0] as string,
-        verdict: row[1] as NoteVerdict["verdict"],
-        report: row[2] as string,
-        at: row[3] as number,
-      }));
-  }
-
   /** Transitive dependsOn closure of `id` (its ancestors), via Datalog. */
   async ancestors(id: string): Promise<string[]> {
     const result = await this.db.run(
       `above[p] := *depends{child, parent: p}, child = $id
        above[p] := *depends{child: m, parent: p}, above[m]
        ?[p] := above[p]`,
-      { id },
-    );
-    return result.rows.map((row) => row[0] as string).sort();
-  }
-
-  /** Notes resting on `id`, directly or transitively (its dependents). */
-  async cascade(id: string): Promise<string[]> {
-    const result = await this.db.run(
-      `affected[n] := *depends{child: n, parent: p}, p = $id
-       affected[n] := *depends{child: n, parent: m}, affected[m]
-       ?[n] := affected[n]`,
       { id },
     );
     return result.rows.map((row) => row[0] as string).sort();
@@ -283,16 +226,12 @@ export class NoteStore {
       "?[id, summary, text, at] <- $rows :put note {id => summary, text, at}",
       { rows: [[id, summary, text, at]] },
     );
-    await this.db.run(
-      "?[id, at, summary, text] <- $rows :put note_history {id, at => summary, text}",
-      { rows: [[id, at, summary, text]] },
-    );
   }
 }
 
-function deriveStanding(
+export function deriveStanding(
   versionAt: number,
-  plan: { modes: string[]; at: number } | undefined,
+  plan: { readonly modes: readonly string[]; readonly at: number } | undefined,
   verdicts: readonly { mode: string; verdict: string; at: number }[],
 ): Standing {
   const valid = verdicts.filter((entry) => entry.at > versionAt);

@@ -7,3 +7,4 @@ runs/
 .coordinator.lock*
 *.tgz
 .playwright-mcp/
+.playwright-cli/

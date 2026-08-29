@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { appendFile, readFile, readdir, realpath } from "node:fs/promises";
+import { appendFile, readFile, readdir } from "node:fs/promises";
 
 const args = Bun.argv.slice(2);
 const capturePath = process.env["FAKE_CODEX_CAPTURE"];
@@ -18,10 +18,8 @@ const option = (name: string): string => {
 const capture = {
   args,
   input,
-  cwd: process.cwd(),
   codexHome,
   homeEntries: await readdir(codexHome),
-  authTarget: await realpath(`${codexHome}/auth.json`),
   remotePayloadPresent: process.env["CODEX_REMOTE_PAYLOAD"] !== undefined,
   threadIdPresent: process.env["CODEX_THREAD_ID"] !== undefined,
   ...(args.includes("exec")

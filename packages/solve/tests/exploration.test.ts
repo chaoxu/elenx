@@ -2,15 +2,12 @@ import { afterEach, expect, test } from "bun:test";
 
 import { openReader } from "elenx";
 
-import { resume, start } from "../exploration";
+import { resume } from "../exploration";
 import {
-  campaignPath,
   cleanupCampaigns,
-  criteria,
   curation,
   dependencies,
   goalServe,
-  problem,
   runSettings,
   serve,
   solvedReplies,
@@ -123,6 +120,13 @@ test("a full cycle mints, triages, verifies, serves, and solves at the boundary"
   expect(statuses).toContain("verify n1 (proof-audit)");
   expect(statuses).toContain("boundary verify n3 (criteria-match)");
 
+  // triage rationales and note verdict reports are consumed by the fold and
+  // never projected into any prompt
+  for (const call of drive.calls) {
+    expect(call.prompt).not.toContain("own derivation");
+    expect(call.prompt).not.toContain("derivation holds");
+  }
+
   // the accepted candidate holds the goal note's exact bytes
   const reader = openReader(path);
   const candidates = reader
@@ -232,48 +236,67 @@ test("a goal on an unverified ancestor is rejected mechanically, without battery
 });
 
 test("every resume cut replays byte-exactly and completes without re-issued work", async () => {
-  const oneShotPath = campaignPath();
-  const oneShot = dependencies(happyReplies());
-  const oneShotReport = await start(
-    {
-      problem,
-      completionCriteria: criteria,
-      campaignPath: oneShotPath,
-      settings: runSettings(),
-    },
-    oneShot,
-  );
-  expect(oneShotReport.outcome).toBe("solved");
+  const oneShot = await startCampaign(happyReplies());
+  expect(oneShot.report.outcome).toBe("solved");
 
   for (const cut of [2, 4, 5, 10, 12]) {
-    const path = campaignPath();
-    const first = dependencies(happyReplies().slice(0, cut));
-    const paused = await start(
-      {
-        problem,
-        completionCriteria: criteria,
-        campaignPath: path,
-        settings: runSettings(),
-      },
-      first,
-    );
-    expect(paused.outcome).toBe("paused");
-    expect(first.calls).toHaveLength(cut);
+    const first = await startCampaign(happyReplies().slice(0, cut));
+    expect(first.report.outcome).toBe("paused");
+    expect(first.drive.calls).toHaveLength(cut);
 
     const second = dependencies(happyReplies().slice(cut));
     const finished = await resume(
-      { campaignPath: path, settings: runSettings() },
+      { campaignPath: first.path, settings: runSettings() },
       second,
     );
     expect(finished.outcome).toBe("solved");
-    expect(first.calls.length + second.calls.length).toBe(happyTotal);
+    expect(first.drive.calls.length + second.calls.length).toBe(happyTotal);
 
     const resumed = second.calls[0]!;
-    const reference = oneShot.calls[cut]!;
+    const reference = oneShot.drive.calls[cut]!;
     expect(resumed.label).toBe(reference.label);
     expect(resumed.system).toBe(reference.system);
     expect(resumed.prompt).toBe(reference.prompt);
   }
+});
+
+test("a retryable provider failure re-derives the phase and retries the call", async () => {
+  const statuses: string[] = [];
+  const { drive, report } = await startCampaign(
+    [
+      { state: "failed", error: "upstream 529", providerRetryable: true },
+      ...happyReplies(),
+    ],
+    { statuses },
+  );
+
+  expect(report.outcome).toBe("solved");
+  expect(drive.calls).toHaveLength(happyTotal + 1);
+  expect(statuses.some((status) => status.includes("retrying in 0s"))).toBe(
+    true,
+  );
+  // the retry re-derives the same phase and re-issues identical call bytes
+  expect(drive.calls[1]!.label).toBe(drive.calls[0]!.label);
+  expect(drive.calls[1]!.prompt).toBe(drive.calls[0]!.prompt);
+});
+
+test("a non-retryable call failure ends the session with a call-failure report", async () => {
+  const { drive, report } = await startCampaign([
+    { state: "failed", error: "invalid request" },
+  ]);
+  expect(report.outcome).toBe("call-failure");
+  expect(report.phase).toBe("explorer");
+  expect(report.reason).toBe("invalid request");
+  expect(report.call).toBeDefined();
+  expect(drive.calls).toHaveLength(1);
+});
+
+test("a cancelled call reports the session as interrupted", async () => {
+  const { report } = await startCampaign([
+    { state: "cancelled", error: "operator stop" },
+  ]);
+  expect(report.outcome).toBe("interrupted");
+  expect(report.phase).toBe("explorer");
 });
 
 test("a tiny maxIndexTokens ends the campaign as index-limit and resumes without dispatch", async () => {

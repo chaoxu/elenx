@@ -27,7 +27,7 @@ export const premiseBase = {
   claimedCitation: claimedCitation.optional(),
 };
 
-export const unresolvedPremise = z.strictObject({
+const unresolvedPremise = z.strictObject({
   ...premiseBase,
   standing: z.literal("UNRESOLVED"),
   refutationAttempt: nonblankText,
@@ -44,7 +44,7 @@ const misappliedPremise = z.strictObject({
   defect: nonblankText,
 });
 
-export const premiseFinding = z.discriminatedUnion("standing", [
+const premiseFinding = z.discriminatedUnion("standing", [
   unresolvedPremise,
   refutedPremise,
   misappliedPremise,
@@ -59,7 +59,6 @@ const premiseSubmission = z.strictObject({
   report: nonblankText,
   premises: z.array(premiseFinding),
 });
-export type PremiseSubmission = z.output<typeof premiseSubmission>;
 
 export function premiseSubmissionFor(answer: string) {
   return premiseSubmission.superRefine(({ premises }, context) => {
@@ -100,7 +99,7 @@ export function premiseAuditSystem(tool: string): string {
   ].join(" ");
 }
 
-export interface GivenPremise {
+interface GivenPremise {
   readonly id: string;
   readonly statement: string;
 }
@@ -108,7 +107,7 @@ export interface GivenPremise {
 export function premiseAuditPrompt(
   task: Pick<Task, "problem" | "completionCriteria">,
   answer: string,
-  given: readonly GivenPremise[] = [],
+  given: readonly GivenPremise[],
 ): string {
   const established =
     given.length === 0
