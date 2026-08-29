@@ -153,8 +153,6 @@ export type ExplorerSubmission = z.output<typeof explorerSubmission>;
 // triage plans and verifier verdicts alone.
 // ---------------------------------------------------------------------------
 
-const positiveIndex = z.number().int().positive();
-
 export function curationSubmissionFor(
   findingCount: number,
   existingNoteIds: readonly string[],
@@ -162,7 +160,7 @@ export function curationSubmissionFor(
   const knownNote = noteIdIn(existingNoteIds, "unknown note id");
   const filing = z
     .strictObject({
-      finding: positiveIndex.max(findingCount),
+      finding: positiveInteger.max(findingCount),
       summary: nonblank.optional(),
       refines: knownNote.optional(),
       duplicateOf: knownNote.optional(),

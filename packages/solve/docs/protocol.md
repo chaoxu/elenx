@@ -1,4 +1,4 @@
-# `exploration-v17` protocol (draft)
+# `exploration-v17` protocol
 
 ## Contract
 
@@ -24,7 +24,7 @@ Standing is derived, never stored. A plan and its verdicts apply to the note ver
 
 ## Explorer turn
 
-Every explorer is one fresh bounded call with one terminal tool and no retrieval access. It receives the task, guidance, the complete standing-annotated live index, and the working set the curator served: full texts chosen at serve time, plus the transient objective when present. It reports findings — each self-contained free text with the note IDs it builds on — plus one optional next objective and optional note IDs to request expanded next turn. Results, failed attempts, and open questions are all findings.
+Every explorer is one fresh bounded call with one terminal tool and no retrieval access. It receives the task, guidance, the complete standing-annotated live index, and the working set: the previous curation's fresh mints and refinements, the full texts chosen at serve time, and the transient objective when present. It reports findings — each self-contained free text with the note IDs it builds on — plus one optional next objective and optional note IDs to request expanded next turn. Results, failed attempts, and open questions are all findings.
 
 There is no submit path and no repair mode. A boundary failure returns to the explorer as ordinary served context: a `FAIL` verdict removes the goal note from the index, and the failure finding stands in its place either way.
 
@@ -34,7 +34,7 @@ The curator is one role with two call sites.
 
 Ingest follows every turn. One fresh call receives the turn's findings and the live index, and its terminal tool files every finding exactly once: minted as a new note with a curator-written summary, recorded as a refinement of the single existing note it sharpens, or dropped as a duplicate. Nothing is silently lost — a submission that skips or double-files a finding is rejected by schema. The curator holds no verification power: standing comes from triage plans and verifier verdicts alone.
 
-Serve follows verification. One fresh call receives the criteria, the standing-annotated index, and the previous turn's requests, then either composes the next explorer's working set — expansions and an optional objective — or points at the goal note whose statement meets the completion criteria. Declaring the goal excludes serving; the boundary battery decides what happens next. Serving defaults to judgment over the whole live index; guidance shapes how the explorer reasons, serving shapes what it sees.
+Serve follows verification. One fresh call receives the criteria, the standing-annotated index, the completed-turn count, and the previous turn's requests, then either composes the served part of the next explorer's working set — expansions and an optional objective, on top of the previous curation's automatically served fresh notes — or points at the goal note whose statement meets the completion criteria. Declaring the goal excludes serving; the boundary battery decides what happens next. Serving defaults to judgment over the whole live index; guidance shapes how the explorer reasons, serving shapes what it sees.
 
 ## Verification
 

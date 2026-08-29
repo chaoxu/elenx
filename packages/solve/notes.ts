@@ -69,7 +69,7 @@ const RELATIONS = [
   ":create note {id: String => summary: String, text: String, at: Int}",
   ":create depends {child: String, parent: String}",
   ":create plan {id: String => modes: String, at: Int}",
-  ":create verdict {id: String, mode: String => verdict: String, report: String, at: Int}",
+  ":create verdict {id: String, mode: String => verdict: String, at: Int}",
 ] as const;
 
 export class NoteStore {
@@ -126,8 +126,8 @@ export class NoteStore {
       throw new Error(`cannot judge unknown note ${event.id}`);
     }
     await this.db.run(
-      "?[id, mode, verdict, report, at] <- $rows :put verdict {id, mode => verdict, report, at}",
-      { rows: [[event.id, event.mode, event.verdict, event.report, event.at]] },
+      "?[id, mode, verdict, at] <- $rows :put verdict {id, mode => verdict, at}",
+      { rows: [[event.id, event.mode, event.verdict, event.at]] },
     );
   }
 

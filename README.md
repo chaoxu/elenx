@@ -38,7 +38,7 @@ The deterministic verifier example is [`examples/v1/scripted-verifier.ts`](examp
 
 ## Solver
 
-[`packages/solve`](packages/solve) supplies the `exploration-v17` protocol. Fresh explorers report findings over a verified, standing-annotated note index; a curator files every finding and serves each turn's working set; one verification subsystem audits notes as they enter and decides completion when the curator points at a verified goal note. The verified tower is the result; rendering it into a document is external tooling.
+[`packages/solve`](packages/solve) supplies the `exploration-v17` protocol. Fresh explorers report findings over a standing-annotated note index; a curator files every finding and serves each turn's working set; one verification subsystem audits notes as they enter and decides completion when the curator declares a goal note resting on a fully verified ancestor closure. The verified tower is the result; rendering it into a document is external tooling.
 
 [`packages/solve/docs/`](packages/solve/docs/) is the current protocol documentation, with [`packages/solve/docs/protocol.md`](packages/solve/docs/protocol.md) the authority for exact runtime behavior. [`docs/design.md`](docs/design.md) and [`docs/hypotheses.md`](docs/hypotheses.md) are historical design background for the retired `exploration-v15` protocol.
 

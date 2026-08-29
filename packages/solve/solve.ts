@@ -7,7 +7,11 @@ import { parseArgs } from "node:util";
 
 import { resume, settings, start, type Settings } from "./exploration";
 import { executionContract, executionReport } from "./execution-contract";
-import { exportAnswer, inspectCampaign } from "./inspect";
+import {
+  exportAnswer,
+  inspectCampaign,
+  type CampaignInspection,
+} from "./inspect";
 import { withSerialToolCalls } from "./serial-tools";
 
 export type { SolveDependencies, SolveModels } from "./runtime";
@@ -160,7 +164,7 @@ async function resumeExisting(
   dependencies: Parameters<typeof resume>[1],
 ) {
   const campaignPath = positionals[2]!;
-  let frozen: ReturnType<typeof inspectCampaign>;
+  let frozen: CampaignInspection;
   try {
     frozen = inspectCampaign(campaignPath);
   } catch (error) {

@@ -316,12 +316,13 @@ export function inspectCampaign(path: string, options: InspectionOptions = {}) {
 export function exportAnswer(path: string): Uint8Array {
   const reader = openReader(path);
   try {
-    const task = parseCampaign(reader.records()[0]).task;
+    const records = reader.records();
+    const task = parseCampaign(records[0]).task;
     const semantic = snapshot(reader, task);
     if (semantic.phase !== "solved" || semantic.solution === undefined) {
       throw new Error("campaign has no verified v17 goal");
     }
-    if (!deriveCandidateStatus(reader.records(), semantic.solution).verified) {
+    if (!deriveCandidateStatus(records, semantic.solution).verified) {
       throw new Error("accepted candidate verifier contract is unsatisfied");
     }
     const accepted = semantic.candidates.find(

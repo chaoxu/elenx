@@ -246,26 +246,6 @@ export interface CandidateRecord {
   readonly verdicts: readonly VerdictRecord[];
 }
 
-interface State {
-  readonly turns: TurnRecord[];
-  readonly curations: CurationRecord[];
-  readonly triages: TriageRecord[];
-  readonly noteVerdicts: NoteVerdictRecord[];
-  readonly serves: ServeRecord[];
-  readonly candidates: CandidateRecord[];
-}
-
-function emptyState(): State {
-  return {
-    turns: [],
-    curations: [],
-    triages: [],
-    noteVerdicts: [],
-    serves: [],
-    candidates: [],
-  };
-}
-
 interface PremiseStatement {
   readonly id: string;
   readonly statement: string;
@@ -414,7 +394,6 @@ async function derivePhase(reader: Reader, task: Task): Promise<Phase> {
     // Plain-JS id bookkeeping mirrors the store so dependency wiring and
     // liveness filters stay synchronous; summaries, texts, and standings live
     // in the store.
-    const known = new Set<string>();
     const refuted = new Set<string>();
     const parents = new Map<string, readonly string[]>();
     const versionAt = new Map<string, EntryId>();
@@ -470,7 +449,7 @@ async function derivePhase(reader: Reader, task: Task): Promise<Phase> {
         readonly value: CurationSubmission;
       },
     ): Promise<string[]> => {
-      const knownBefore = new Set(known);
+      const knownBefore = new Set(parents.keys());
       const minted: string[] = [];
       const refined: string[] = [];
       for (const filing of curated.value.filings) {
@@ -495,7 +474,6 @@ async function derivePhase(reader: Reader, task: Task): Promise<Phase> {
         }
         mintCount += 1;
         const id = `n${mintCount}`;
-        known.add(id);
         const dependsOn = finding.basedOn.filter(
           (parent) => knownBefore.has(parent) && !refuted.has(parent),
         );
@@ -2108,6 +2086,26 @@ interface MirrorNote {
   versions: number;
 }
 
+interface State {
+  readonly turns: TurnRecord[];
+  readonly curations: CurationRecord[];
+  readonly triages: TriageRecord[];
+  readonly noteVerdicts: NoteVerdictRecord[];
+  readonly serves: ServeRecord[];
+  readonly candidates: CandidateRecord[];
+}
+
+function emptyState(): State {
+  return {
+    turns: [],
+    curations: [],
+    triages: [],
+    noteVerdicts: [],
+    serves: [],
+    candidates: [],
+  };
+}
+
 export function snapshot(reader: Reader, task: Task): CampaignSnapshot {
   const records = reader.records();
   const state = emptyState();
@@ -2126,7 +2124,6 @@ export function snapshot(reader: Reader, task: Task): CampaignSnapshot {
       string,
       {
         readonly verdict: Assessment["verdict"];
-        readonly report: string;
         readonly at: EntryId;
       }
     >
@@ -2200,11 +2197,10 @@ export function snapshot(reader: Reader, task: Task): CampaignSnapshot {
     id: string,
     mode: string,
     verdict: Assessment["verdict"],
-    report: string,
     at: EntryId,
   ) => {
     const modes = verdictTable.get(id) ?? new Map();
-    modes.set(mode, { verdict, report, at });
+    modes.set(mode, { verdict, at });
     verdictTable.set(id, modes);
   };
   const foldCuration = (
@@ -2416,7 +2412,6 @@ export function snapshot(reader: Reader, task: Task): CampaignSnapshot {
               id,
               mode,
               outcome.record.verdict,
-              outcome.record.report,
               outcome.record.settled,
             );
             pipelineCursor = outcome.record.settled;
@@ -2514,13 +2509,7 @@ export function snapshot(reader: Reader, task: Task): CampaignSnapshot {
       if ("pending" in outcome) return finish(outcome.pending.kind);
       state.candidates.push(outcome.candidate);
       for (const verdict of outcome.candidate.verdicts) {
-        applyVerdictMirror(
-          goal,
-          verdict.mode,
-          verdict.verdict,
-          verdict.report,
-          verdict.record,
-        );
+        applyVerdictMirror(goal, verdict.mode, verdict.verdict, verdict.record);
         if (verdict.verdict === "FAIL") refuted.add(goal);
       }
       if (outcome.solved) return finish("solved", found.id);

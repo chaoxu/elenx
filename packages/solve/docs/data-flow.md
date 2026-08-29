@@ -47,6 +47,7 @@ Receives:
 
 - exact task and completion criteria
 - the standing-annotated live index
+- the completed explorer-turn count
 - the previous explorer's expansion requests and next objective, as hints
 - one terminal serving tool
 

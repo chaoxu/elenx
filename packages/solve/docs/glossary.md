@@ -31,7 +31,7 @@ A separate name requires distinct bytes, authority, or lifecycle.
 | **index-limit**        | Terminal report when the assembled live index exceeds `maxIndexTokens`.                                      |
 | **continuation**       | Transcript-preserving provider request after an output-length stop.                                          |
 | **recovery**           | Repeated operational work after interruption or provider failure.                                            |
-| **profile**            | Frozen provider, model, reasoning, API, and base URL for one Pi model mode.                                  |
+| **profile**            | Frozen provider, model, reasoning, API, and base URL for one role.                                           |
 | **projection**         | Allowlisted immutable fields supplied to one call.                                                           |
 
 Explorer and verifier are the two mathematical personas; the curator controls observation, never standing. Triage and the mode calls are one verification subsystem with two call sites. The source checker is a capability boundary because it alone receives web search.
