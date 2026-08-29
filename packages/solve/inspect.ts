@@ -7,7 +7,7 @@ import {
 } from "elenx/pi";
 
 import { callActivity, parseCampaign } from "./exploration-protocol";
-import { snapshot } from "./exploration";
+import { snapshot, type CampaignSnapshot } from "./exploration";
 import {
   sourceCheckRequest,
   sourceEventPrefix,
@@ -169,8 +169,48 @@ export function inspectCampaign(path: string, options: InspectionOptions = {}) {
         spend: spendByCall.get(call.seq),
       };
     });
-    const candidatesById = new Map(
-      semantic.candidates.map((row) => [row.id, row]),
+    const explorations = semantic.turns.map(
+      ({ call, settled, submission }) => ({
+        call,
+        settled,
+        action: submission.action,
+        ...(submission.action === "continue"
+          ? {
+              findings: submission.findings.length,
+              ...(submission.nextObjective === undefined
+                ? {}
+                : { nextObjective: submission.nextObjective }),
+              ...(submission.expand.length === 0
+                ? {}
+                : { expand: submission.expand }),
+            }
+          : { basedOn: submission.basedOn }),
+      }),
+    );
+    const curations = semantic.curations.map(
+      ({ call, settled, submission, minted, refined }) => ({
+        call,
+        settled,
+        minted,
+        refined,
+        duplicates: submission.filings.filter(
+          ({ duplicateOf }) => duplicateOf !== undefined,
+        ).length,
+        invalidations: submission.invalidations.map(({ note, cause }) => ({
+          note,
+          cause,
+        })),
+      }),
+    );
+    const notes = semantic.notes.map(
+      ({ id, summary, versions, at, invalidated, text }) => ({
+        id,
+        summary,
+        versions,
+        at,
+        ...(invalidated === undefined ? {} : { invalidated }),
+        ...(options.includeInputs === true ? { text } : {}),
+      }),
     );
     const candidates = semantic.candidates.map((row) => {
       const originRow = callRows.find((call) => call.seq === row.originCall);
@@ -183,11 +223,9 @@ export function inspectCampaign(path: string, options: InspectionOptions = {}) {
           ? [call.spend.measuredUsage]
           : [],
       );
-      const parentRow =
-        row.parent === undefined ? undefined : candidatesById.get(row.parent);
-      const triggeringDefect = parentRow?.verdicts.at(-1)?.verifier;
       return {
         ...row,
+        verified: deriveCandidateStatus(records, row.id).verified,
         calls: turnRows.map(({ seq }) => seq),
         elapsedMs: turnRows.reduce((total, call) => total + call.elapsedMs, 0),
         ...(measured.length === 0
@@ -202,12 +240,6 @@ export function inspectCampaign(path: string, options: InspectionOptions = {}) {
                 0,
               ),
             }),
-        ...(parentRow === undefined
-          ? {}
-          : {
-              ...(triggeringDefect === undefined ? {} : { triggeringDefect }),
-              regeneration: regenerationSummary(parentRow.answer, row.answer),
-            }),
       };
     });
     const last = records.at(-1);
@@ -216,15 +248,11 @@ export function inspectCampaign(path: string, options: InspectionOptions = {}) {
       problem: task.problem,
       completionCriteria: task.completionCriteria,
       maxContextTokens: task.maxContextTokens,
-      maxHandoffTokens: task.maxHandoffTokens,
-      maxRecallTokens: task.maxRecallTokens,
-      maxRepairDepth: task.maxRepairDepth,
+      maxIndexTokens: task.maxIndexTokens,
       guidance: task.guidance,
       profiles: {
         explorer: publicProfile(task.explorer),
-        archivist:
-          task.archivist === null ? null : publicProfile(task.archivist),
-        handoffVerifier: publicProfile(task.handoffVerifier),
+        curator: publicProfile(task.curator),
         premiseVerifier: publicProfile(task.premiseVerifier),
         sourceChecker: task.sourceChecker,
         proofVerifier: publicProfile(task.proofVerifier),
@@ -233,7 +261,17 @@ export function inspectCampaign(path: string, options: InspectionOptions = {}) {
       lastSeq: last?.seq ?? declaration.seq,
       lastAtMs: last?.atMs ?? declaration.atMs,
       observedAtMs,
-      ...semantic,
+      phase: semantic.phase,
+      ...(semantic.projectionError === undefined
+        ? {}
+        : { projectionError: semantic.projectionError }),
+      indexTokens: semantic.indexTokens,
+      explorations,
+      curations,
+      notes,
+      ...(semantic.solution === undefined
+        ? {}
+        : { solution: semantic.solution }),
       candidates,
       calls: callRows,
       spend: spend.summary,
@@ -250,7 +288,7 @@ export function exportAnswer(path: string): Uint8Array {
     const task = parseCampaign(reader.records()[0]).task;
     const semantic = snapshot(reader, task);
     if (semantic.phase !== "solved" || semantic.solution === undefined) {
-      throw new Error("campaign has no accepted v15 candidate");
+      throw new Error("campaign has no accepted v16 candidate");
     }
     if (!deriveCandidateStatus(reader.records(), semantic.solution).verified) {
       throw new Error("accepted candidate verifier contract is unsatisfied");
@@ -261,21 +299,26 @@ export function exportAnswer(path: string): Uint8Array {
   }
 }
 
+type SemanticView = Omit<CampaignSnapshot, "phase"> & {
+  readonly phase: CampaignSnapshot["phase"] | "projection-error";
+  readonly projectionError?: string;
+};
+
 function semanticSnapshot(
   reader: Parameters<typeof snapshot>[0],
   task: Parameters<typeof snapshot>[1],
-) {
+): SemanticView {
   try {
     return snapshot(reader, task);
   } catch (error) {
     return {
-      phase: "projection-error" as const,
+      phase: "projection-error",
       projectionError: error instanceof Error ? error.message : String(error),
-      explorations: [],
-      recalls: [],
-      handoffs: [],
+      indexTokens: 0,
+      turns: [],
+      curations: [],
       candidates: [],
-      solution: undefined,
+      notes: [],
     };
   }
 }
@@ -289,35 +332,6 @@ function publicProfile(profile: {
     provider: profile.provider,
     model: profile.model,
     reasoning: profile.reasoning,
-  };
-}
-
-function regenerationSummary(parent: string, answer: string) {
-  const parentLines = parent.split("\n");
-  const answerLines = answer.split("\n");
-  let sharedPrefixLines = 0;
-  while (
-    sharedPrefixLines < parentLines.length &&
-    sharedPrefixLines < answerLines.length &&
-    parentLines[sharedPrefixLines] === answerLines[sharedPrefixLines]
-  ) {
-    sharedPrefixLines += 1;
-  }
-  let sharedSuffixLines = 0;
-  while (
-    sharedSuffixLines < parentLines.length - sharedPrefixLines &&
-    sharedSuffixLines < answerLines.length - sharedPrefixLines &&
-    parentLines[parentLines.length - 1 - sharedSuffixLines] ===
-      answerLines[answerLines.length - 1 - sharedSuffixLines]
-  ) {
-    sharedSuffixLines += 1;
-  }
-  return {
-    answerBytes: new TextEncoder().encode(answer).length,
-    parentLines: parentLines.length,
-    answerLines: answerLines.length,
-    sharedPrefixLines,
-    sharedSuffixLines,
   };
 }
 

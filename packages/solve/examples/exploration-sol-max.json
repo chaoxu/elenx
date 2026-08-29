@@ -1,20 +1,20 @@
 {
-  "protocol": "exploration-v15",
+  "protocol": "exploration-v16",
   "maxContextTokens": 200000,
-  "maxHandoffTokens": 24000,
+  "maxIndexTokens": 100000,
   "explorerGuidance": [],
   "explorer": {
-    "provider": "openai-codex",
+    "provider": "codex-lb",
     "model": "gpt-5.6-sol",
     "reasoning": "max"
   },
-  "handoffVerifier": {
-    "provider": "openai-codex",
+  "curator": {
+    "provider": "codex-lb",
     "model": "gpt-5.6-sol",
     "reasoning": "max"
   },
   "premiseVerifier": {
-    "provider": "openai-codex",
+    "provider": "codex-lb",
     "model": "gpt-5.6-sol",
     "reasoning": "max"
   },
@@ -23,7 +23,7 @@
     "reasoning": "max"
   },
   "proofVerifier": {
-    "provider": "openai-codex",
+    "provider": "codex-lb",
     "model": "gpt-5.6-sol",
     "reasoning": "max"
   }

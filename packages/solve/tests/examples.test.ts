@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 
 import { settings } from "../exploration";
-import { settingsSchema as settingsV16 } from "../exploration-v16-protocol";
 
 const examplesDir = new URL("../examples/", import.meta.url);
 const files = readdirSync(examplesDir).filter((name) => name.endsWith(".json"));
@@ -14,13 +13,7 @@ describe("example settings", () => {
       const value = JSON.parse(
         readFileSync(new URL(name, examplesDir), "utf8"),
       );
-      const schema =
-        value !== null &&
-        typeof value === "object" &&
-        (value as { protocol?: unknown }).protocol === "exploration-v16"
-          ? settingsV16
-          : settings;
-      const parsed = schema.safeParse(value);
+      const parsed = settings.safeParse(value);
       expect(parsed.success, `${name}: ${parsed.error?.message}`).toBe(true);
     }
   });
@@ -33,7 +26,7 @@ describe("example settings", () => {
     );
     for (const role of [
       "explorer",
-      "handoffVerifier",
+      "curator",
       "premiseVerifier",
       "proofVerifier",
     ] as const) {
@@ -46,13 +39,13 @@ describe("example settings", () => {
     });
   });
 
-  test("the mixed example downgrades only the advisory handoff verifier", () => {
+  test("the mixed example downgrades only the curator", () => {
     const value = settings.parse(
       JSON.parse(
         readFileSync(new URL("exploration-mixed.json", examplesDir), "utf8"),
       ),
     );
-    expect(value.handoffVerifier.model).toBe("gpt-5.6-luna");
+    expect(value.curator.model).toBe("gpt-5.6-luna");
     for (const role of [
       "explorer",
       "premiseVerifier",

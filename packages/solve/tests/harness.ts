@@ -83,15 +83,12 @@ export function runSettings(overrides: Partial<Settings> = {}): Settings {
     reasoning: "high" as const,
   });
   return {
-    protocol: "exploration-v15",
+    protocol: "exploration-v16",
     maxContextTokens: 200_000,
-    maxHandoffTokens: 24_000,
-    maxRecallTokens: 8_000,
-    maxRepairDepth: null,
+    maxIndexTokens: 100_000,
     explorerGuidance: [],
     explorer: selection(explorerModel),
-    archivist: null,
-    handoffVerifier: selection(handoffModel),
+    curator: selection(handoffModel),
     premiseVerifier: selection(premiseModel),
     sourceChecker: {
       model: sourceModel.id,

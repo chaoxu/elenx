@@ -52,9 +52,12 @@ try {
         elenx: `file:${kernelArchive}`,
         "elenx-solve": `file:${solverArchive}`,
       },
+      // cozo-node fetches its prebuilt native engine in a postinstall, so a
+      // consumer must trust it exactly as this repository's root does.
+      trustedDependencies: ["cozo-node"],
     }),
   );
-  await run([process.execPath, "install", "--ignore-scripts"], consumer);
+  await run([process.execPath, "install"], consumer);
   await run(
     [process.execPath, "run", "node_modules/elenx-solve/solve.ts", "--help"],
     consumer,

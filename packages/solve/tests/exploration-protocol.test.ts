@@ -5,7 +5,7 @@ import {
   explorerSubmission,
   parseCampaign,
   settingsSchema,
-} from "../exploration-v16-protocol";
+} from "../exploration-protocol";
 
 const profile = {
   provider: "openai-codex",

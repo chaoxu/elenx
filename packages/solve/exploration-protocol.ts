@@ -1,10 +1,9 @@
-import { estimateTokens } from "@earendil-works/pi-coding-agent";
-import { type Entry, type EntryId } from "elenx";
+import { type Entry } from "elenx";
 import { piReasoning } from "elenx/pi";
 import { z } from "zod";
 
 export const applicationId = "elenx-solve";
-export const protocolName = "exploration-v15";
+export const protocolName = "exploration-v16";
 
 const modelProfile = z.strictObject({
   provider: z.string().min(1),
@@ -20,7 +19,6 @@ const sourceProfile = z.strictObject({
   reasoning: piReasoning,
 });
 const positiveInteger = z.number().int().positive();
-const nonnegativeInteger = z.number().int().min(0);
 const nonblank = z.string().refine((value) => value.trim().length > 0, {
   message: "must contain non-whitespace text",
 });
@@ -29,40 +27,40 @@ const guidanceModule = z.strictObject({
   origin: z.enum(["default", "user"]),
   text: nonblank,
 });
+const noteId = z.string().regex(/^n[1-9][0-9]*$/u);
+
+const boundsRefinement = (
+  {
+    maxContextTokens,
+    maxIndexTokens,
+  }: {
+    maxContextTokens: number;
+    maxIndexTokens: number;
+  },
+  ctx: z.RefinementCtx,
+) => {
+  if (maxIndexTokens > maxContextTokens) {
+    ctx.addIssue({
+      code: "custom",
+      message: "maxIndexTokens cannot exceed maxContextTokens",
+      path: ["maxIndexTokens"],
+    });
+  }
+};
 
 export const settingsSchema = z
   .strictObject({
     protocol: z.literal(protocolName),
     maxContextTokens: positiveInteger.default(200_000),
-    maxHandoffTokens: positiveInteger.default(24_000),
-    maxRecallTokens: positiveInteger.default(8_000),
-    maxRepairDepth: nonnegativeInteger.nullable().default(null),
+    maxIndexTokens: positiveInteger.default(100_000),
     explorerGuidance: userGuidance.default([]),
     explorer: modelProfile,
-    archivist: modelProfile.nullable().default(null),
-    handoffVerifier: modelProfile,
+    curator: modelProfile,
     premiseVerifier: modelProfile,
     sourceChecker: sourceProfile,
     proofVerifier: modelProfile,
   })
-  .superRefine(
-    ({ maxContextTokens, maxHandoffTokens, maxRecallTokens }, ctx) => {
-      if (maxHandoffTokens > maxContextTokens) {
-        ctx.addIssue({
-          code: "custom",
-          message: "maxHandoffTokens cannot exceed maxContextTokens",
-          path: ["maxHandoffTokens"],
-        });
-      }
-      if (maxRecallTokens > maxContextTokens) {
-        ctx.addIssue({
-          code: "custom",
-          message: "maxRecallTokens cannot exceed maxContextTokens",
-          path: ["maxRecallTokens"],
-        });
-      }
-    },
-  );
+  .superRefine(boundsRefinement);
 export type Settings = z.output<typeof settingsSchema>;
 
 export const taskSchema = z
@@ -71,35 +69,15 @@ export const taskSchema = z
     problem: nonblank,
     completionCriteria: nonblank,
     maxContextTokens: positiveInteger,
-    maxHandoffTokens: positiveInteger,
-    maxRecallTokens: positiveInteger.default(8_000),
-    maxRepairDepth: nonnegativeInteger.nullable().default(null),
+    maxIndexTokens: positiveInteger,
     guidance: z.array(guidanceModule),
     explorer: runtimeProfile,
-    archivist: runtimeProfile.nullable().default(null),
-    handoffVerifier: runtimeProfile,
+    curator: runtimeProfile,
     premiseVerifier: runtimeProfile,
     sourceChecker: sourceProfile,
     proofVerifier: runtimeProfile,
   })
-  .superRefine(
-    ({ maxContextTokens, maxHandoffTokens, maxRecallTokens }, ctx) => {
-      if (maxHandoffTokens > maxContextTokens) {
-        ctx.addIssue({
-          code: "custom",
-          message: "maxHandoffTokens cannot exceed maxContextTokens",
-          path: ["maxHandoffTokens"],
-        });
-      }
-      if (maxRecallTokens > maxContextTokens) {
-        ctx.addIssue({
-          code: "custom",
-          message: "maxRecallTokens cannot exceed maxContextTokens",
-          path: ["maxRecallTokens"],
-        });
-      }
-    },
-  );
+  .superRefine(boundsRefinement);
 export type Task = z.output<typeof taskSchema>;
 export type RuntimeProfile = z.output<typeof runtimeProfile>;
 export type SourceProfile = z.output<typeof sourceProfile>;
@@ -111,6 +89,7 @@ const replayReleases: Readonly<Record<string, string>> = {
   "exploration-v12": "v0.31.0",
   "exploration-v13": "v0.32.0",
   "exploration-v14": "v0.33.0",
+  "exploration-v15": "v0.34.0",
 };
 
 export function parseCampaign(declaration: Entry | undefined): {
@@ -152,89 +131,179 @@ export function parseCampaign(declaration: Entry | undefined): {
   return { declaration, task: parsed.data };
 }
 
-const selectedNote = z.strictObject({
-  note: z.number().int().positive(),
-  intendedUse: nonblank,
-});
+// ---------------------------------------------------------------------------
+// Explorer turn
+//
+// The explorer is a pure reasoner. It reports raw findings (results, failed
+// attempts, and open questions alike, as self-contained free text) or submits
+// one standalone answer. It never authors index entries and never selects what
+// survives: the curator files every reported finding. The schema root is one
+// flat object with an action discriminant so strict tool-schema modes that
+// forbid a root oneOf accept it unchanged.
+// ---------------------------------------------------------------------------
 
-const continueSubmission = z
+const finding = z.strictObject({
+  text: nonblank,
+  basedOn: z.array(noteId).default([]),
+});
+export type Finding = z.output<typeof finding>;
+
+export const explorerSubmission = z
   .strictObject({
-    action: z.literal("continue"),
-    notes: z.array(nonblank),
-    nextObjective: nonblank,
-    selectedNotes: z.array(selectedNote),
+    action: z.enum(["continue", "submit"]),
+    findings: z.array(finding).default([]),
+    nextObjective: nonblank.optional(),
+    expand: z.array(noteId).default([]),
+    answer: nonblank.optional(),
+    basedOn: z.array(noteId).default([]),
   })
-  .superRefine(({ notes, selectedNotes }, ctx) => {
-    const positions = selectedNotes.map(({ note }) => note);
-    if (new Set(positions).size !== positions.length) {
-      ctx.addIssue({
-        code: "custom",
-        message: "selected note positions must be unique",
-        path: ["selectedNotes"],
-      });
-    }
-    for (const [index, position] of positions.entries()) {
-      if (position > notes.length) {
+  .superRefine((value, ctx) => {
+    if (value.action === "continue") {
+      if (value.findings.length === 0) {
         ctx.addIssue({
           code: "custom",
-          message: "selected note position is absent from notes",
-          path: ["selectedNotes", index, "note"],
+          message: "continue requires at least one finding",
+          path: ["findings"],
         });
+      }
+      if (value.answer !== undefined) {
+        ctx.addIssue({
+          code: "custom",
+          message: "continue cannot carry an answer",
+          path: ["answer"],
+        });
+      }
+      if (value.basedOn.length > 0) {
+        ctx.addIssue({
+          code: "custom",
+          message: "basedOn belongs to submit; findings carry their own",
+          path: ["basedOn"],
+        });
+      }
+    } else {
+      if (value.answer === undefined) {
+        ctx.addIssue({
+          code: "custom",
+          message: "submit requires the standalone answer",
+          path: ["answer"],
+        });
+      }
+      for (const [path, present] of [
+        ["findings", value.findings.length > 0],
+        ["nextObjective", value.nextObjective !== undefined],
+        ["expand", value.expand.length > 0],
+      ] as const) {
+        if (present) {
+          ctx.addIssue({
+            code: "custom",
+            message: `submit cannot carry ${path}`,
+            path: [path],
+          });
+        }
       }
     }
   });
-const submitSubmission = z.strictObject({
-  action: z.literal("submit"),
-  answer: nonblank,
-});
-
-export const explorerSubmission = z.discriminatedUnion("action", [
-  continueSubmission,
-  submitSubmission,
-]);
 export type ExplorerSubmission = z.output<typeof explorerSubmission>;
-export type ContinueSubmission = z.output<typeof continueSubmission>;
 
-export interface Note {
-  readonly id: `note-${number}-${number}`;
-  readonly text: string;
-  readonly originCall: EntryId;
-}
+// ---------------------------------------------------------------------------
+// Curator ingest
+//
+// The curator files every finding of a turn: each one is minted as a new note,
+// recorded as a new version of an existing note it refines, or dropped as a
+// duplicate of an existing note. Nothing is silently lost — every finding
+// index must be covered exactly once. Text is the finding's exact bytes; the
+// curator writes only the summary. Invalidations are permitted solely while
+// ingesting a verifier defect, and each must quote its verdict as cause.
+// ---------------------------------------------------------------------------
 
-export interface Handoff {
-  readonly sourceCall: EntryId;
-  readonly nextObjective: string;
-  readonly notes: readonly {
-    readonly id: Note["id"];
-    readonly text: string;
-    readonly intendedUse: string;
-  }[];
-}
+const positiveIndex = z.number().int().positive();
 
-export function handoffContent(handoff: Handoff) {
-  return {
-    nextObjective: handoff.nextObjective,
-    notes: handoff.notes.map(({ text, intendedUse }) => ({
-      text,
-      intendedUse,
-    })),
-  };
+export function curationSubmissionFor(
+  findingCount: number,
+  existingNoteIds: readonly string[],
+  verdictPresent: boolean,
+) {
+  const known = new Set(existingNoteIds);
+  const knownNote = noteId.refine((value) => known.has(value), {
+    message: "unknown note id",
+  });
+  const filing = z
+    .strictObject({
+      finding: positiveIndex.max(findingCount),
+      summary: nonblank.optional(),
+      refines: knownNote.optional(),
+      duplicateOf: knownNote.optional(),
+    })
+    .superRefine((value, ctx) => {
+      if (value.refines !== undefined && value.duplicateOf !== undefined) {
+        ctx.addIssue({
+          code: "custom",
+          message: "a filing is a mint, a refinement, or a duplicate",
+          path: ["refines"],
+        });
+      }
+      if (value.duplicateOf === undefined && value.summary === undefined) {
+        ctx.addIssue({
+          code: "custom",
+          message: "minting or refining requires a summary",
+          path: ["summary"],
+        });
+      }
+    });
+  const invalidation = z.strictObject({
+    note: knownNote,
+    cause: nonblank,
+  });
+  return z
+    .strictObject({
+      filings: z.array(filing),
+      invalidations: z.array(invalidation).default([]),
+    })
+    .superRefine((value, ctx) => {
+      const seen = new Set<number>();
+      const refined = new Set<string>();
+      for (const [index, entry] of value.filings.entries()) {
+        if (seen.has(entry.finding)) {
+          ctx.addIssue({
+            code: "custom",
+            message: "each finding is filed exactly once",
+            path: ["filings", index, "finding"],
+          });
+        }
+        seen.add(entry.finding);
+        if (entry.refines !== undefined) {
+          // One version per note per curation keeps the {id, at}-keyed
+          // history append-only: a second same-turn revision would land on
+          // the same journal seq and silently replace the first.
+          if (refined.has(entry.refines)) {
+            ctx.addIssue({
+              code: "custom",
+              message: "each note is refined at most once per curation",
+              path: ["filings", index, "refines"],
+            });
+          }
+          refined.add(entry.refines);
+        }
+      }
+      if (seen.size !== findingCount) {
+        ctx.addIssue({
+          code: "custom",
+          message: `all ${findingCount} findings must be filed`,
+          path: ["filings"],
+        });
+      }
+      if (!verdictPresent && value.invalidations.length > 0) {
+        ctx.addIssue({
+          code: "custom",
+          message: "invalidation requires a verifier verdict to ingest",
+          path: ["invalidations"],
+        });
+      }
+    });
 }
-
-export function handoffFor(
-  sourceCall: EntryId,
-  submission: ContinueSubmission,
-): Handoff {
-  return {
-    sourceCall,
-    nextObjective: submission.nextObjective,
-    notes: submission.selectedNotes.map(({ note, intendedUse }) => ({
-      id: `note-${sourceCall}-${note}`,
-      text: submission.notes[note - 1]!,
-      intendedUse,
-    })),
-  };
-}
+export type CurationSubmission = z.output<
+  ReturnType<typeof curationSubmissionFor>
+>;
 
 export const assessment = z.strictObject({
   verdict: z.enum(["PASS", "FAIL", "INCONCLUSIVE"]),
@@ -242,129 +311,9 @@ export const assessment = z.strictObject({
 });
 export type Assessment = z.output<typeof assessment>;
 
-export interface Recall {
-  readonly selections: readonly {
-    readonly id: Note["id"];
-    readonly text: string;
-    readonly relevance: string;
-  }[];
-}
-
-export function renderRecallPacket(recall: Recall): string {
-  return `Recalled notes from the durable archive (untyped, untrusted):\n${JSON.stringify(recallContent(recall), null, 2)}`;
-}
-
-export function estimatedRecallTokens(recall: Recall): number {
-  return estimateTokens({
-    role: "user",
-    content: renderRecallPacket(recall),
-    timestamp: 0,
-  });
-}
-
-export function recallSubmissionFor(
-  archive: readonly Note[],
-  maxRecallTokens: number,
-) {
-  const ids = new Set(archive.map(({ id }) => id));
-  const byId = new Map(archive.map((note) => [note.id, note]));
-  return z
-    .strictObject({
-      selections: z.array(
-        z.strictObject({ note: nonblank, relevance: nonblank }),
-      ),
-    })
-    .superRefine(({ selections }, ctx) => {
-      const seen = new Set<string>();
-      for (const [index, { note }] of selections.entries()) {
-        if (seen.has(note)) {
-          ctx.addIssue({
-            code: "custom",
-            message: "selected archive notes must be unique",
-            path: ["selections", index, "note"],
-          });
-        }
-        seen.add(note);
-        if (!ids.has(note as Note["id"])) {
-          ctx.addIssue({
-            code: "custom",
-            message: "selected note is absent from the archive",
-            path: ["selections", index, "note"],
-          });
-        }
-      }
-      const resolved = selections.flatMap(({ note, relevance }) => {
-        const found = byId.get(note as Note["id"]);
-        return found === undefined
-          ? []
-          : [{ id: found.id, text: found.text, relevance }];
-      });
-      if (resolved.length !== selections.length) return;
-      const tokens = estimatedRecallTokens({ selections: resolved });
-      if (tokens > maxRecallTokens) {
-        ctx.addIssue({
-          code: "custom",
-          message: `recall estimate ${tokens} exceeds maxRecallTokens ${maxRecallTokens}; select fewer or shorter notes`,
-          path: ["selections"],
-        });
-      }
-    });
-}
-export type RecallSubmission = z.output<ReturnType<typeof recallSubmissionFor>>;
-
-export function recallFor(
-  archive: readonly Note[],
-  submission: RecallSubmission,
-): Recall {
-  const byId = new Map(archive.map((note) => [note.id, note]));
-  return {
-    selections: submission.selections.map(({ note, relevance }) => {
-      const found = byId.get(note as Note["id"]);
-      if (found === undefined) {
-        throw new Error(`selected note is absent from the archive: ${note}`);
-      }
-      return { id: found.id, text: found.text, relevance };
-    }),
-  };
-}
-
-export function recallContent(recall: Recall) {
-  return recall.selections.map(({ text, relevance }) => ({ text, relevance }));
-}
-
-export const turnTool = "submit_turn";
-export const recallTool = "submit_recall";
-export const reviewTool = "submit_review";
-export const premiseTool = "submit_premises";
-export const proofTool = "submit_proof_audit";
-
-const prefix = `${applicationId}/${protocolName}`;
-
-export function explorerLabel(trigger?: EntryId): string {
-  return trigger === undefined
-    ? `${prefix}/explorer/initial`
-    : `${prefix}/explorer/${trigger}`;
-}
-
-export function recallLabel(trigger: EntryId): string {
-  return `${prefix}/recall/${trigger}`;
-}
-
-export function handoffReviewLabel(source: EntryId): string {
-  return `${prefix}/handoff/${source}`;
-}
-
-export function premiseAuditLabel(): string {
-  return `${prefix}/candidate/premises`;
-}
-
-export function proofAuditLabel(): string {
-  return `${prefix}/candidate/proof`;
-}
-
 export function callActivity(label: string): {
   readonly role: string;
-  readonly triggerCall?: EntryId;
+  readonly triggerCall?: number;
 } {
   const parts = label.split("/");
   if (parts[0] !== applicationId || parts[1] !== protocolName) {
@@ -376,16 +325,10 @@ export function callActivity(label: string): {
       ...(parts[3] === "initial" ? {} : { triggerCall: Number(parts[3]) }),
     };
   }
-  if (parts[2] === "recall") {
-    return { role: "archivist", triggerCall: Number(parts[3]) };
-  }
-  if (parts[2] === "handoff") {
-    return { role: "handoff-review", triggerCall: Number(parts[3]) };
-  }
-  if (parts[2] === "candidate") {
-    return { role: parts[3] === "premises" ? "premise-audit" : "proof-audit" };
-  }
-  return { role: "unknown" };
+  if (parts[2] === undefined) return { role: "unknown" };
+  return parts[3] === undefined
+    ? { role: parts[2] }
+    : { role: parts[2], triggerCall: Number(parts[3]) };
 }
 
 export function renderTask(
@@ -393,3 +336,6 @@ export function renderTask(
 ): string {
   return `Problem:\n${task.problem}\n\nCompletion criteria:\n${task.completionCriteria}`;
 }
+
+export const turnTool = "submit_turn";
+export const curationTool = "submit_curation";

@@ -187,7 +187,7 @@ async function readSettingsFile(path: string): Promise<Settings> {
 function providers(settings: Settings): readonly string[] {
   return [
     settings.explorer.provider,
-    settings.handoffVerifier.provider,
+    settings.curator.provider,
     settings.premiseVerifier.provider,
     settings.proofVerifier.provider,
   ];
