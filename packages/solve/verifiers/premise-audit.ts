@@ -19,7 +19,7 @@ const claimedCitation = z.strictObject({
   locator: nonblankText.optional(),
 });
 
-const premiseBase = {
+export const premiseBase = {
   statement: nonblankText,
   hypotheses: z.array(nonblankText),
   application: nonblankText,

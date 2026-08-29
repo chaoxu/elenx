@@ -344,19 +344,21 @@ export function callActivity(label: string): {
   readonly triggerCall?: number;
 } {
   const parts = label.split("/");
-  if (parts[0] !== applicationId || parts[1] !== protocolName) {
+  if (
+    parts[0] !== applicationId ||
+    parts[1] !== protocolName ||
+    parts[2] === undefined
+  ) {
     return { role: "unknown" };
   }
-  if (parts[2] === "explorer") {
-    return {
-      role: "explorer",
-      ...(parts[3] === "initial" ? {} : { triggerCall: Number(parts[3]) }),
-    };
-  }
-  if (parts[2] === undefined) return { role: "unknown" };
-  return parts[3] === undefined
-    ? { role: parts[2] }
-    : { role: parts[2], triggerCall: Number(parts[3]) };
+  const role = parts[2];
+  // Verify labels carry their trigger after the note and mode segments;
+  // every other label carries it directly after the role. Non-numeric
+  // segments (explorer/initial, candidate/<mode>) yield no trigger.
+  const trigger = parts[role === "verify" ? 5 : 3];
+  return trigger !== undefined && /^[0-9]+$/u.test(trigger)
+    ? { role, triggerCall: Number(trigger) }
+    : { role };
 }
 
 export function renderTask(

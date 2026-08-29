@@ -19,22 +19,11 @@ import type { SourceProfile } from "../exploration-protocol";
 import {
   nonblankText,
   nonEllipsizedQuote,
+  premiseBase,
   type UnresolvedPremise,
 } from "./premise-audit";
 
-const sourcePremise = z.strictObject({
-  statement: nonblankText,
-  hypotheses: z.array(nonblankText),
-  application: nonblankText,
-  answerQuote: nonEllipsizedQuote,
-  claimedCitation: z
-    .strictObject({
-      citation: nonblankText,
-      url: z.httpUrl().optional(),
-      locator: nonblankText.optional(),
-    })
-    .optional(),
-});
+const sourcePremise = z.strictObject(premiseBase);
 
 const sourced = z.strictObject({
   statement: nonblankText,
@@ -74,11 +63,6 @@ export const sourceResolution = z.discriminatedUnion("standing", [
   unresolved,
 ]);
 export type SourceResolution = z.output<typeof sourceResolution>;
-export type SourceCertificate = z.output<typeof sourced>;
-export type ProofSourceCertificate = Omit<
-  SourceCertificate,
-  "refutationAttempt"
->;
 
 const sourceSubmission = z.strictObject({
   report: nonblankText,
@@ -249,17 +233,6 @@ export function sourceCheckVerdict(
     return "FAIL" as const;
   }
   return "PASS" as const;
-}
-
-export function proofSourceCertificates(
-  resolutions: readonly SourceResolution[],
-): ProofSourceCertificate[] {
-  return resolutions.flatMap((item) => {
-    if (item.standing !== "SOURCED") return [];
-    const { refutationAttempt: _refutationAttempt, ...certificate } = item;
-    void _refutationAttempt;
-    return [certificate];
-  });
 }
 
 const sourceUsage = z.strictObject({

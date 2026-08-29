@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import {
   assessment,
+  callActivity,
   boundaryModes,
   curationSubmissionFor,
   explorerSubmission,
@@ -352,6 +353,33 @@ describe("v17 verification vocabulary", () => {
       "external-premises",
       "criteria-match",
     ]);
+  });
+});
+
+describe("call activity", () => {
+  test("labels resolve to roles with numeric triggers only", () => {
+    const prefix = "elenx-solve/exploration-v17";
+    expect(callActivity(`${prefix}/explorer/initial`)).toEqual({
+      role: "explorer",
+    });
+    expect(callActivity(`${prefix}/explorer/12`)).toEqual({
+      role: "explorer",
+      triggerCall: 12,
+    });
+    expect(callActivity(`${prefix}/curation/7`)).toEqual({
+      role: "curation",
+      triggerCall: 7,
+    });
+    expect(callActivity(`${prefix}/verify/n3/proof-audit/19`)).toEqual({
+      role: "verify",
+      triggerCall: 19,
+    });
+    expect(callActivity(`${prefix}/candidate/criteria-match`)).toEqual({
+      role: "candidate",
+    });
+    expect(callActivity("elenx-solve/other/explorer/1")).toEqual({
+      role: "unknown",
+    });
   });
 });
 

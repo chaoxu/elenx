@@ -22,7 +22,7 @@ Triage plans; mode verifiers judge. Verifiers alone touch standing: every standi
 
 ## Source checker
 
-The source checker is a capability boundary rather than another mathematical persona. It alone receives web search. It sees only exact unresolved premise packets and returns source certificates or blocking defects, folded into the `external-premises` mode verdict.
+The source checker is a capability boundary rather than another mathematical persona. It alone receives web search. It sees only exact unresolved premise packets and returns source certificates or blocking defects, folded into the `external-premises` mode verdict. Two register choices are deliberate: the explicit web-search prohibition appears only in the premise audit, the citation-facing call under the highest search-temptation pressure, and the source checker addresses its packets as untrusted data because premises carry URLs and citations, not only mathematics.
 
 ## Role-tool matrix
 

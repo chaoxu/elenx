@@ -1,93 +1,47 @@
 import { afterEach, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 
-import { start } from "../exploration";
 import { exportAnswer, inspectCampaign } from "../inspect";
 import {
-  campaignPath,
   cleanupCampaigns,
-  criteria,
-  dependencies,
-  problem,
-  runSettings,
+  solvedReplies,
+  startCampaign,
+  turn,
 } from "./harness";
 
 afterEach(cleanupCampaigns);
 
-const firstTurn = {
-  submission: {
-    findings: [{ text: "LEMMA_TEXT" }],
-    nextObjective: "OBJECTIVE_ONE",
-  },
-} as const;
-const firstCuration = {
-  submission: { filings: [{ finding: 1, summary: "LEMMA_SUMMARY" }] },
-} as const;
-const firstTriage = {
-  submission: {
-    plans: [
-      { note: "n1", modes: ["proof-audit"], rationale: "carries derivation" },
-    ],
-  },
-} as const;
-const lemmaVerdict = {
-  submission: { verdict: "PASS", report: "LEMMA_OK" },
-} as const;
-const firstServe = {
-  submission: { expand: ["n1"], objective: "OBJECTIVE_TWO" },
-} as const;
-const secondTurn = {
-  submission: { findings: [{ text: "GOAL_TEXT", basedOn: ["n1"] }] },
-} as const;
-const secondCuration = {
-  submission: { filings: [{ finding: 1, summary: "GOAL_SUMMARY" }] },
-} as const;
-const secondTriage = {
-  submission: {
-    plans: [
-      { note: "n2", modes: ["proof-audit"], rationale: "the goal claim" },
-    ],
-  },
-} as const;
-const goalVerdict = {
-  submission: { verdict: "PASS", report: "GOAL_OK" },
-} as const;
-const goalServe = { submission: { goalNote: "n2" } } as const;
-const batteryPass = (report: string) =>
-  ({ submission: { verdict: "PASS", report } }) as const;
-const noPremises = {
-  submission: { report: "NO_PREMISES", premises: [] },
-} as const;
+const firstTurn = turn([{ text: "LEMMA_TEXT" }], {
+  nextObjective: "OBJECTIVE_ONE",
+});
 
-const solvedReplies = [
-  firstTurn,
-  firstCuration,
-  firstTriage,
-  lemmaVerdict,
-  firstServe,
-  secondTurn,
-  secondCuration,
-  secondTriage,
-  goalVerdict,
-  goalServe,
-  batteryPass("B_PROOF"),
-  batteryPass("B_RECONSTRUCTION"),
-  batteryPass("B_REFUTATION"),
-  noPremises,
-  batteryPass("B_CRITERIA"),
-] as const;
+const solved = () =>
+  solvedReplies({
+    lemma: {
+      text: "LEMMA_TEXT",
+      summary: "LEMMA_SUMMARY",
+      rationale: "carries derivation",
+      verdictReport: "LEMMA_OK",
+    },
+    firstObjective: "OBJECTIVE_ONE",
+    serveObjective: "OBJECTIVE_TWO",
+    goal: {
+      text: "GOAL_TEXT",
+      summary: "GOAL_SUMMARY",
+      rationale: "the goal claim",
+      verdictReport: "GOAL_OK",
+    },
+    battery: {
+      proof: "B_PROOF",
+      reconstruction: "B_RECONSTRUCTION",
+      refutation: "B_REFUTATION",
+      premises: "NO_PREMISES",
+      criteria: "B_CRITERIA",
+    },
+  });
 
 test("inspection exposes the v17 policy on a fresh campaign", async () => {
-  const path = campaignPath();
-  await start(
-    {
-      problem,
-      completionCriteria: criteria,
-      campaignPath: path,
-      settings: runSettings(),
-    },
-    dependencies([]),
-  );
+  const { path } = await startCampaign([]);
   expect(inspectCampaign(path)).toMatchObject({
     protocol: "exploration-v17",
     phase: "explorer",
@@ -107,16 +61,7 @@ test("inspection exposes the v17 policy on a fresh campaign", async () => {
 });
 
 test("inspection reports the verified tower and export unfolds it", async () => {
-  const path = campaignPath();
-  const report = await start(
-    {
-      problem,
-      completionCriteria: criteria,
-      campaignPath: path,
-      settings: runSettings(),
-    },
-    dependencies([...solvedReplies]),
-  );
+  const { path, report } = await startCampaign(solved());
   expect(report.outcome).toBe("solved");
 
   const inspection = inspectCampaign(path);
@@ -220,16 +165,7 @@ test("inspection reports the verified tower and export unfolds it", async () => 
 });
 
 test("a paused campaign inspects with its current phase and refuses export", async () => {
-  const path = campaignPath();
-  await start(
-    {
-      problem,
-      completionCriteria: criteria,
-      campaignPath: path,
-      settings: runSettings(),
-    },
-    dependencies([firstTurn]),
-  );
+  const { path } = await startCampaign([firstTurn]);
   const inspection = inspectCampaign(path);
   expect(inspection.phase).toBe("curation");
   expect(inspection.explorations).toHaveLength(1);
@@ -238,16 +174,7 @@ test("a paused campaign inspects with its current phase and refuses export", asy
 });
 
 test("inspection gates exact requests behind include-inputs", async () => {
-  const path = campaignPath();
-  await start(
-    {
-      problem,
-      completionCriteria: criteria,
-      campaignPath: path,
-      settings: runSettings(),
-    },
-    dependencies([firstTurn]),
-  );
+  const { path } = await startCampaign([firstTurn]);
   expect(inspectCampaign(path).calls[0]).not.toHaveProperty("request");
   const call = inspectCampaign(path, { includeInputs: true }).calls[0]!;
   expect(call.request).toMatchObject({
@@ -259,16 +186,7 @@ test("inspection gates exact requests behind include-inputs", async () => {
 });
 
 test("CLI inspection emits v17 JSON", async () => {
-  const path = campaignPath();
-  await start(
-    {
-      problem,
-      completionCriteria: criteria,
-      campaignPath: path,
-      settings: runSettings(),
-    },
-    dependencies([]),
-  );
+  const { path } = await startCampaign([]);
   const result = spawnSync(process.execPath, ["solve.ts", "inspect", path], {
     cwd: new URL("..", import.meta.url),
     encoding: "utf8",
