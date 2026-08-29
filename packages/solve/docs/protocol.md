@@ -7,6 +7,7 @@ V17 verifies knowledge as it accumulates. Fresh explorers reason and report raw 
 Starting a campaign freezes:
 
 - exact problem and completion criteria
+- current call-surface stamp
 - context and index ceilings
 - resolved explorer guidance
 - explorer, curator, triage, and verifier profiles
@@ -34,7 +35,7 @@ The curator is one role with two call sites.
 
 Ingest follows every turn. One fresh call receives the turn's findings and the live index, and its terminal tool files every finding exactly once: minted as a new note with a curator-written summary, recorded as a refinement of the single existing note it sharpens, or dropped as a duplicate. Nothing is silently lost — a submission that skips or double-files a finding is rejected by schema. The curator holds no verification power: standing comes from triage plans and verifier verdicts alone.
 
-Serve follows verification. One fresh call receives the criteria, the standing-annotated index, the completed-turn count, and the previous turn's requests, then either composes the served part of the next explorer's working set — expansions and an optional objective, on top of the previous curation's automatically served fresh notes — or points at the goal note whose statement meets the completion criteria. Declaring the goal excludes serving; the boundary battery decides what happens next. Serving defaults to judgment over the whole live index; guidance shapes how the explorer reasons, serving shapes what it sees.
+Serve follows verification. One fresh call receives the criteria, the standing-annotated index, the completed-turn count, and the previous turn's requests, then either composes the served part of the next explorer's working set — expansions and an optional objective, on top of the previous curation's automatically served fresh notes — or points at a live non-report note whose summary states the requested conclusion with the exact parameters and direction. The summary need not restate proof-content requirements because the boundary battery checks those against the exact stored note text. Declaring the goal excludes serving; the boundary battery decides what happens next. Serving defaults to judgment over the whole live index; guidance shapes how the explorer reasons, serving shapes what it sees.
 
 ## Verification
 
@@ -49,7 +50,7 @@ After every ingest, one fresh triage call plans each newly minted or revised not
 
 An empty plan marks a process report. The loop executes each planned mode as its own fresh verifier call returning `PASS`, `FAIL`, or `INCONCLUSIVE` with a report. Triage and mode verdicts are journal events; the store derives standing from them.
 
-The boundary battery runs when serve declares the goal. Triage has no discretion there: every mode runs, plus the boundary-only `criteria-match` — does the goal note's statement answer the exact completion criteria. Three mechanical checks precede the battery: the declared goal note is not a process report, its transitive `basedOn` closure is fully verified, and the dependency graph it closes over is acyclic. All verdicts `PASS` → `solved`, terminal. The verified tower is the result, and the goal note's bytes are the kernel candidate its acceptance verdicts bind to. Any failure is a verdict event that re-enters through ingest like every other finding.
+The boundary battery runs when serve declares the goal. Triage has no discretion there: every mode runs, plus the boundary-only `criteria-match`, which receives both the goal note's summary statement and exact text and checks every completion criterion, including requested proof content. Three mechanical checks precede the battery: the declared goal note is not a process report, its transitive `basedOn` closure is fully verified, and the dependency graph it closes over is acyclic. All verdicts `PASS` → `solved`, terminal. The verified tower is the result, and the goal note's bytes are the kernel candidate its acceptance verdicts bind to. Any failure is a verdict event that re-enters through ingest like every other finding.
 
 ## External assembly
 
@@ -63,10 +64,10 @@ Assembly is not part of the protocol. `export` emits the goal note and its closu
 
 State is reconstructed from the append-only journal: settled tool submissions are refolded into the store, plans, verdicts, and standings before the first unresolved phase dispatches. Terminal outcomes are `solved`, `paused`, `interrupted`, `call-failure`, and `index-limit`. Model-call mechanics — SSE, one required terminal tool, serial submission, length continuations, in-call recovery, capped phase backoff, deterministic prompt-cache keys, and two-stage interrupts — are unchanged from v16.
 
-Prompt bytes for the explorer, curator, triage, and verifier are frozen per protocol: any change to them breaks replay of existing v17 journals and requires a protocol bump.
+Prompt bytes for the explorer, curator, triage, and verifier are replay-determining. The campaign declaration records the current call-surface stamp, and parsing fail-stops before the fold when it disagrees or is absent. Update the stamp whenever replay-determining bytes change.
 
 ## Deliberately absent
 
 No submit path, no candidate document, no repair mode: the store carries every failure forward as knowledge, and acceptance binds to the goal note over its verified closure. No lazy verification: every claim is audited at ingest; deferring audits to first use is deferred work (issue #32), gated on journal evidence that unused notes dominate audit spend. No retrieval tool and no standing taxonomy beyond the four derived standings. Each addition returns only after matched evaluation shows it improves externally accepted resolutions per dollar, per `docs/simplification.md`.
 
-V12–v16 databases require their matching solver releases. V17 does not replay their workflows.
+Campaigns created under another call surface require their matching solver revision.

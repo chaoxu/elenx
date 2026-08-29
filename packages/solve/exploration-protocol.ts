@@ -4,6 +4,7 @@ import { z } from "zod";
 
 export const applicationId = "elenx-solve";
 export const protocolName = "exploration-v17";
+export const callSurface = "summary-goal-exact-criteria";
 
 const modelProfile = z.strictObject({
   provider: z.string().min(1),
@@ -71,6 +72,7 @@ export type Settings = z.output<typeof settingsSchema>;
 export const taskSchema = z
   .strictObject({
     protocol: z.literal(protocolName),
+    callSurface: z.literal(callSurface),
     problem: nonblank,
     completionCriteria: nonblank,
     maxContextTokens: positiveInteger,

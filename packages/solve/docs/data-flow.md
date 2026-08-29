@@ -2,7 +2,7 @@
 
 Status: `exploration-v17` authority for information passed into fresh calls.
 
-The journal retains more information than any model role may see. Every prompt uses an allowlisted projection. Replay and inspection access do not imply prompt visibility.
+The journal retains more information than any model role may see. Every prompt uses an allowlisted projection. Replay and inspection access do not imply prompt visibility. The campaign declaration records the call-surface stamp so incompatible prompts fail before folding journal state.
 
 ## Explorer
 
@@ -51,6 +51,8 @@ Receives:
 - the previous explorer's expansion requests and next objective, as hints
 - one terminal serving tool
 
+Serve uses summaries only to identify a note that states the requested conclusion, parameters, and direction. It leaves definitions, derivations, citations, and other proof-content criteria to the boundary battery over the exact stored note text.
+
 Excluded:
 
 - note full texts
@@ -81,7 +83,7 @@ Every mode receives the exact task and one terminal assessment tool, then exactl
 - `proof-audit` — the note's exact text and statement, with its `basedOn` statements given as premises
 - `reconstruction` — the note's statement and its premise statements only, never its derivation
 - `refutation` — the note's exact statement and text, with its `basedOn` statements given as premises
-- `criteria-match` (boundary only) — the goal note's statement and the completion criteria, with its `basedOn` statements given as premises
+- `criteria-match` (boundary only) — the goal note's statement and exact text plus the completion criteria, with its `basedOn` statements given as premises
 - `external-premises` — the note's exact text for premise inventory, with its `basedOn` statements given as established premises; unresolved premises go to the source checker
 
 Excluded from every mode:
@@ -109,6 +111,6 @@ Excluded:
 
 ## Tests
 
-Behavior tests drive scripted campaigns through the real loop and assert directly on the dispatched prompt bytes: required material appears and excluded material stays out — the reconstruction prompt withholds the goal text, a refuted note leaves the next explorer's index, and triage rationales and note verdict reports appear in no prompt at all.
+Behavior tests drive scripted campaigns through the real loop and assert directly on the dispatched prompt bytes: required material appears and excluded material stays out — reconstruction withholds the goal text while criteria-match receives it, a refuted note leaves the next explorer's index, and triage rationales and note verdict reports appear in no prompt at all.
 
 Inspection exposes exact requests only under `--include-inputs`. No runtime role can request raw journal history.

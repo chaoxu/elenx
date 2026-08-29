@@ -18,6 +18,7 @@ import { z } from "zod";
 
 import {
   applicationId,
+  callSurface,
   parseCampaign,
   protocolName,
   settingsSchema,
@@ -108,6 +109,7 @@ function freezeTask(
   const value = request.settings;
   return taskSchema.parse({
     protocol: protocolName,
+    callSurface,
     problem: request.problem,
     completionCriteria: request.completionCriteria,
     maxContextTokens: value.maxContextTokens,

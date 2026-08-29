@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import {
   assessment,
+  callSurface,
   callActivity,
   boundaryModes,
   curationSubmissionFor,
@@ -9,6 +10,7 @@ import {
   parseCampaign,
   serveSubmissionFor,
   settingsSchema,
+  taskSchema,
   triageSubmissionFor,
   verificationModes,
 } from "../exploration-protocol";
@@ -384,6 +386,38 @@ describe("call activity", () => {
 });
 
 describe("v17 campaign parsing", () => {
+  test("same-protocol campaigns require the current call surface", () => {
+    const runtimeProfile = {
+      ...profile,
+      api: "openai-responses",
+      baseUrl: "https://invalid.test/v1",
+    };
+    const current = taskSchema.parse({
+      protocol: "exploration-v17",
+      callSurface,
+      problem: "Prove P.",
+      completionCriteria: "Give a proof of P.",
+      maxContextTokens: 200_000,
+      maxIndexTokens: 100_000,
+      guidance: [],
+      explorer: runtimeProfile,
+      curator: runtimeProfile,
+      triage: runtimeProfile,
+      verifier: runtimeProfile,
+      sourceChecker: settings.sourceChecker,
+    });
+    const { callSurface: _oldSurface, ...oldConfig } = current;
+    expect(() =>
+      parseCampaign({
+        seq: 1,
+        atMs: 1,
+        kind: "campaign",
+        application: "elenx-solve",
+        config: oldConfig,
+      }),
+    ).toThrow("invalid elenx-solve exploration-v17 campaign config");
+  });
+
   test("campaigns from earlier protocols are unsupported", () => {
     for (const protocol of ["exploration-v15", "exploration-v16"]) {
       expect(() =>

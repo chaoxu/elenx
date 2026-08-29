@@ -261,6 +261,7 @@ export function inspectCampaign(path: string, options: InspectionOptions = {}) {
     const last = records.at(-1);
     return {
       protocol: task.protocol,
+      callSurface: task.callSurface,
       problem: task.problem,
       completionCriteria: task.completionCriteria,
       maxContextTokens: task.maxContextTokens,

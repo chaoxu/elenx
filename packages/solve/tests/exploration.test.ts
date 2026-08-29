@@ -87,6 +87,12 @@ test("a full cycle mints, triages, verifies, serves, and solves at the boundary"
     `${p}/candidate/criteria-match`,
   ]);
 
+  // Serve selects a possible conclusion from index metadata. Proof-content
+  // requirements belong to the boundary call over the exact stored text.
+  expect(drive.calls[4]!.system).toContain(
+    "Do not require the summary to restate definitions, derivations, citations, or other proof-content criteria",
+  );
+
   // the second explorer sees standings, the expanded text, and the objective
   const secondExplorer = drive.calls[5]!.prompt;
   expect(secondExplorer).toContain('"standing": "verified"');
@@ -95,12 +101,14 @@ test("a full cycle mints, triages, verifies, serves, and solves at the boundary"
   expect(secondExplorer).toContain(lemmaText);
   expect(secondExplorer).toContain("state the goal from n1");
 
-  // boundary verify prompts carry the goal text; reconstruction withholds it
+  // Boundary proof and criteria verification see the exact goal text;
+  // reconstruction alone stays proof-blind.
   expect(drive.calls[10]!.prompt).toContain(goalText);
   expect(drive.calls[11]!.prompt).not.toContain(goalText);
   expect(drive.calls[11]!.prompt).toContain(
     "goal: the sum of two even integers is even",
   );
+  expect(drive.calls[14]!.prompt).toContain(goalText);
 
   // the goal note's basedOn premises reach the boundary premise auditor as
   // established givens, and the system prompt carries the guard sentence

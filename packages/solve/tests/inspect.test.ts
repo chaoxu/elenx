@@ -44,6 +44,7 @@ test("inspection exposes the v17 policy on a fresh campaign", async () => {
   const { path } = await startCampaign([]);
   expect(inspectCampaign(path)).toMatchObject({
     protocol: "exploration-v17",
+    callSurface: "summary-goal-exact-criteria",
     phase: "explorer",
     maxIndexTokens: 100_000,
     explorations: [],
