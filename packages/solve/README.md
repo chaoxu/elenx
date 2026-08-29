@@ -4,7 +4,7 @@
 
 Each turn a fresh explorer reasons over the standing-annotated note index and a curator-served working set, then reports self-contained findings; it has no submit path. The curator files every finding exactly once — minted, recorded as a refinement, or dropped as a duplicate. One verification subsystem holds every verifier: triage plans each new or revised note from a frozen mode menu (proof audit, reconstruction, refutation, external premises), fresh mode calls return verdicts, and standing derives from the verdicts — conditional inside, unconditional authority at the boundary. When the curator points at a goal note whose statement meets the completion criteria, mechanical checks (non-report goal, fully verified, acyclic ancestor closure) and the full boundary battery with criteria match decide the campaign. The verified tower is the result; the goal-note bytes are the kernel candidate. Assembly into a reader-facing document is external tooling over `export`.
 
-The campaign journal remains the single source of truth. The note store is an in-memory projection rebuilt from the journal on every derivation; deleting it loses nothing.
+The campaign journal remains the single source of truth. The note store is an in-memory projection rebuilt from the journal on every derivation and holds no independent authority.
 
 ## Run
 

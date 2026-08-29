@@ -379,6 +379,36 @@ test("a finding based on a refuted note mints with that edge dropped", async () 
   }
 });
 
+test("a refinement stales the earlier verdict and re-enters triage", async () => {
+  const { drive, report } = await startCampaign([
+    turn([{ text: "Claim v1." }]),
+    curation([{ finding: 1, summary: "claim: first form" }]),
+    triage([{ note: "n1", modes: ["proof-audit"], rationale: "derivation" }]),
+    verdict("PASS", "v1 audit holds"),
+    serve([], "sharpen the claim"),
+    turn([{ text: "Claim v2, sharpened." }]),
+    curation([{ finding: 1, summary: "claim: sharpened form", refines: "n1" }]),
+    triage([{ note: "n1", modes: ["proof-audit"], rationale: "re-audit" }]),
+    verdict("INCONCLUSIVE", "v2 audit open"),
+    serve([], "keep going"),
+    turn([{ text: "Next direction." }]),
+  ]);
+
+  expect(report.outcome).toBe("paused");
+  expect(drive.calls).toHaveLength(11);
+  // the refined note re-enters triage with its new text
+  const reTriage = drive.calls[7]!;
+  expect(reTriage.label).toMatch(/\/triage\//);
+  expect(reTriage.prompt).toContain("Claim v2, sharpened.");
+  // the stale v1 PASS does not survive the revision: with the re-audit
+  // inconclusive, the sharpened note stands as a conjecture
+  const lastExplorer = drive.calls[10]!.prompt;
+  expect(lastExplorer).toContain("claim: sharpened form");
+  expect(lastExplorer).toContain('"standing": "conjecture"');
+  expect(lastExplorer).not.toContain("claim: first form");
+  expect(lastExplorer).not.toContain('"standing": "verified"');
+});
+
 test("a note-mode external premise resolves through the source check and verifies", async () => {
   const noteText =
     "The bound follows from closure under addition, giving r+s an integer.";

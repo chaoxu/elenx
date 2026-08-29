@@ -1658,9 +1658,13 @@ function sourceRepairFindings(
 // every mode holds a valid PASS verifies — conditionally on the note's
 // basedOn statements, which the boundary's mechanical gates re-check.
 function deriveStanding(
-  versionAt: number,
-  plan: { readonly modes: readonly string[]; readonly at: number } | undefined,
-  verdicts: readonly { mode: string; verdict: string; at: number }[],
+  versionAt: EntryId,
+  plan: { readonly modes: readonly string[]; readonly at: EntryId } | undefined,
+  verdicts: readonly {
+    mode: string;
+    verdict: Assessment["verdict"];
+    at: EntryId;
+  }[],
 ): Standing {
   const valid = verdicts.filter((entry) => entry.at > versionAt);
   if (valid.some((entry) => entry.verdict === "FAIL")) return "refuted";
@@ -1827,7 +1831,6 @@ function foldCampaign(reader: Reader, task: Task): CampaignFold {
     }
     return [...seen].sort();
   };
-  const inCycle = (id: string): boolean => ancestorsOf(id).includes(id);
   const expandedNotes = () => {
     const requested = [...recentIds, ...expandIds];
     const selected: { id: string; text: string }[] = [];
@@ -2133,7 +2136,7 @@ function foldCampaign(reader: Reader, task: Task): CampaignFold {
       const unverified = ancestors.filter(
         (ancestor) => standingOf(ancestor) !== "verified",
       );
-      const cyclic = inCycle(goal);
+      const cyclic = ancestors.includes(goal);
       if (goalStanding === "report" || unverified.length > 0 || cyclic) {
         mechanicalGaps.push({
           serve: served.call,
@@ -2147,10 +2150,7 @@ function foldCampaign(reader: Reader, task: Task): CampaignFold {
             ...(goalStanding === "report" ? { report: true } : {}),
             unverified: unverified.map((ancestor) => ({
               id: ancestor,
-              standing:
-                notes.get(ancestor) === undefined
-                  ? "missing"
-                  : standingOf(ancestor),
+              standing: standingOf(ancestor),
             })),
             cyclic,
           }),

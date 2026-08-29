@@ -16,7 +16,7 @@ Every Pi profile freezes provider, model ID, requested reasoning, API, and base 
 
 ## Findings store
 
-The store materializes events folded from the journal: curator filings mint notes and record refinements, triage submissions record verification plans, and verifier calls record per-mode verdicts. It is rebuilt in memory from the journal on every start and resume; deleting it loses nothing. Note IDs are `n1`, `n2`, … in fold order, and each event carries the journal sequence that produced it, so the fold is deterministic and replay reproduces the store exactly.
+The store materializes events folded from the journal: curator filings mint notes and record refinements, triage submissions record verification plans, and verifier calls record per-mode verdicts. It is rebuilt in memory from the journal on every start and resume and holds no independent authority. Note IDs are `n1`, `n2`, … in fold order, and each event carries the journal sequence that produced it, so the fold is deterministic and replay reproduces the store exactly.
 
 A note holds one finding: `summary` is the index entry, and `text` is the finding's exact reported bytes — the curator writes summaries but never rewrites findings. A refinement appends a new version; the current view serves the latest and the journal retains every version. Dependency edges come from the findings' own `basedOn` references, never from curator judgment. The mechanical gates walk those edges for their graph work: ancestor closure and cycle detection.
 
