@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { Campaign, Json } from "elenx";
-import { type PiResult, type PiRunOptions } from "elenx/pi";
+import { type PiResult, type PiRunOptions, type PiTelemetry } from "elenx/pi";
 
 import { start, type Settings } from "../exploration";
 import type { SolveDependencies, SolveModels } from "../solve";
@@ -113,6 +113,8 @@ export function sourceResult(
   resolutions: readonly SourceResolution[],
 ): Extract<SourceCheckResult, { readonly state: "succeeded" }> {
   // Transport shape: every field present, null unless the variant carries it.
+  // The spread overrides cleanly because every SourceResolution variant is a
+  // strict object with all of its fields required — none arrives undefined.
   const transport = resolutions.map((resolution) => ({
     citation: null,
     url: null,
@@ -213,26 +215,7 @@ async function respond(
 ): Promise<PiResult> {
   const state = reply.state ?? "succeeded";
   const telemetry = fakePiTelemetry(options, state);
-  const body =
-    state === "succeeded"
-      ? { state, text: "done", transcript: [], telemetry }
-      : state === "failed"
-        ? {
-            state,
-            text: "partial",
-            transcript: [],
-            telemetry,
-            error: reply.error ?? "failed call",
-            providerRetryable: reply.providerRetryable ?? false,
-            truncated: false,
-          }
-        : {
-            state,
-            text: "partial",
-            transcript: [],
-            telemetry,
-            error: reply.error ?? "cancelled call",
-          };
+  const body = replyBody(state, reply, telemetry);
   const receipt = await campaign.call(
     {
       label: options.label,
@@ -251,6 +234,35 @@ async function respond(
     },
   );
   return { call: receipt.call, ...body };
+}
+
+function replyBody(
+  state: NonNullable<Reply["state"]>,
+  reply: Reply,
+  telemetry: PiTelemetry,
+) {
+  switch (state) {
+    case "succeeded":
+      return { state, text: "done", transcript: [], telemetry };
+    case "failed":
+      return {
+        state,
+        text: "partial",
+        transcript: [],
+        telemetry,
+        error: reply.error ?? "failed call",
+        providerRetryable: reply.providerRetryable ?? false,
+        truncated: false,
+      };
+    case "cancelled":
+      return {
+        state,
+        text: "partial",
+        transcript: [],
+        telemetry,
+        error: reply.error ?? "cancelled call",
+      };
+  }
 }
 
 // ---------------------------------------------------------------------------

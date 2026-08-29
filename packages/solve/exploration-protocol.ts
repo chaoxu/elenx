@@ -84,6 +84,7 @@ export const taskSchema = z
   })
   .superRefine(boundsRefinement);
 export type Task = z.output<typeof taskSchema>;
+export type ModelProfile = z.output<typeof modelProfile>;
 export type RuntimeProfile = z.output<typeof runtimeProfile>;
 export type SourceProfile = z.output<typeof sourceProfile>;
 export type GuidanceModule = z.output<typeof guidanceModule>;

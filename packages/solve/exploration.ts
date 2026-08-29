@@ -23,8 +23,8 @@ import {
   settingsSchema,
   taskSchema,
   type GuidanceModule,
+  type ModelProfile,
   type RuntimeProfile,
-  type Settings,
   type Task,
 } from "./exploration-protocol";
 import { foldCampaign, jsonSnapshot, phaseRole, type ModelPhase } from "./fold";
@@ -92,8 +92,8 @@ function resolveGuidance(values: readonly string[]): GuidanceModule[] {
 
 function resolveProfile(
   models: SolveModels,
-  profile: Settings["explorer"],
-): Settings["explorer"] & { readonly api: string; readonly baseUrl: string } {
+  profile: ModelProfile,
+): RuntimeProfile {
   const model = selectModel(models, {
     provider: profile.provider,
     modelId: profile.model,
@@ -340,7 +340,7 @@ async function runCampaign(
   task: Task,
   dependencies: SolveDependencies & { readonly models: SolveModels },
 ): Promise<Report> {
-  const models = dependencies.models;
+  const { models } = dependencies;
   const prepared = new Map<string, PreparedPiOptions>();
   const prepare = (key: string, profile: RuntimeProfile) => {
     const existing = prepared.get(key);

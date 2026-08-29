@@ -24,8 +24,6 @@ export function fakePiRequest(options: PiRunOptions): Json {
       samplingParams: options.model.samplingParams ?? null,
       compat: options.model.compat ?? null,
     },
-    // The JSON round-trip below drops undefined-valued fields, matching the
-    // omit-when-absent shape of real journaled requests.
     system: options.system,
     prompt: options.prompt,
     reasoning: options.reasoning,
@@ -34,6 +32,9 @@ export function fakePiRequest(options: PiRunOptions): Json {
     maxLengthContinuations: options.maxLengthContinuations,
     cacheKey: options.cacheKey,
   };
+  // The round-trip drops undefined-valued fields, matching the
+  // omit-when-absent shape of real journaled requests; stopAfterToolResult is
+  // typed `?: true`, so the passthrough can never leak a false.
   return JSON.parse(JSON.stringify(request)) as Json;
 }
 

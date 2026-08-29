@@ -15,10 +15,6 @@ import {
 
 const fakeCodex = new URL("./fixtures/fake-codex.ts", import.meta.url).pathname;
 
-const flagValues = (args: string[], flag: string) =>
-  args.flatMap((argument, index) =>
-    argument === flag ? [args[index + 1]] : [],
-  );
 const statement =
   "Every finite tree with at least two vertices has two leaves.";
 const request: SourceCheckRequest = sourceCheckRequestFor(
@@ -75,6 +71,12 @@ async function captures(path: string): Promise<Record<string, unknown>[]> {
     .map((line) => JSON.parse(line) as Record<string, unknown>);
 }
 
+function flagValues(args: string[], flag: string): string[] {
+  return args.flatMap((argument, index) =>
+    argument === flag ? [args[index + 1]!] : [],
+  );
+}
+
 test("Codex source search isolates context and preserves auditable output", async () => {
   const fixture = await fixtureEnvironment();
   try {
@@ -127,7 +129,7 @@ test("Codex source search isolates context and preserves auditable output", asyn
     expect(configs).toContain("include_collaboration_mode_instructions=false");
     expect(configs).toContain("project_doc_max_bytes=0");
     expect(
-      configs.some((value) => value?.startsWith("developer_instructions=")),
+      configs.some((value) => value.startsWith("developer_instructions=")),
     ).toBe(true);
     expect(execution).toMatchObject({
       input: request.prompt,
@@ -187,7 +189,7 @@ test("an explorer usage tag alone keeps the source-checker on native Codex", asy
     const args = execution.args as string[];
     const configs = flagValues(args, "-c");
     expect(configs).not.toContain('model_provider="codex-lb"');
-    expect(configs.some((value) => value?.startsWith("model_provider="))).toBe(
+    expect(configs.some((value) => value.startsWith("model_provider="))).toBe(
       false,
     );
   } finally {

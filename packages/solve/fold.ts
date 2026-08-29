@@ -505,7 +505,7 @@ function resolveBoundary(
       premises: context.premises,
       mode,
     };
-    const pendingVerify: Phase = {
+    const pendingVerify: Extract<ModelPhase, { kind: "verify" }> = {
       kind: "verify",
       label,
       after,
@@ -1024,6 +1024,9 @@ export function foldCampaign(reader: Reader, task: Task): CampaignFold {
         refined.push(filing.refines);
         continue;
       }
+      // order is push-only and dependsOn edges point at earlier notes only,
+      // so ids stay dense ordinals and mint order stays topological — id
+      // minting here and export ordering (inspect.ts) both rest on this.
       const id = `n${order.length + 1}`;
       order.push(id);
       const dependsOn = finding.basedOn.filter(
