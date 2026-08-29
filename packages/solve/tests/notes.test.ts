@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { NoteStore, indexTokenEstimate, type NoteMint } from "../notes";
+import { NoteStore, type NoteMint } from "../notes";
 
 const directories: string[] = [];
 afterEach(() => {
@@ -144,14 +144,4 @@ test("sqlite engine persists across reopen", async () => {
     { id: "n1", summary: "durable lemma" },
   ]);
   reopened.close();
-});
-
-test("index token estimate is proportional and non-zero", () => {
-  expect(indexTokenEstimate([])).toBe(0);
-  const small = indexTokenEstimate([{ id: "n1", summary: "short" }]);
-  const large = indexTokenEstimate([
-    { id: "n1", summary: "a much longer summary that says quite a bit more" },
-  ]);
-  expect(small).toBeGreaterThan(0);
-  expect(large).toBeGreaterThan(small);
 });

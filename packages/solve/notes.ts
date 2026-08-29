@@ -199,14 +199,6 @@ export class NoteStore {
   }
 }
 
-/** Rough token estimate for the index tripwire; the loop logs and alerts on it. */
-export function indexTokenEstimate(index: readonly IndexEntry[]): number {
-  let characters = 0;
-  for (const entry of index)
-    characters += entry.id.length + entry.summary.length + 4;
-  return Math.ceil(characters / 4);
-}
-
 function cozoMessage(error: unknown): string {
   const display = (error as { display?: unknown })?.display;
   return typeof display === "string" ? display : String(error);

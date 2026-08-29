@@ -265,6 +265,7 @@ type ModelPhase =
       readonly label: string;
       readonly after: EntryId;
       readonly view: ExplorerView;
+      readonly indexTokens: number;
       readonly state: State;
     }
   | {
@@ -369,6 +370,7 @@ async function derivePhase(reader: Reader, task: Task): Promise<Phase> {
     let recentIds: readonly string[] = [];
     let failure: ExplorerView["failure"];
 
+    // known is pushed in mint order, so this list is already ordinal-sorted.
     const liveIds = () => known.filter((id) => !dead.has(id));
     const liveIndex = async () => (await store.liveIndex()).sort(byNoteOrdinal);
     const expandedNotes = async () => {
@@ -461,6 +463,7 @@ async function derivePhase(reader: Reader, task: Task): Promise<Phase> {
         label,
         after,
         view,
+        indexTokens,
         state,
       };
       const explored = findSubmission(records, {
@@ -479,7 +482,7 @@ async function derivePhase(reader: Reader, task: Task): Promise<Phase> {
         const curatorView: CuratorView = {
           index,
           findings: explored.value.findings,
-          liveIds: liveIds().sort((a, b) => noteOrdinal(a) - noteOrdinal(b)),
+          liveIds: liveIds(),
         };
         const curationPhase: Extract<ModelPhase, { kind: "curation" }> = {
           kind: "curation",
@@ -537,7 +540,7 @@ async function derivePhase(reader: Reader, task: Task): Promise<Phase> {
       const curatorView: CuratorView = {
         index,
         findings,
-        liveIds: liveIds().sort((a, b) => noteOrdinal(a) - noteOrdinal(b)),
+        liveIds: liveIds(),
         defect: { ...summary, basedOn: found.basedOn },
       };
       const curationPhase: Extract<ModelPhase, { kind: "curation" }> = {
@@ -1402,7 +1405,9 @@ async function runCampaign(
 }
 
 function phaseStatus(phase: ModelPhase): string {
-  if (phase.kind === "explorer") return "exploration";
+  if (phase.kind === "explorer") {
+    return `exploration (index ~${phase.indexTokens} tokens)`;
+  }
   if (phase.kind === "curation") return "curation";
   if (phase.kind === "premise-audit") {
     return `premise audit for candidate ${phase.candidate.id}`;

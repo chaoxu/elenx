@@ -261,6 +261,7 @@ export function curationSubmissionFor(
     })
     .superRefine((value, ctx) => {
       const seen = new Set<number>();
+      const refined = new Set<string>();
       for (const [index, entry] of value.filings.entries()) {
         if (seen.has(entry.finding)) {
           ctx.addIssue({
@@ -270,6 +271,19 @@ export function curationSubmissionFor(
           });
         }
         seen.add(entry.finding);
+        if (entry.refines !== undefined) {
+          // One version per note per curation keeps the {id, at}-keyed
+          // history append-only: a second same-turn revision would land on
+          // the same journal seq and silently replace the first.
+          if (refined.has(entry.refines)) {
+            ctx.addIssue({
+              code: "custom",
+              message: "each note is refined at most once per curation",
+              path: ["filings", index, "refines"],
+            });
+          }
+          refined.add(entry.refines);
+        }
       }
       if (seen.size !== findingCount) {
         ctx.addIssue({

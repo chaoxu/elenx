@@ -34,7 +34,7 @@ The terminal tool schema is one flat object with an action discriminant, so stri
 
 ## Curation
 
-One fresh curator call follows every incomplete turn. It receives the turn's findings, the live index, and the invalidated notes with their verdicts. Its single terminal tool files every finding exactly once: minted as a new note with a curator-written summary, recorded as a refinement of an existing note, or dropped as a duplicate of one. Nothing is silently lost — a submission that skips or double-files a finding is rejected by schema. Dependency edges come from the findings' own `basedOn` references, never from curator judgment.
+One fresh curator call follows every incomplete turn. It receives the turn's findings and the live index. Its single terminal tool files every finding exactly once: minted as a new note with a curator-written summary, recorded as a refinement of an existing note, or dropped as a duplicate of one. Nothing is silently lost — a submission that skips or double-files a finding is rejected by schema. Dependency edges come from the findings' own `basedOn` references, never from curator judgment.
 
 After a candidate rejection, the curator ingests the defect the same way: the loop presents the defect as a finding to file, and the curator may additionally record invalidations, each quoting the verdict. This is the only invalidation path; explorers can at most report a finding that disputes a note.
 
@@ -46,7 +46,7 @@ Unchanged from v15. The offline premise audit inventories external premises with
 
 ## Context
 
-`maxContextTokens` bounds every structured model request; every check stops before dispatch and never truncates content. `maxIndexTokens` bounds the assembled live index: the loop logs the estimate each turn and, when it exceeds the ceiling, ends the campaign with the terminal report `index-limit`. The assumption that the whole index fits is deliberate; index shedding, retrieval, and summarization are deferred until a real campaign trips the wire.
+`maxContextTokens` bounds every structured model request; every check stops before dispatch and never truncates content. `maxIndexTokens` bounds the assembled live index: the loop reports the estimate in each exploration status line and, when it exceeds the ceiling, ends the campaign with the terminal report `index-limit`. The assumption that the whole index fits is deliberate; index shedding, retrieval, and summarization are deferred until a real campaign trips the wire.
 
 ## Recovery
 

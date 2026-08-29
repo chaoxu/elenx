@@ -178,6 +178,25 @@ describe("v16 curation submissions", () => {
     ).toBe(false);
   });
 
+  test("each note is refined at most once per curation", () => {
+    expect(
+      schema.safeParse({
+        filings: [
+          { finding: 1, summary: "first pass", refines: "n1" },
+          { finding: 2, summary: "second pass", refines: "n1" },
+        ],
+      }).success,
+    ).toBe(false);
+    expect(
+      schema.safeParse({
+        filings: [
+          { finding: 1, summary: "first", refines: "n1" },
+          { finding: 2, summary: "second", refines: "n2" },
+        ],
+      }).success,
+    ).toBe(true);
+  });
+
   test("minting and refining require a summary; duplicates do not", () => {
     expect(
       schema.safeParse({
