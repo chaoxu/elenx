@@ -14,6 +14,11 @@ import {
 } from "../verifiers/source-check";
 
 const fakeCodex = new URL("./fixtures/fake-codex.ts", import.meta.url).pathname;
+
+const flagValues = (args: string[], flag: string) =>
+  args.flatMap((argument, index) =>
+    argument === flag ? [args[index + 1]] : [],
+  );
 const statement =
   "Every finite tree with at least two vertices has two leaves.";
 const request: SourceCheckRequest = sourceCheckRequestFor(
@@ -104,12 +109,8 @@ test("Codex source search isolates context and preserves auditable output", asyn
     expect(invocations).toHaveLength(2);
     const execution = invocations[1]!;
     const args = execution.args as string[];
-    const configs = args.flatMap((argument, index) =>
-      argument === "-c" ? [args[index + 1]] : [],
-    );
-    const disabled = args.flatMap((argument, index) =>
-      argument === "--disable" ? [args[index + 1]] : [],
-    );
+    const configs = flagValues(args, "-c");
+    const disabled = flagValues(args, "--disable");
     expect(args).toContain("--search");
     expect(args).toContain("--ephemeral");
     expect(args).toContain("--ignore-user-config");
@@ -158,9 +159,7 @@ test("Codex source search uses the explicit codex-lb provider and usage tag", as
     expect(result.state).toBe("succeeded");
     const execution = (await captures(fixture.capture))[1]!;
     const args = execution.args as string[];
-    const configs = args.flatMap((argument, index) =>
-      argument === "-c" ? [args[index + 1]] : [],
-    );
+    const configs = flagValues(args, "-c");
     expect(configs).toContain('model_provider="codex-lb"');
     expect(configs).toContain(
       'model_providers.codex-lb.http_headers."X-Codex-LB-Usage-Tag"="experiment/run/attempt-1"',
@@ -186,9 +185,7 @@ test("an explorer usage tag alone keeps the source-checker on native Codex", asy
     expect(result.state).toBe("succeeded");
     const execution = (await captures(fixture.capture))[1]!;
     const args = execution.args as string[];
-    const configs = args.flatMap((argument, index) =>
-      argument === "-c" ? [args[index + 1]] : [],
-    );
+    const configs = flagValues(args, "-c");
     expect(configs).not.toContain('model_provider="codex-lb"');
     expect(configs.some((value) => value?.startsWith("model_provider="))).toBe(
       false,

@@ -111,38 +111,23 @@ export interface Reply {
 
 export function sourceResult(
   resolutions: readonly SourceResolution[],
-  report = "Source verification completed.",
 ): Extract<SourceCheckResult, { readonly state: "succeeded" }> {
+  // Transport shape: every field present, null unless the variant carries it.
   const transport = resolutions.map((resolution) => ({
-    statement: resolution.statement,
-    standing: resolution.standing,
-    citation: resolution.standing === "SOURCED" ? resolution.citation : null,
-    url: resolution.standing === "SOURCED" ? resolution.url : null,
-    locator: resolution.standing === "SOURCED" ? resolution.locator : null,
-    exactQuote:
-      resolution.standing === "SOURCED" ? resolution.exactQuote : null,
-    sourceMatch:
-      resolution.standing === "SOURCED" ? resolution.sourceMatch : null,
-    candidateCitationMatch:
-      resolution.standing === "SOURCED"
-        ? resolution.candidateCitationMatch
-        : null,
-    candidateCitationCheck:
-      resolution.standing === "SOURCED"
-        ? resolution.candidateCitationCheck
-        : null,
-    refutationAttempt:
-      resolution.standing === "SOURCED" || resolution.standing === "UNRESOLVED"
-        ? resolution.refutationAttempt
-        : null,
-    application:
-      resolution.standing === "SOURCED" ? resolution.application : null,
-    applicationCheck:
-      resolution.standing === "SOURCED" ? resolution.applicationCheck : null,
-    refutation:
-      resolution.standing === "REFUTED" ? resolution.refutation : null,
-    defect: resolution.standing === "MISAPPLIED" ? resolution.defect : null,
-    gap: resolution.standing === "UNRESOLVED" ? resolution.gap : null,
+    citation: null,
+    url: null,
+    locator: null,
+    exactQuote: null,
+    sourceMatch: null,
+    candidateCitationMatch: null,
+    candidateCitationCheck: null,
+    refutationAttempt: null,
+    application: null,
+    applicationCheck: null,
+    refutation: null,
+    defect: null,
+    gap: null,
+    ...resolution,
   }));
   const usage = {
     input_tokens: 100,
@@ -162,7 +147,10 @@ export function sourceResult(
       type: "item.completed",
       item: {
         type: "agent_message",
-        text: JSON.stringify({ report, resolutions: transport }),
+        text: JSON.stringify({
+          report: "Source verification completed.",
+          resolutions: transport,
+        }),
       },
     },
     { type: "turn.completed", usage },
@@ -225,6 +213,26 @@ async function respond(
 ): Promise<PiResult> {
   const state = reply.state ?? "succeeded";
   const telemetry = fakePiTelemetry(options, state);
+  const body =
+    state === "succeeded"
+      ? { state, text: "done", transcript: [], telemetry }
+      : state === "failed"
+        ? {
+            state,
+            text: "partial",
+            transcript: [],
+            telemetry,
+            error: reply.error ?? "failed call",
+            providerRetryable: reply.providerRetryable ?? false,
+            truncated: false,
+          }
+        : {
+            state,
+            text: "partial",
+            transcript: [],
+            telemetry,
+            error: reply.error ?? "cancelled call",
+          };
   const receipt = await campaign.call(
     {
       label: options.label,
@@ -239,52 +247,10 @@ async function respond(
       if (reply.submission !== undefined) {
         await tools[0]!.execute(reply.submission);
       }
-      return state === "succeeded"
-        ? { state, text: "done", transcript: [], telemetry }
-        : {
-            state,
-            text: "partial",
-            transcript: [],
-            telemetry,
-            error: reply.error ?? `${state} call`,
-            ...(state === "failed"
-              ? {
-                  providerRetryable: reply.providerRetryable ?? false,
-                  truncated: false,
-                }
-              : {}),
-          };
+      return body;
     },
   );
-  if (state === "succeeded") {
-    return {
-      call: receipt.call,
-      state,
-      text: "done",
-      transcript: [],
-      telemetry,
-    };
-  }
-  if (state === "failed") {
-    return {
-      call: receipt.call,
-      state,
-      text: "partial",
-      transcript: [],
-      telemetry,
-      error: reply.error ?? "failed call",
-      providerRetryable: reply.providerRetryable ?? false,
-      truncated: false,
-    };
-  }
-  return {
-    call: receipt.call,
-    state,
-    text: "partial",
-    transcript: [],
-    telemetry,
-    error: reply.error ?? "cancelled call",
-  };
+  return { call: receipt.call, ...body };
 }
 
 // ---------------------------------------------------------------------------

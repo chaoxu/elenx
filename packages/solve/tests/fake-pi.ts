@@ -24,21 +24,15 @@ export function fakePiRequest(options: PiRunOptions): Json {
       samplingParams: options.model.samplingParams ?? null,
       compat: options.model.compat ?? null,
     },
-    ...(options.system === undefined ? {} : { system: options.system }),
+    // The JSON round-trip below drops undefined-valued fields, matching the
+    // omit-when-absent shape of real journaled requests.
+    system: options.system,
     prompt: options.prompt,
-    ...(options.reasoning === undefined
-      ? {}
-      : { reasoning: options.reasoning }),
-    ...(options.stopAfterToolResult === true
-      ? { stopAfterToolResult: true }
-      : {}),
-    ...(options.maxRecoveries === undefined
-      ? {}
-      : { maxRecoveries: options.maxRecoveries }),
-    ...(options.maxLengthContinuations === undefined
-      ? {}
-      : { maxLengthContinuations: options.maxLengthContinuations }),
-    ...(options.cacheKey === undefined ? {} : { cacheKey: options.cacheKey }),
+    reasoning: options.reasoning,
+    stopAfterToolResult: options.stopAfterToolResult,
+    maxRecoveries: options.maxRecoveries,
+    maxLengthContinuations: options.maxLengthContinuations,
+    cacheKey: options.cacheKey,
   };
   return JSON.parse(JSON.stringify(request)) as Json;
 }

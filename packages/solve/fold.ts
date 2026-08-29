@@ -505,6 +505,13 @@ function resolveBoundary(
       premises: context.premises,
       mode,
     };
+    const pendingVerify: Phase = {
+      kind: "verify",
+      label,
+      after,
+      view,
+      candidate: candidate.id,
+    };
     let assessed: Assessment;
     let call: EntryId;
     let evidence: Json;
@@ -519,17 +526,7 @@ function resolveBoundary(
         provenance: candidate.id,
       });
       if ("pending" in outcome) {
-        if (outcome.pending === "offline") {
-          return {
-            pending: {
-              kind: "verify",
-              label,
-              after,
-              view,
-              candidate: candidate.id,
-            },
-          };
-        }
+        if (outcome.pending === "offline") return { pending: pendingVerify };
         return {
           pending: {
             kind: "note-source-check",
@@ -565,17 +562,7 @@ function resolveBoundary(
         candidate: candidate.id,
         turn: verdictTurn(task, view),
       });
-      if (judged === undefined) {
-        return {
-          pending: {
-            kind: "verify",
-            label,
-            after,
-            view,
-            candidate: candidate.id,
-          },
-        };
-      }
+      if (judged === undefined) return { pending: pendingVerify };
       call = judged.call;
       assessed = judged.value;
       evidence = judged.value.report;
@@ -875,17 +862,7 @@ export interface MechanicalGap {
 }
 
 export interface CampaignSnapshot {
-  readonly phase:
-    | "explorer"
-    | "curation"
-    | "triage"
-    | "verify"
-    | "note-source-check"
-    | "serve"
-    | "create-candidate"
-    | "record-verdict"
-    | "solved"
-    | "index-limit";
+  readonly phase: Phase["kind"];
   readonly indexTokens: number;
   readonly turns: readonly TurnRecord[];
   readonly curations: readonly CurationRecord[];
@@ -954,7 +931,6 @@ export function foldCampaign(reader: Reader, task: Task): CampaignFold {
     >
   >();
   const refuted = new Set<string>();
-  let mintCount = 0;
   let cursor = records[0]?.seq ?? 0;
   let explorerCallLabel = explorerLabel();
   let objective: string | undefined;
@@ -963,11 +939,14 @@ export function foldCampaign(reader: Reader, task: Task): CampaignFold {
   let failure: ExplorerView["failure"];
   let hints: ServeView["hints"] = { expand: [] };
 
-  const standingOf = (id: string): Standing => {
+  const noteOf = (id: string): FoldNote => {
     const note = notes.get(id);
     if (note === undefined) throw new Error(`fold lost note ${id}`);
-    return deriveStanding(
-      note.at,
+    return note;
+  };
+  const standingOf = (id: string): Standing =>
+    deriveStanding(
+      noteOf(id).at,
       plans.get(id),
       [...(verdictTable.get(id)?.entries() ?? [])].map(([mode, entry]) => ({
         mode,
@@ -975,25 +954,14 @@ export function foldCampaign(reader: Reader, task: Task): CampaignFold {
         at: entry.at,
       })),
     );
-  };
   const liveIndex = (): StandingEntry[] =>
     order.flatMap((id) => {
       const standing = standingOf(id);
       if (standing === "refuted") return [];
-      const note = notes.get(id);
-      if (note === undefined) throw new Error(`fold lost note ${id}`);
-      return [{ id, summary: note.summary, standing }];
+      return [{ id, summary: noteOf(id).summary, standing }];
     });
-  const summaryOf = (id: string): string => {
-    const note = notes.get(id);
-    if (note === undefined) throw new Error(`fold lost note ${id}`);
-    return note.summary;
-  };
-  const textOf = (id: string): string => {
-    const note = notes.get(id);
-    if (note === undefined) throw new Error(`fold lost note ${id}`);
-    return note.text;
-  };
+  const summaryOf = (id: string): string => noteOf(id).summary;
+  const textOf = (id: string): string => noteOf(id).text;
   const premisesOf = (ids: readonly string[]): PremiseStatement[] =>
     ids.map((id) => ({ id, statement: summaryOf(id) }));
   const ancestorsOf = (id: string): string[] => {
@@ -1048,10 +1016,7 @@ export function foldCampaign(reader: Reader, task: Task): CampaignFold {
         throw new Error("curation filing is missing its summary");
       }
       if (filing.refines !== undefined) {
-        const existing = notes.get(filing.refines);
-        if (existing === undefined) {
-          throw new Error(`fold lost note ${filing.refines}`);
-        }
+        const existing = noteOf(filing.refines);
         existing.summary = filing.summary;
         existing.text = finding.text;
         existing.at = curated.settled;
@@ -1059,8 +1024,7 @@ export function foldCampaign(reader: Reader, task: Task): CampaignFold {
         refined.push(filing.refines);
         continue;
       }
-      mintCount += 1;
-      const id = `n${mintCount}`;
+      const id = `n${order.length + 1}`;
       order.push(id);
       const dependsOn = finding.basedOn.filter(
         (parent) => knownBefore.has(parent) && !refuted.has(parent),
@@ -1095,8 +1059,7 @@ export function foldCampaign(reader: Reader, task: Task): CampaignFold {
     candidates: state.candidates,
     mechanicalGaps,
     notes: order.map((id) => {
-      const note = notes.get(id);
-      if (note === undefined) throw new Error(`fold lost note ${id}`);
+      const note = noteOf(id);
       return {
         id,
         summary: note.summary,
@@ -1237,15 +1200,13 @@ export function foldCampaign(reader: Reader, task: Task): CampaignFold {
           const text = textOf(id);
           const premises = premisesOf(parents.get(id) ?? []);
           for (const mode of modes) {
-            const note = notes.get(id);
-            if (note === undefined) throw new Error(`fold lost note ${id}`);
             const outcome = resolveNoteMode(records, task, {
               note: id,
               statement,
               text,
               premises,
               mode,
-              version: note.at,
+              version: noteOf(id).at,
               trigger: triaged.call,
               after: pipelineCursor,
             });

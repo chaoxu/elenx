@@ -63,15 +63,12 @@ export function inspectCampaign(path: string, options: InspectionOptions = {}) {
         ? parsedSourceResult.data
         : undefined;
       const activity = callActivity(call.label);
+      const triggerCall = activity.triggerCall ?? sourceRequest?.offlineCall;
       return {
         seq: call.seq,
         label: call.label,
         role: sourceRequest === undefined ? activity.role : "source-check",
-        ...(activity.triggerCall === undefined
-          ? sourceRequest === undefined
-            ? {}
-            : { triggerCall: sourceRequest.offlineCall }
-          : { triggerCall: activity.triggerCall }),
+        ...(triggerCall === undefined ? {} : { triggerCall }),
         startedAtMs: call.atMs,
         ...(result === undefined ? {} : { settledAtMs: result.atMs }),
         elapsedMs: Math.max(0, (result?.atMs ?? observedAtMs) - call.atMs),
@@ -320,9 +317,6 @@ export function exportAnswer(path: string): Uint8Array {
     if (semantic.phase !== "solved" || semantic.solution === undefined) {
       throw new Error("campaign has no verified v17 goal");
     }
-    if (!deriveCandidateStatus(records, semantic.solution).verified) {
-      throw new Error("accepted candidate verifier contract is unsatisfied");
-    }
     const accepted = semantic.candidates.find(
       (candidate) => candidate.id === semantic.solution,
     );
@@ -352,8 +346,9 @@ export function exportAnswer(path: string): Uint8Array {
   }
 }
 
-// Topological order over the goal's ancestor closure: every note's
-// dependencies precede it; ties break by mint ordinal for determinism.
+// The goal's ancestor closure in mint-ordinal order. That order is already
+// topological: dependency edges are wired at mint against earlier notes
+// only, so every parent's ordinal is strictly below its child's.
 function closureInDependencyOrder(
   goal: string,
   notes: ReadonlyMap<string, { readonly parents: readonly string[] }>,
@@ -367,25 +362,7 @@ function closureInDependencyOrder(
     }
   };
   gather(goal);
-  const ordered: string[] = [];
-  const placed = new Set<string>();
-  const place = (id: string) => {
-    if (placed.has(id)) return;
-    placed.add(id);
-    const parents = [...(notes.get(id)?.parents ?? [])].sort(
-      (a, b) => Number(a.slice(1)) - Number(b.slice(1)),
-    );
-    for (const parent of parents) {
-      if (members.has(parent)) place(parent);
-    }
-    ordered.push(id);
-  };
-  for (const id of [...members].sort(
-    (a, b) => Number(a.slice(1)) - Number(b.slice(1)),
-  )) {
-    place(id);
-  }
-  return ordered;
+  return [...members].sort((a, b) => Number(a.slice(1)) - Number(b.slice(1)));
 }
 
 type SemanticView = Omit<CampaignSnapshot, "phase"> & {

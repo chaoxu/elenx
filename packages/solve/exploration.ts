@@ -90,10 +90,10 @@ function resolveGuidance(values: readonly string[]): GuidanceModule[] {
   ];
 }
 
-function resolveProfile<P extends Settings["explorer"]>(
+function resolveProfile(
   models: SolveModels,
-  profile: P,
-): P & { readonly api: string; readonly baseUrl: string } {
+  profile: Settings["explorer"],
+): Settings["explorer"] & { readonly api: string; readonly baseUrl: string } {
   const model = selectModel(models, {
     provider: profile.provider,
     modelId: profile.model,
@@ -338,9 +338,9 @@ async function interruptibleDelay(
 async function runCampaign(
   campaign: Campaign,
   task: Task,
-  dependencies: SolveDependencies,
+  dependencies: SolveDependencies & { readonly models: SolveModels },
 ): Promise<Report> {
-  const models = dependencies.models ?? builtinPi();
+  const models = dependencies.models;
   const prepared = new Map<string, PreparedPiOptions>();
   const prepare = (key: string, profile: RuntimeProfile) => {
     const existing = prepared.get(key);

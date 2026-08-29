@@ -125,10 +125,10 @@ const transportResolution = z.strictObject({
   gap: nullableText,
 });
 
-function transportSubmissionFor(statements: readonly string[]) {
+function transportSubmissionFor(count: number) {
   return z.strictObject({
     report: nonblankText,
-    resolutions: z.array(transportResolution).length(statements.length),
+    resolutions: z.array(transportResolution).length(count),
   });
 }
 
@@ -136,16 +136,12 @@ function normalizeTransport(
   premises: readonly z.output<typeof sourcePremise>[],
   input: unknown,
 ): SourceSubmission {
-  const parsed = transportSubmissionFor(
-    premises.map(({ statement }) => statement),
-  ).parse(input);
+  const parsed = transportSubmissionFor(premises.length).parse(input);
   return sourceSubmissionFor(premises).parse({
     report: parsed.report,
     resolutions: parsed.resolutions.map((item) =>
-      sourceResolution.parse(
-        Object.fromEntries(
-          Object.entries(item).filter(([, value]) => value !== null),
-        ),
+      Object.fromEntries(
+        Object.entries(item).filter(([, value]) => value !== null),
       ),
     ),
   });
@@ -166,9 +162,7 @@ export const sourceCheckRequest = z
     prompt: nonblankText,
   })
   .superRefine(({ premises, outputSchema }, context) => {
-    const expected = z.toJSONSchema(
-      transportSubmissionFor(premises.map(({ statement }) => statement)),
-    );
+    const expected = z.toJSONSchema(transportSubmissionFor(premises.length));
     if (!isDeepStrictEqual(outputSchema, expected)) {
       context.addIssue({
         code: "custom",
@@ -195,7 +189,6 @@ export function sourceCheckRequestFor(
   premises: readonly UnresolvedPremise[],
   profile: SourceProfile,
 ): SourceCheckRequest {
-  const statements = premises.map(({ statement }) => statement);
   const projected = premises.map(
     ({ statement, hypotheses, application, answerQuote, claimedCitation }) => ({
       statement,
@@ -212,7 +205,7 @@ export function sourceCheckRequestFor(
     reasoning: profile.reasoning,
     premises: projected,
     developerInstructions,
-    outputSchema: z.toJSONSchema(transportSubmissionFor(statements)),
+    outputSchema: z.toJSONSchema(transportSubmissionFor(premises.length)),
     prompt: `Exact unresolved external premises and their candidate applications:\n${JSON.stringify(projected, null, 2)}`,
   });
 }
@@ -358,19 +351,16 @@ function sourceEventSummary(events: readonly JsonValue[]) {
   if (stage !== "complete") throw new Error("Codex emitted no complete turn");
   if (queries.length === 0) throw new Error("Codex completed no web search");
   if (usage === undefined) throw new Error("Codex emitted no completed usage");
-  return { queries, usage, finalCompletedType, finalMessage };
+  if (finalCompletedType !== "agent_message" || finalMessage === undefined) {
+    throw new Error("Codex emitted no final completed agent message");
+  }
+  return { queries, usage, finalMessage };
 }
 
 export function parseSourceStdout(request: SourceCheckRequest, stdout: string) {
   const prefix = sourceEventPrefix(stdout);
   if (prefix.error !== undefined) throw new Error(prefix.error);
   const summary = sourceEventSummary(prefix.events);
-  if (
-    summary.finalCompletedType !== "agent_message" ||
-    summary.finalMessage === undefined
-  ) {
-    throw new Error("Codex emitted no final completed agent message");
-  }
   return {
     events: prefix.events,
     result: normalizeTransport(
