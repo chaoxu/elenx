@@ -3,11 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import {
-  NoteStore,
-  indexTokenEstimate,
-  type NoteMint,
-} from "../notes";
+import { NoteStore, indexTokenEstimate, type NoteMint } from "../notes";
 
 const directories: string[] = [];
 afterEach(() => {
@@ -83,7 +79,11 @@ test("invalidation hides a note and cascade finds transitive dependents", async 
   expect(await store.cascade("n1")).toEqual(["n2", "n3"]);
 
   for (const id of ["n1", ...(await store.cascade("n1"))]) {
-    await store.applyInvalidation({ id, verdict: "proof audit: L false", at: 9 });
+    await store.applyInvalidation({
+      id,
+      verdict: "proof audit: L false",
+      at: 9,
+    });
   }
   expect(await store.liveIndex()).toEqual([
     { id: "n4", summary: "independent gadget" },

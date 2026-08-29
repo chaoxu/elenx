@@ -30,7 +30,10 @@ const guidanceModule = z.strictObject({
 const noteId = z.string().regex(/^n[1-9][0-9]*$/u);
 
 const boundsRefinement = (
-  { maxContextTokens, maxIndexTokens }: {
+  {
+    maxContextTokens,
+    maxIndexTokens,
+  }: {
     maxContextTokens: number;
     maxIndexTokens: number;
   },

@@ -14,8 +14,14 @@ import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 // cozo-node is CommonJS with a native addon; require keeps Bun and Node happy.
 const { CozoDb } = require("cozo-node") as {
-  CozoDb: new (engine?: string, path?: string) => {
-    run(script: string, params?: Record<string, unknown>): Promise<{
+  CozoDb: new (
+    engine?: string,
+    path?: string,
+  ) => {
+    run(
+      script: string,
+      params?: Record<string, unknown>,
+    ): Promise<{
       rows: unknown[][];
       headers: string[];
     }>;
@@ -196,7 +202,8 @@ export class NoteStore {
 /** Rough token estimate for the index tripwire; the loop logs and alerts on it. */
 export function indexTokenEstimate(index: readonly IndexEntry[]): number {
   let characters = 0;
-  for (const entry of index) characters += entry.id.length + entry.summary.length + 4;
+  for (const entry of index)
+    characters += entry.id.length + entry.summary.length + 4;
   return Math.ceil(characters / 4);
 }
 

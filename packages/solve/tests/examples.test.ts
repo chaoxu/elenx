@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 
 import { settings } from "../exploration";
+import { settingsSchema as settingsV16 } from "../exploration-v16-protocol";
 
 const examplesDir = new URL("../examples/", import.meta.url);
 const files = readdirSync(examplesDir).filter((name) => name.endsWith(".json"));
@@ -13,7 +14,13 @@ describe("example settings", () => {
       const value = JSON.parse(
         readFileSync(new URL(name, examplesDir), "utf8"),
       );
-      const parsed = settings.safeParse(value);
+      const schema =
+        value !== null &&
+        typeof value === "object" &&
+        (value as { protocol?: unknown }).protocol === "exploration-v16"
+          ? settingsV16
+          : settings;
+      const parsed = schema.safeParse(value);
       expect(parsed.success, `${name}: ${parsed.error?.message}`).toBe(true);
     }
   });
