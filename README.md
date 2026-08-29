@@ -24,9 +24,9 @@ The API and campaign schema are experimental. Campaigns are accepted only when t
 | --- | --- |
 | What does the kernel guarantee? | [`SPEC.md`](SPEC.md) |
 | How does the current solver protocol behave? | [`packages/solve/docs/protocol.md`](packages/solve/docs/protocol.md) |
-| What design boundary guided the retired `exploration-v15` solver? | [`docs/design.md`](docs/design.md) (historical) |
+| What design boundary guided the retired `exploration-v15` solver? | [`docs/design.md`](docs/design.md) (historical, repository-only) |
 | How do I build an application? | [`docs/application-author.md`](docs/application-author.md) |
-| Which `exploration-v15` policies were to be tested? | [`docs/hypotheses.md`](docs/hypotheses.md) (historical) |
+| Which `exploration-v15` policies were to be tested? | [`docs/hypotheses.md`](docs/hypotheses.md) (historical, repository-only) |
 
 Dated research is kept outside the current guidance:
 

@@ -14,8 +14,6 @@
     "README.md",
     "SPEC.md",
     "docs/application-author.md",
-    "docs/design.md",
-    "docs/hypotheses.md",
     "examples/v1"
   ],
   "exports": {
@@ -43,8 +41,5 @@
     "@types/bun": "1.3.14",
     "prettier": "3.9.6",
     "typescript": "5.9.2"
-  },
-  "trustedDependencies": [
-    "cozo-node"
-  ]
+  }
 }

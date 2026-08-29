@@ -14,9 +14,7 @@ import {
   sourceCheckResultFor,
 } from "./verifiers/source-check";
 
-export { campaignState, type CampaignState } from "./runtime";
-
-export interface InspectionOptions {
+interface InspectionOptions {
   readonly includeInputs?: boolean;
 }
 

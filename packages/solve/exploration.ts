@@ -55,12 +55,6 @@ import {
 } from "./exploration-protocol";
 
 import {
-  NoteStore,
-  deriveStanding,
-  type Standing,
-  type StandingEntry,
-} from "./notes";
-import {
   CallFailure,
   DEFAULT_CALL_FAILURE_RETRY,
   selectModel,
@@ -257,8 +251,16 @@ interface FailedVerdict {
   readonly report: string;
 }
 
+type Standing = "verified" | "conjecture" | "report" | "refuted";
+
+interface StandingEntry {
+  readonly id: string;
+  readonly summary: string;
+  readonly standing: Standing;
+}
+
 // Phases carry the exact rendered views extracted from the note projection
-// during the fold, so the NoteStore's lifetime stays inside derivePhase.
+// during the fold.
 interface ExplorerView {
   readonly first: boolean;
   readonly index: readonly StandingEntry[];
@@ -385,392 +387,6 @@ interface StructuredCall<S extends z.ZodType = z.ZodType> {
   readonly description: string;
   readonly schema: S;
   readonly cacheKey: string;
-}
-
-async function derivePhase(reader: Reader, task: Task): Promise<Phase> {
-  const records = reader.records();
-  const store = await NoteStore.open();
-  try {
-    // Plain-JS id bookkeeping mirrors the store so dependency wiring and
-    // liveness filters stay synchronous; summaries, texts, and standings live
-    // in the store.
-    const refuted = new Set<string>();
-    const parents = new Map<string, readonly string[]>();
-    const versionAt = new Map<string, EntryId>();
-    let mintCount = 0;
-    let turnCount = 0;
-    let cursor = records[0]?.seq ?? 0;
-    let explorerCallLabel = explorerLabel();
-    let objective: string | undefined;
-    let expandIds: readonly string[] = [];
-    let recentIds: readonly string[] = [];
-    let failure: ExplorerView["failure"];
-    let hints: ServeView["hints"] = { expand: [] };
-
-    const standingOf = async (): Promise<Map<string, Standing>> => {
-      const entries = await store.standings();
-      return new Map(entries.map((entry) => [entry.id, entry.standing]));
-    };
-    const summaryOf = async (id: string): Promise<string> => {
-      const entry = (await store.standings()).find((note) => note.id === id);
-      if (entry === undefined) throw new Error(`fold lost note ${id}`);
-      return entry.summary;
-    };
-    const textOf = async (id: string): Promise<string> => {
-      const text = await store.text(id);
-      if (text === null) throw new Error(`fold lost note ${id}`);
-      return text;
-    };
-    const premisesOf = async (
-      ids: readonly string[],
-    ): Promise<PremiseStatement[]> => {
-      const statements: PremiseStatement[] = [];
-      for (const id of ids) {
-        statements.push({ id, statement: await summaryOf(id) });
-      }
-      return statements;
-    };
-    const expandedNotes = async () => {
-      const requested = [...recentIds, ...expandIds];
-      const selected: { id: string; text: string }[] = [];
-      for (const id of requested) {
-        if (refuted.has(id) || selected.some((note) => note.id === id)) {
-          continue;
-        }
-        const text = await store.text(id);
-        if (text !== null) selected.push({ id, text });
-      }
-      return selected;
-    };
-    const foldCuration = async (
-      findings: readonly Finding[],
-      curated: {
-        readonly settled: EntryId;
-        readonly value: CurationSubmission;
-      },
-    ): Promise<string[]> => {
-      const knownBefore = new Set(parents.keys());
-      const minted: string[] = [];
-      const refined: string[] = [];
-      for (const filing of curated.value.filings) {
-        const finding = findings[filing.finding - 1];
-        if (finding === undefined) {
-          throw new Error("curation filing references an absent finding");
-        }
-        if (filing.duplicateOf !== undefined) continue;
-        if (filing.summary === undefined) {
-          throw new Error("curation filing is missing its summary");
-        }
-        if (filing.refines !== undefined) {
-          await store.applyRevision({
-            id: filing.refines,
-            summary: filing.summary,
-            text: finding.text,
-            at: curated.settled,
-          });
-          versionAt.set(filing.refines, curated.settled);
-          refined.push(filing.refines);
-          continue;
-        }
-        mintCount += 1;
-        const id = `n${mintCount}`;
-        const dependsOn = finding.basedOn.filter(
-          (parent) => knownBefore.has(parent) && !refuted.has(parent),
-        );
-        await store.applyMint({
-          id,
-          summary: filing.summary,
-          text: finding.text,
-          dependsOn,
-          at: curated.settled,
-        });
-        parents.set(id, dependsOn);
-        versionAt.set(id, curated.settled);
-        minted.push(id);
-      }
-      recentIds = [...minted, ...refined];
-      return [...minted, ...refined];
-    };
-
-    // One explorer or curation submission is consumed per iteration, so the
-    // record count bounds the walk.
-    let steps = 0;
-    const guard = () => {
-      steps += 1;
-      if (steps > records.length + 2) {
-        throw new Error("exploration-v17 replay exceeded its transition bound");
-      }
-    };
-
-    outer: for (;;) {
-      guard();
-      const index = await store.liveIndex();
-      const indexTokens = estimatedTextTokens(renderIndexBlock(index));
-      if (indexTokens > task.maxIndexTokens) {
-        return { kind: "index-limit", tokens: indexTokens };
-      }
-      const view: ExplorerView = {
-        first: turnCount === 0,
-        index,
-        expanded: await expandedNotes(),
-        ...(objective === undefined ? {} : { objective }),
-        ...(failure === undefined ? {} : { failure }),
-      };
-      const explorerPhase: Extract<ModelPhase, { kind: "explorer" }> = {
-        kind: "explorer",
-        label: explorerCallLabel,
-        after: cursor,
-        view,
-        indexTokens,
-      };
-      const explored = findSubmission(records, {
-        label: explorerCallLabel,
-        after: cursor,
-        turn: explorerTurn(task, view),
-      });
-      if (explored === undefined) return explorerPhase;
-      turnCount += 1;
-      failure = undefined;
-      hints = {
-        expand: explored.value.expand,
-        ...(explored.value.nextObjective === undefined
-          ? {}
-          : { objective: explored.value.nextObjective }),
-      };
-
-      let findings: readonly Finding[] = explored.value.findings;
-      let curationTrigger = explored.call;
-      let curationAfter = explored.settled;
-      let defectSegment = false;
-
-      for (;;) {
-        guard();
-        const curationIndex = await store.liveIndex();
-        // The tripwire re-fires at every curation entry: defect segments grow
-        // the index without passing the outer explorer check.
-        const curationTokens = estimatedTextTokens(
-          renderIndexBlock(curationIndex),
-        );
-        if (curationTokens > task.maxIndexTokens) {
-          return { kind: "index-limit", tokens: curationTokens };
-        }
-        const curatorView: CuratorView = {
-          index: curationIndex,
-          findings,
-        };
-        const curationPhase: Extract<ModelPhase, { kind: "curation" }> = {
-          kind: "curation",
-          label: curationLabel(curationTrigger),
-          after: curationAfter,
-          view: curatorView,
-        };
-        const curated = findSubmission(records, {
-          label: curationPhase.label,
-          after: curationPhase.after,
-          turn: curationTurn(task, curatorView),
-        });
-        if (curated === undefined) return curationPhase;
-        const batch = await foldCuration(findings, curated);
-        let pipelineCursor = curated.settled;
-        let serveTrigger = curated.call;
-
-        if (batch.length > 0) {
-          const batchViews: TriageView["batch"][number][] = [];
-          for (const id of batch) {
-            batchViews.push({
-              id,
-              text: await textOf(id),
-              basedOn: await premisesOf(parents.get(id) ?? []),
-            });
-          }
-          const triagePhaseView: TriageView = { batch: batchViews };
-          const triagePhase: Extract<ModelPhase, { kind: "triage" }> = {
-            kind: "triage",
-            label: triageLabel(curated.call),
-            after: curated.settled,
-            view: triagePhaseView,
-          };
-          const triaged = findSubmission(records, {
-            label: triagePhase.label,
-            after: triagePhase.after,
-            turn: triageTurn(task, triagePhaseView),
-          });
-          if (triaged === undefined) return triagePhase;
-          for (const plan of triaged.value.plans) {
-            await store.applyPlan({
-              id: plan.note,
-              modes: plan.modes,
-              at: triaged.settled,
-            });
-          }
-          pipelineCursor = triaged.settled;
-          serveTrigger = triaged.call;
-
-          // Mode verdicts run per batch note in batch order, per plan mode in
-          // plan order; a FAIL refutes the note and skips its remaining modes.
-          const planOf = new Map(
-            triaged.value.plans.map((plan) => [plan.note, plan.modes]),
-          );
-          for (const id of batch) {
-            const modes = planOf.get(id);
-            if (modes === undefined) {
-              throw new Error(`triage left note ${id} unplanned`);
-            }
-            const statement = await summaryOf(id);
-            const text = await textOf(id);
-            const premises = await premisesOf(parents.get(id) ?? []);
-            for (const mode of modes) {
-              const version = versionAt.get(id);
-              if (version === undefined) {
-                throw new Error(`fold lost the version of note ${id}`);
-              }
-              const outcome = resolveNoteMode(records, task, {
-                note: id,
-                statement,
-                text,
-                premises,
-                mode,
-                version,
-                trigger: triaged.call,
-                after: pipelineCursor,
-              });
-              if ("pending" in outcome) return outcome.pending;
-              await store.applyVerdict({
-                id,
-                mode,
-                verdict: outcome.record.verdict,
-                report: outcome.record.report,
-                at: outcome.record.settled,
-              });
-              pipelineCursor = outcome.record.settled;
-              if (outcome.record.verdict === "FAIL") {
-                refuted.add(id);
-                break;
-              }
-            }
-          }
-        }
-
-        if (defectSegment) {
-          // A defect or mechanical-gap curation hands its failure straight to
-          // a fresh explorer: a serve, and with it any goal declaration, can
-          // only follow new exploration.
-          cursor = pipelineCursor;
-          explorerCallLabel = explorerLabel(curated.call);
-          continue outer;
-        }
-
-        const serveIndex = await store.liveIndex();
-        const serveView: ServeView = {
-          index: serveIndex,
-          turns: turnCount,
-          hints,
-        };
-        const servePhase: Extract<ModelPhase, { kind: "serve" }> = {
-          kind: "serve",
-          label: serveLabel(serveTrigger),
-          after: pipelineCursor,
-          view: serveView,
-        };
-        const served = findSubmission(records, {
-          label: servePhase.label,
-          after: servePhase.after,
-          turn: serveTurn(task, serveView),
-        });
-        if (served === undefined) return servePhase;
-
-        if (served.value.goalNote === undefined) {
-          objective = served.value.objective;
-          expandIds = served.value.expand;
-          cursor = served.settled;
-          explorerCallLabel = explorerLabel(served.call);
-          continue outer;
-        }
-
-        // Boundary: mechanical checks first, then the candidate battery.
-        const goal = served.value.goalNote;
-        const standings = await standingOf();
-        const goalStanding = standings.get(goal);
-        const ancestors = await store.ancestors(goal);
-        const unverified = ancestors.filter(
-          (ancestor) => standings.get(ancestor) !== "verified",
-        );
-        const cyclic = await store.inCycle(goal);
-        if (goalStanding === "report" || unverified.length > 0 || cyclic) {
-          findings = [
-            mechanicalFinding(goal, {
-              ...(goalStanding === "report" ? { report: true } : {}),
-              unverified: unverified.map((ancestor) => ({
-                id: ancestor,
-                standing: standings.get(ancestor) ?? "missing",
-              })),
-              cyclic,
-            }),
-          ];
-          objective = undefined;
-          expandIds = [];
-          curationTrigger = served.call;
-          curationAfter = served.settled;
-          defectSegment = true;
-          continue;
-        }
-
-        const goalText = await textOf(goal);
-        const found = findCandidate(
-          reader,
-          goalText,
-          served.settled,
-          served.call,
-          goal,
-        );
-        if (found === undefined) {
-          return { kind: "create-candidate", answer: goalText };
-        }
-        const outcome = resolveBoundary(records, task, found, {
-          statement: await summaryOf(goal),
-          premises: await premisesOf(parents.get(goal) ?? []),
-        });
-        if ("pending" in outcome) return outcome.pending;
-        for (const verdict of outcome.candidate.verdicts) {
-          await store.applyVerdict({
-            id: goal,
-            mode: verdict.mode,
-            verdict: verdict.verdict,
-            report: verdict.report,
-            at: verdict.record,
-          });
-          if (verdict.verdict === "FAIL") refuted.add(goal);
-        }
-        if (outcome.solved) {
-          return { kind: "solved", candidate: found.id };
-        }
-        const failing = outcome.candidate.verdicts.filter(
-          (verdict) => verdict.verdict !== "PASS",
-        );
-        const last = outcome.candidate.verdicts.at(-1);
-        if (last === undefined) {
-          throw new Error("failed boundary battery has no verdicts");
-        }
-        findings = [batteryFinding(found.id, goal, failing)];
-        failure = {
-          goalNote: goal,
-          text: goalText,
-          verdicts: failing.map(({ mode, verdict, report }) => ({
-            mode,
-            verdict,
-            report,
-          })),
-        };
-        objective = undefined;
-        expandIds = [];
-        curationTrigger = last.record;
-        curationAfter = last.record;
-        defectSegment = true;
-      }
-    }
-  } finally {
-    store.close();
-  }
 }
 
 function mechanicalFinding(
@@ -1805,7 +1421,7 @@ async function runCampaign(
   let consecutiveFailures = 0;
   try {
     for (;;) {
-      const phase = await derivePhase(campaign, task);
+      const phase = foldCampaign(campaign, task).phase;
       if (phase.kind === "solved") {
         return {
           outcome: "solved",
@@ -1864,7 +1480,7 @@ async function runCampaign(
       }
     }
   } catch (error) {
-    const phase = await derivePhase(campaign, task);
+    const phase = foldCampaign(campaign, task).phase;
     if (phase.kind === "solved") {
       return { outcome: "solved", phase: "solved", candidate: phase.candidate };
     }
@@ -2028,14 +1644,37 @@ function sourceRepairFindings(
 }
 
 // ---------------------------------------------------------------------------
-// Synchronous campaign snapshot for inspection.
-//
-// The CLI projects campaigns synchronously, so this mirror re-runs the exact
-// derivePhase walk with plain maps in place of the Cozo store. Phase
-// resolution (resolveNoteMode, resolveBoundary) and the standing derivation
-// (notes.ts deriveStanding) are shared; KEEP the fold itself IN LOCKSTEP
-// with derivePhase: same matching, same order, same rules.
+// The campaign fold: the single source of truth for phase derivation and
+// inspection. One synchronous walk refolds journal events into the note
+// projection, resolves every settled phase in order, and stops at the first
+// unresolved one. runCampaign dispatches the fold's phase; snapshot projects
+// the rest for the CLI.
 // ---------------------------------------------------------------------------
+
+// Standing is derived, never stored: a triage plan and its mode verdicts
+// apply to the note version they were issued against, so a revision stales
+// them and the note returns to conjecture until re-triaged. Any valid FAIL
+// refutes; an empty valid plan marks a process report; a valid plan whose
+// every mode holds a valid PASS verifies — conditionally on the note's
+// basedOn statements, which the boundary's mechanical gates re-check.
+function deriveStanding(
+  versionAt: number,
+  plan: { readonly modes: readonly string[]; readonly at: number } | undefined,
+  verdicts: readonly { mode: string; verdict: string; at: number }[],
+): Standing {
+  const valid = verdicts.filter((entry) => entry.at > versionAt);
+  if (valid.some((entry) => entry.verdict === "FAIL")) return "refuted";
+  if (plan === undefined || plan.at <= versionAt) return "conjecture";
+  if (plan.modes.length === 0) return "report";
+  const passed = new Set(
+    valid
+      .filter((entry) => entry.verdict === "PASS")
+      .map((entry) => entry.mode),
+  );
+  return plan.modes.every((mode) => passed.has(mode))
+    ? "verified"
+    : "conjecture";
+}
 
 export interface NoteSnapshot {
   readonly id: string;
@@ -2079,7 +1718,7 @@ export interface CampaignSnapshot {
   readonly solution?: EntryId;
 }
 
-interface MirrorNote {
+interface FoldNote {
   summary: string;
   text: string;
   at: EntryId;
@@ -2106,12 +1745,18 @@ function emptyState(): State {
   };
 }
 
-export function snapshot(reader: Reader, task: Task): CampaignSnapshot {
+// The fold result: the first unresolved (or terminal) phase plus everything
+// the inspection snapshot projects.
+interface CampaignFold extends Omit<CampaignSnapshot, "phase" | "solution"> {
+  readonly phase: Phase;
+}
+
+function foldCampaign(reader: Reader, task: Task): CampaignFold {
   const records = reader.records();
   const state = emptyState();
   const mechanicalGaps: MechanicalGap[] = [];
 
-  const notes = new Map<string, MirrorNote>();
+  const notes = new Map<string, FoldNote>();
   const order: string[] = [];
   const parents = new Map<string, readonly string[]>();
   const plans = new Map<
@@ -2140,7 +1785,7 @@ export function snapshot(reader: Reader, task: Task): CampaignSnapshot {
 
   const standingOf = (id: string): Standing => {
     const note = notes.get(id);
-    if (note === undefined) throw new Error(`snapshot lost note ${id}`);
+    if (note === undefined) throw new Error(`fold lost note ${id}`);
     return deriveStanding(
       note.at,
       plans.get(id),
@@ -2156,17 +1801,17 @@ export function snapshot(reader: Reader, task: Task): CampaignSnapshot {
       const standing = standingOf(id);
       if (standing === "refuted") return [];
       const note = notes.get(id);
-      if (note === undefined) throw new Error(`snapshot lost note ${id}`);
+      if (note === undefined) throw new Error(`fold lost note ${id}`);
       return [{ id, summary: note.summary, standing }];
     });
   const summaryOf = (id: string): string => {
     const note = notes.get(id);
-    if (note === undefined) throw new Error(`snapshot lost note ${id}`);
+    if (note === undefined) throw new Error(`fold lost note ${id}`);
     return note.summary;
   };
   const textOf = (id: string): string => {
     const note = notes.get(id);
-    if (note === undefined) throw new Error(`snapshot lost note ${id}`);
+    if (note === undefined) throw new Error(`fold lost note ${id}`);
     return note.text;
   };
   const premisesOf = (ids: readonly string[]): PremiseStatement[] =>
@@ -2193,7 +1838,7 @@ export function snapshot(reader: Reader, task: Task): CampaignSnapshot {
     }
     return selected;
   };
-  const applyVerdictMirror = (
+  const applyVerdict = (
     id: string,
     mode: string,
     verdict: Assessment["verdict"],
@@ -2226,7 +1871,7 @@ export function snapshot(reader: Reader, task: Task): CampaignSnapshot {
       if (filing.refines !== undefined) {
         const existing = notes.get(filing.refines);
         if (existing === undefined) {
-          throw new Error(`snapshot lost note ${filing.refines}`);
+          throw new Error(`fold lost note ${filing.refines}`);
         }
         existing.summary = filing.summary;
         existing.text = finding.text;
@@ -2260,10 +1905,7 @@ export function snapshot(reader: Reader, task: Task): CampaignSnapshot {
     recentIds = [...minted, ...refined];
     return [...minted, ...refined];
   };
-  const finish = (
-    phase: CampaignSnapshot["phase"],
-    solution?: EntryId,
-  ): CampaignSnapshot => ({
+  const finish = (phase: Phase): CampaignFold => ({
     phase,
     indexTokens: estimatedTextTokens(renderIndexBlock(liveIndex())),
     turns: state.turns,
@@ -2275,7 +1917,7 @@ export function snapshot(reader: Reader, task: Task): CampaignSnapshot {
     mechanicalGaps,
     notes: order.map((id) => {
       const note = notes.get(id);
-      if (note === undefined) throw new Error(`snapshot lost note ${id}`);
+      if (note === undefined) throw new Error(`fold lost note ${id}`);
       return {
         id,
         summary: note.summary,
@@ -2286,14 +1928,15 @@ export function snapshot(reader: Reader, task: Task): CampaignSnapshot {
         parents: parents.get(id) ?? [],
       };
     }),
-    ...(solution === undefined ? {} : { solution }),
   });
 
+  // One explorer or curation submission is consumed per iteration, so the
+  // record count bounds the walk.
   let steps = 0;
   const guard = () => {
     steps += 1;
     if (steps > records.length + 2) {
-      throw new Error("exploration-v17 snapshot exceeded its transition bound");
+      throw new Error("exploration-v17 replay exceeded its transition bound");
     }
   };
 
@@ -2301,7 +1944,9 @@ export function snapshot(reader: Reader, task: Task): CampaignSnapshot {
     guard();
     const index = liveIndex();
     const indexTokens = estimatedTextTokens(renderIndexBlock(index));
-    if (indexTokens > task.maxIndexTokens) return finish("index-limit");
+    if (indexTokens > task.maxIndexTokens) {
+      return finish({ kind: "index-limit", tokens: indexTokens });
+    }
     const view: ExplorerView = {
       first: state.turns.length === 0,
       index,
@@ -2309,12 +1954,19 @@ export function snapshot(reader: Reader, task: Task): CampaignSnapshot {
       ...(objective === undefined ? {} : { objective }),
       ...(failure === undefined ? {} : { failure }),
     };
+    const explorerPhase: Extract<ModelPhase, { kind: "explorer" }> = {
+      kind: "explorer",
+      label: explorerCallLabel,
+      after: cursor,
+      view,
+      indexTokens,
+    };
     const explored = findSubmission(records, {
       label: explorerCallLabel,
       after: cursor,
       turn: explorerTurn(task, view),
     });
-    if (explored === undefined) return finish("explorer");
+    if (explored === undefined) return finish(explorerPhase);
     state.turns.push({
       call: explored.call,
       settled: explored.settled,
@@ -2338,22 +1990,28 @@ export function snapshot(reader: Reader, task: Task): CampaignSnapshot {
       // The tripwire re-fires at every curation entry: defect segments grow
       // the index without passing the outer explorer check.
       const curationIndex = liveIndex();
-      if (
-        estimatedTextTokens(renderIndexBlock(curationIndex)) >
-        task.maxIndexTokens
-      ) {
-        return finish("index-limit");
+      const curationTokens = estimatedTextTokens(
+        renderIndexBlock(curationIndex),
+      );
+      if (curationTokens > task.maxIndexTokens) {
+        return finish({ kind: "index-limit", tokens: curationTokens });
       }
       const curatorView: CuratorView = {
         index: curationIndex,
         findings,
       };
-      const curated = findSubmission(records, {
+      const curationPhase: Extract<ModelPhase, { kind: "curation" }> = {
+        kind: "curation",
         label: curationLabel(curationTrigger),
         after: curationAfter,
+        view: curatorView,
+      };
+      const curated = findSubmission(records, {
+        label: curationPhase.label,
+        after: curationPhase.after,
         turn: curationTurn(task, curatorView),
       });
-      if (curated === undefined) return finish("curation");
+      if (curated === undefined) return finish(curationPhase);
       const batch = foldCuration(findings, curated);
       let pipelineCursor = curated.settled;
       let serveTrigger = curated.call;
@@ -2365,12 +2023,18 @@ export function snapshot(reader: Reader, task: Task): CampaignSnapshot {
           basedOn: premisesOf(parents.get(id) ?? []),
         }));
         const triageView: TriageView = { batch: batchViews };
-        const triaged = findSubmission(records, {
+        const triagePhase: Extract<ModelPhase, { kind: "triage" }> = {
+          kind: "triage",
           label: triageLabel(curated.call),
           after: curated.settled,
+          view: triageView,
+        };
+        const triaged = findSubmission(records, {
+          label: triagePhase.label,
+          after: triagePhase.after,
           turn: triageTurn(task, triageView),
         });
-        if (triaged === undefined) return finish("triage");
+        if (triaged === undefined) return finish(triagePhase);
         state.triages.push({
           call: triaged.call,
           settled: triaged.settled,
@@ -2395,7 +2059,7 @@ export function snapshot(reader: Reader, task: Task): CampaignSnapshot {
           const premises = premisesOf(parents.get(id) ?? []);
           for (const mode of modes) {
             const note = notes.get(id);
-            if (note === undefined) throw new Error(`snapshot lost note ${id}`);
+            if (note === undefined) throw new Error(`fold lost note ${id}`);
             const outcome = resolveNoteMode(records, task, {
               note: id,
               statement,
@@ -2406,9 +2070,9 @@ export function snapshot(reader: Reader, task: Task): CampaignSnapshot {
               trigger: triaged.call,
               after: pipelineCursor,
             });
-            if ("pending" in outcome) return finish(outcome.pending.kind);
+            if ("pending" in outcome) return finish(outcome.pending);
             state.noteVerdicts.push(outcome.record);
-            applyVerdictMirror(
+            applyVerdict(
               id,
               mode,
               outcome.record.verdict,
@@ -2437,12 +2101,18 @@ export function snapshot(reader: Reader, task: Task): CampaignSnapshot {
         turns: state.turns.length,
         hints,
       };
-      const served = findSubmission(records, {
+      const servePhase: Extract<ModelPhase, { kind: "serve" }> = {
+        kind: "serve",
         label: serveLabel(serveTrigger),
         after: pipelineCursor,
+        view: serveView,
+      };
+      const served = findSubmission(records, {
+        label: servePhase.label,
+        after: servePhase.after,
         turn: serveTurn(task, serveView),
       });
-      if (served === undefined) return finish("serve");
+      if (served === undefined) return finish(servePhase);
       state.serves.push({
         call: served.call,
         settled: served.settled,
@@ -2501,18 +2171,22 @@ export function snapshot(reader: Reader, task: Task): CampaignSnapshot {
         served.call,
         goal,
       );
-      if (found === undefined) return finish("create-candidate");
+      if (found === undefined) {
+        return finish({ kind: "create-candidate", answer: goalText });
+      }
       const outcome = resolveBoundary(records, task, found, {
         statement: summaryOf(goal),
         premises: premisesOf(parents.get(goal) ?? []),
       });
-      if ("pending" in outcome) return finish(outcome.pending.kind);
+      if ("pending" in outcome) return finish(outcome.pending);
       state.candidates.push(outcome.candidate);
       for (const verdict of outcome.candidate.verdicts) {
-        applyVerdictMirror(goal, verdict.mode, verdict.verdict, verdict.record);
+        applyVerdict(goal, verdict.mode, verdict.verdict, verdict.record);
         if (verdict.verdict === "FAIL") refuted.add(goal);
       }
-      if (outcome.solved) return finish("solved", found.id);
+      if (outcome.solved) {
+        return finish({ kind: "solved", candidate: found.id });
+      }
       const failing = outcome.candidate.verdicts.filter(
         (verdict) => verdict.verdict !== "PASS",
       );
@@ -2537,4 +2211,13 @@ export function snapshot(reader: Reader, task: Task): CampaignSnapshot {
       defectSegment = true;
     }
   }
+}
+
+export function snapshot(reader: Reader, task: Task): CampaignSnapshot {
+  const { phase, ...projection } = foldCampaign(reader, task);
+  return {
+    ...projection,
+    phase: phase.kind,
+    ...(phase.kind === "solved" ? { solution: phase.candidate } : {}),
+  };
 }

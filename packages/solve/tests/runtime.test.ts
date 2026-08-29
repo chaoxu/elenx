@@ -8,8 +8,7 @@ import {
 } from "node:fs";
 import { basename, dirname, join } from "node:path";
 
-import { campaignState } from "../inspect";
-import { withCampaignLock } from "../runtime";
+import { campaignState, withCampaignLock } from "../runtime";
 import { campaignPath, cleanupCampaigns } from "./harness";
 
 afterEach(cleanupCampaigns);
