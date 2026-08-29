@@ -6,7 +6,7 @@ test("publishes the versioned run-manager contract", () => {
   expect(executionContract).toEqual({
     schemaVersion: 2,
     application: "elenx-solve",
-    protocol: "exploration-v16",
+    protocol: "exploration-v17",
     run: {
       command: "run",
       arguments: ["problem", "completionCriteria", "campaign", "settings"],
@@ -32,7 +32,7 @@ test("binds CLI reports to the execution contract", () => {
   ).toEqual({
     schemaVersion: 2,
     application: "elenx-solve",
-    protocol: "exploration-v16",
+    protocol: "exploration-v17",
     outcome: "solved",
     phase: "solved",
     candidate: 7,

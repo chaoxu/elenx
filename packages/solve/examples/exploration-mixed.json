@@ -1,5 +1,5 @@
 {
-  "protocol": "exploration-v16",
+  "protocol": "exploration-v17",
   "maxContextTokens": 200000,
   "maxIndexTokens": 100000,
   "explorerGuidance": [],
@@ -13,17 +13,17 @@
     "model": "gpt-5.6-luna",
     "reasoning": "medium"
   },
-  "premiseVerifier": {
+  "triage": {
+    "provider": "codex-lb",
+    "model": "gpt-5.6-luna",
+    "reasoning": "medium"
+  },
+  "verifier": {
     "provider": "codex-lb",
     "model": "gpt-5.6-sol",
     "reasoning": "max"
   },
   "sourceChecker": {
-    "model": "gpt-5.6-sol",
-    "reasoning": "max"
-  },
-  "proofVerifier": {
-    "provider": "codex-lb",
     "model": "gpt-5.6-sol",
     "reasoning": "max"
   }

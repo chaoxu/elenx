@@ -24,12 +24,7 @@ describe("example settings", () => {
         readFileSync(new URL("exploration-sol-max.json", examplesDir), "utf8"),
       ),
     );
-    for (const role of [
-      "explorer",
-      "curator",
-      "premiseVerifier",
-      "proofVerifier",
-    ] as const) {
+    for (const role of ["explorer", "curator", "triage", "verifier"] as const) {
       expect(value[role].model).toBe("gpt-5.6-sol");
       expect(value[role].reasoning).toBe("max");
     }
@@ -39,18 +34,15 @@ describe("example settings", () => {
     });
   });
 
-  test("the mixed example downgrades only the curator", () => {
+  test("the mixed example downgrades only the curation-side roles", () => {
     const value = settings.parse(
       JSON.parse(
         readFileSync(new URL("exploration-mixed.json", examplesDir), "utf8"),
       ),
     );
     expect(value.curator.model).toBe("gpt-5.6-luna");
-    for (const role of [
-      "explorer",
-      "premiseVerifier",
-      "proofVerifier",
-    ] as const) {
+    expect(value.triage.model).toBe("gpt-5.6-luna");
+    for (const role of ["explorer", "verifier"] as const) {
       expect(value[role].model).toBe("gpt-5.6-sol");
       expect(value[role].reasoning).toBe("max");
     }

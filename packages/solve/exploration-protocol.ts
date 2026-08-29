@@ -3,7 +3,7 @@ import { piReasoning } from "elenx/pi";
 import { z } from "zod";
 
 export const applicationId = "elenx-solve";
-export const protocolName = "exploration-v16";
+export const protocolName = "exploration-v17";
 
 const modelProfile = z.strictObject({
   provider: z.string().min(1),
@@ -56,9 +56,9 @@ export const settingsSchema = z
     explorerGuidance: userGuidance.default([]),
     explorer: modelProfile,
     curator: modelProfile,
-    premiseVerifier: modelProfile,
+    triage: modelProfile,
+    verifier: modelProfile,
     sourceChecker: sourceProfile,
-    proofVerifier: modelProfile,
   })
   .superRefine(boundsRefinement);
 export type Settings = z.output<typeof settingsSchema>;
@@ -73,9 +73,9 @@ export const taskSchema = z
     guidance: z.array(guidanceModule),
     explorer: runtimeProfile,
     curator: runtimeProfile,
-    premiseVerifier: runtimeProfile,
+    triage: runtimeProfile,
+    verifier: runtimeProfile,
     sourceChecker: sourceProfile,
-    proofVerifier: runtimeProfile,
   })
   .superRefine(boundsRefinement);
 export type Task = z.output<typeof taskSchema>;
@@ -84,13 +84,6 @@ export type SourceProfile = z.output<typeof sourceProfile>;
 export type GuidanceModule = z.output<typeof guidanceModule>;
 
 type CampaignDeclaration = Extract<Entry, { kind: "campaign" }>;
-
-const replayReleases: Readonly<Record<string, string>> = {
-  "exploration-v12": "v0.31.0",
-  "exploration-v13": "v0.32.0",
-  "exploration-v14": "v0.33.0",
-  "exploration-v15": "v0.34.0",
-};
 
 export function parseCampaign(declaration: Entry | undefined): {
   readonly declaration: CampaignDeclaration;
@@ -111,14 +104,6 @@ export function parseCampaign(declaration: Entry | undefined): {
       "protocol" in declaration.config
         ? declaration.config.protocol
         : undefined;
-    if (typeof declaredProtocol === "string") {
-      const release = replayReleases[declaredProtocol];
-      if (release !== undefined) {
-        throw new Error(
-          `${declaredProtocol} requires elenx-solve ${release} for replay or inspection`,
-        );
-      }
-    }
     if (declaredProtocol === protocolName) {
       throw new Error(
         `invalid ${applicationId} ${protocolName} campaign config: ${parsed.error.message}`,
@@ -134,12 +119,10 @@ export function parseCampaign(declaration: Entry | undefined): {
 // ---------------------------------------------------------------------------
 // Explorer turn
 //
-// The explorer is a pure reasoner. It reports raw findings (results, failed
-// attempts, and open questions alike, as self-contained free text) or submits
-// one standalone answer. It never authors index entries and never selects what
-// survives: the curator files every reported finding. The schema root is one
-// flat object with an action discriminant so strict tool-schema modes that
-// forbid a root oneOf accept it unchanged.
+// The explorer is a pure reasoner with exactly one output: findings. Results,
+// failed attempts, and open questions alike, as self-contained free text with
+// optional basedOn references to the notes each finding rests on. There is no
+// submit path: completion is the curator's judgment, not an explorer impulse.
 // ---------------------------------------------------------------------------
 
 const finding = z.strictObject({
@@ -148,72 +131,21 @@ const finding = z.strictObject({
 });
 export type Finding = z.output<typeof finding>;
 
-export const explorerSubmission = z
-  .strictObject({
-    action: z.enum(["continue", "submit"]),
-    findings: z.array(finding).default([]),
-    nextObjective: nonblank.optional(),
-    expand: z.array(noteId).default([]),
-    answer: nonblank.optional(),
-    basedOn: z.array(noteId).default([]),
-  })
-  .superRefine((value, ctx) => {
-    if (value.action === "continue") {
-      if (value.findings.length === 0) {
-        ctx.addIssue({
-          code: "custom",
-          message: "continue requires at least one finding",
-          path: ["findings"],
-        });
-      }
-      if (value.answer !== undefined) {
-        ctx.addIssue({
-          code: "custom",
-          message: "continue cannot carry an answer",
-          path: ["answer"],
-        });
-      }
-      if (value.basedOn.length > 0) {
-        ctx.addIssue({
-          code: "custom",
-          message: "basedOn belongs to submit; findings carry their own",
-          path: ["basedOn"],
-        });
-      }
-    } else {
-      if (value.answer === undefined) {
-        ctx.addIssue({
-          code: "custom",
-          message: "submit requires the standalone answer",
-          path: ["answer"],
-        });
-      }
-      for (const [path, present] of [
-        ["findings", value.findings.length > 0],
-        ["nextObjective", value.nextObjective !== undefined],
-        ["expand", value.expand.length > 0],
-      ] as const) {
-        if (present) {
-          ctx.addIssue({
-            code: "custom",
-            message: `submit cannot carry ${path}`,
-            path: [path],
-          });
-        }
-      }
-    }
-  });
+export const explorerSubmission = z.strictObject({
+  findings: z.array(finding).min(1),
+  nextObjective: nonblank.optional(),
+  expand: z.array(noteId).default([]),
+});
 export type ExplorerSubmission = z.output<typeof explorerSubmission>;
 
 // ---------------------------------------------------------------------------
 // Curator ingest
 //
-// The curator files every finding of a turn: each one is minted as a new note,
-// recorded as a new version of an existing note it refines, or dropped as a
-// duplicate of an existing note. Nothing is silently lost — every finding
-// index must be covered exactly once. Text is the finding's exact bytes; the
-// curator writes only the summary. Invalidations are permitted solely while
-// ingesting a verifier defect, and each must quote its verdict as cause.
+// The curator files every finding of a turn exactly once: minted as a new
+// note, recorded as a new version of an existing note it refines, or dropped
+// as a duplicate. Text is the finding's exact bytes; the curator writes only
+// the summary. The curator holds no verification power: standing comes from
+// triage plans and verifier verdicts alone.
 // ---------------------------------------------------------------------------
 
 const positiveIndex = z.number().int().positive();
@@ -221,7 +153,6 @@ const positiveIndex = z.number().int().positive();
 export function curationSubmissionFor(
   findingCount: number,
   existingNoteIds: readonly string[],
-  verdictPresent: boolean,
 ) {
   const known = new Set(existingNoteIds);
   const knownNote = noteId.refine((value) => known.has(value), {
@@ -250,14 +181,9 @@ export function curationSubmissionFor(
         });
       }
     });
-  const invalidation = z.strictObject({
-    note: knownNote,
-    cause: nonblank,
-  });
   return z
     .strictObject({
       filings: z.array(filing),
-      invalidations: z.array(invalidation).default([]),
     })
     .superRefine((value, ctx) => {
       const seen = new Set<number>();
@@ -292,24 +218,126 @@ export function curationSubmissionFor(
           path: ["filings"],
         });
       }
-      if (!verdictPresent && value.invalidations.length > 0) {
-        ctx.addIssue({
-          code: "custom",
-          message: "invalidation requires a verifier verdict to ingest",
-          path: ["invalidations"],
-        });
-      }
     });
 }
 export type CurationSubmission = z.output<
   ReturnType<typeof curationSubmissionFor>
 >;
 
+// ---------------------------------------------------------------------------
+// Verification
+//
+// One subsystem, two call sites. Triage plans each newly filed or revised
+// note from the frozen mode menu; the loop executes each planned mode as its
+// own fresh verifier call returning an assessment. Conditional inside: a
+// note's audit treats its basedOn statements as given premises. Unconditional
+// authority at the boundary: the goal battery always runs every mode plus
+// criteria-match, and only its verdicts confer acceptance.
+// ---------------------------------------------------------------------------
+
+export const verificationModes = [
+  "proof-audit",
+  "reconstruction",
+  "refutation",
+  "external-premises",
+] as const;
+export const verificationMode = z.enum(verificationModes);
+export type VerificationMode = z.output<typeof verificationMode>;
+
+// The boundary battery: every mode, plus the boundary-only criteria match.
+export const boundaryModes = [...verificationModes, "criteria-match"] as const;
+
+export function triageSubmissionFor(newNoteIds: readonly string[]) {
+  const fresh = new Set(newNoteIds);
+  const freshNote = noteId.refine((value) => fresh.has(value), {
+    message: "not a note of this triage batch",
+  });
+  const plan = z.strictObject({
+    note: freshNote,
+    modes: z.array(verificationMode),
+    rationale: nonblank,
+  });
+  return z
+    .strictObject({
+      plans: z.array(plan),
+    })
+    .superRefine((value, ctx) => {
+      const seen = new Set<string>();
+      for (const [index, entry] of value.plans.entries()) {
+        if (seen.has(entry.note)) {
+          ctx.addIssue({
+            code: "custom",
+            message: "each note is planned exactly once",
+            path: ["plans", index, "note"],
+          });
+        }
+        seen.add(entry.note);
+        if (new Set(entry.modes).size !== entry.modes.length) {
+          ctx.addIssue({
+            code: "custom",
+            message: "modes must be distinct",
+            path: ["plans", index, "modes"],
+          });
+        }
+      }
+      if (seen.size !== newNoteIds.length) {
+        ctx.addIssue({
+          code: "custom",
+          message: `all ${newNoteIds.length} notes must be planned`,
+          path: ["plans"],
+        });
+      }
+    });
+}
+export type TriageSubmission = z.output<ReturnType<typeof triageSubmissionFor>>;
+
 export const assessment = z.strictObject({
   verdict: z.enum(["PASS", "FAIL", "INCONCLUSIVE"]),
   report: nonblank,
 });
 export type Assessment = z.output<typeof assessment>;
+
+// ---------------------------------------------------------------------------
+// Curator serve
+//
+// The curator's second call site. Each cycle it reads the criteria, the
+// standing-annotated index, and the previous turn's requests, then either
+// composes the next explorer's working set or points at the goal note whose
+// statement meets the completion criteria. Declaring the goal excludes
+// serving: the boundary battery decides what happens next.
+// ---------------------------------------------------------------------------
+
+export function serveSubmissionFor(liveNoteIds: readonly string[]) {
+  const known = new Set(liveNoteIds);
+  const knownNote = noteId.refine((value) => known.has(value), {
+    message: "unknown note id",
+  });
+  return z
+    .strictObject({
+      expand: z.array(knownNote).default([]),
+      objective: nonblank.optional(),
+      goalNote: knownNote.optional(),
+    })
+    .superRefine((value, ctx) => {
+      if (value.goalNote !== undefined) {
+        if (value.expand.length > 0) {
+          ctx.addIssue({
+            code: "custom",
+            message: "declaring the goal excludes serving a working set",
+            path: ["expand"],
+          });
+        }
+        if (value.objective !== undefined) {
+          ctx.addIssue({
+            code: "custom",
+            message: "declaring the goal excludes an objective",
+            path: ["objective"],
+          });
+        }
+      }
+    });
+}
+export type ServeSubmission = z.output<ReturnType<typeof serveSubmissionFor>>;
 
 export function callActivity(label: string): {
   readonly role: string;
@@ -339,3 +367,6 @@ export function renderTask(
 
 export const turnTool = "submit_turn";
 export const curationTool = "submit_curation";
+export const triageTool = "submit_triage";
+export const serveTool = "submit_serving";
+export const verdictTool = "submit_verdict";

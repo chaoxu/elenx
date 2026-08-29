@@ -37,7 +37,7 @@ The deterministic verifier example is [`examples/v1/scripted-verifier.ts`](examp
 
 ## Solver
 
-[`packages/solve`](packages/solve) supplies the `exploration-v16` protocol. Fresh explorers reason over a durable note index curated from every reported finding rather than campaign history. A submitted standalone answer becomes the candidate bytes. Offline premise verification uses isolated web search only for unresolved external claims, then a fresh proof audit checks the exact answer.
+[`packages/solve`](packages/solve) supplies the `exploration-v17` protocol. Fresh explorers report findings over a verified, standing-annotated note index; a curator files every finding and serves each turn's working set; one verification subsystem audits notes as they enter and decides completion when the curator points at a verified goal note. The verified tower is the result; rendering it into a document is external tooling.
 
 [`docs/design.md`](docs/design.md) defines the governing design direction. [`packages/solve/docs/protocol.md`](packages/solve/docs/protocol.md) remains the authority for exact runtime behavior.
 

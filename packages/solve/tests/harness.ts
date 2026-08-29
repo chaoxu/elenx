@@ -83,18 +83,18 @@ export function runSettings(overrides: Partial<Settings> = {}): Settings {
     reasoning: "high" as const,
   });
   return {
-    protocol: "exploration-v16",
+    protocol: "exploration-v17",
     maxContextTokens: 200_000,
     maxIndexTokens: 100_000,
     explorerGuidance: [],
     explorer: selection(explorerModel),
     curator: selection(handoffModel),
-    premiseVerifier: selection(premiseModel),
+    triage: selection(premiseModel),
+    verifier: selection(proofModel),
     sourceChecker: {
       model: sourceModel.id,
       reasoning: "high",
     },
-    proofVerifier: selection(proofModel),
     ...overrides,
   };
 }

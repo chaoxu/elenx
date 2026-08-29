@@ -173,18 +173,13 @@ export function inspectCampaign(path: string, options: InspectionOptions = {}) {
       ({ call, settled, submission }) => ({
         call,
         settled,
-        action: submission.action,
-        ...(submission.action === "continue"
-          ? {
-              findings: submission.findings.length,
-              ...(submission.nextObjective === undefined
-                ? {}
-                : { nextObjective: submission.nextObjective }),
-              ...(submission.expand.length === 0
-                ? {}
-                : { expand: submission.expand }),
-            }
-          : { basedOn: submission.basedOn }),
+        findings: submission.findings.length,
+        ...(submission.nextObjective === undefined
+          ? {}
+          : { nextObjective: submission.nextObjective }),
+        ...(submission.expand.length === 0
+          ? {}
+          : { expand: submission.expand }),
       }),
     );
     const curations = semantic.curations.map(
@@ -196,35 +191,61 @@ export function inspectCampaign(path: string, options: InspectionOptions = {}) {
         duplicates: submission.filings.filter(
           ({ duplicateOf }) => duplicateOf !== undefined,
         ).length,
-        invalidations: submission.invalidations.map(({ note, cause }) => ({
-          note,
-          cause,
-        })),
       }),
     );
+    const triages = semantic.triages.map(({ call, settled, submission }) => ({
+      call,
+      settled,
+      plans: submission.plans.map(({ note, modes }) => ({ note, modes })),
+    }));
+    const verdicts = semantic.noteVerdicts.map(
+      ({ note, mode, verdict, settled, report }) => ({
+        note,
+        mode,
+        verdict,
+        at: settled,
+        ...(options.includeInputs === true ? { report } : {}),
+      }),
+    );
+    const serves = semantic.serves.map(({ call, settled, submission }) => ({
+      call,
+      settled,
+      ...(submission.goalNote === undefined
+        ? {
+            expand: submission.expand,
+            ...(submission.objective === undefined
+              ? {}
+              : { objective: submission.objective }),
+          }
+        : { goalNote: submission.goalNote }),
+    }));
     const notes = semantic.notes.map(
-      ({ id, summary, versions, at, invalidated, text }) => ({
+      ({ id, summary, standing, versions, at, parents, text }) => ({
         id,
         summary,
+        standing,
         versions,
         at,
-        ...(invalidated === undefined ? {} : { invalidated }),
+        ...(parents.length === 0 ? {} : { parents }),
         ...(options.includeInputs === true ? { text } : {}),
       }),
     );
     const candidates = semantic.candidates.map((row) => {
-      const originRow = callRows.find((call) => call.seq === row.originCall);
-      const turnRows = [
-        ...(originRow === undefined ? [] : [originRow]),
-        ...callRows.filter((call) => call.candidate === row.id),
-      ];
+      const turnRows = callRows.filter((call) => call.candidate === row.id);
       const measured = turnRows.flatMap((call) =>
         call.spend !== undefined && "measuredUsage" in call.spend
           ? [call.spend.measuredUsage]
           : [],
       );
       return {
-        ...row,
+        id: row.id,
+        originCall: row.originCall,
+        goalNote: row.goalNote,
+        verdicts: row.verdicts.map(({ mode, verdict, record }) => ({
+          mode,
+          verdict,
+          record,
+        })),
         verified: deriveCandidateStatus(records, row.id).verified,
         calls: turnRows.map(({ seq }) => seq),
         elapsedMs: turnRows.reduce((total, call) => total + call.elapsedMs, 0),
@@ -253,9 +274,9 @@ export function inspectCampaign(path: string, options: InspectionOptions = {}) {
       profiles: {
         explorer: publicProfile(task.explorer),
         curator: publicProfile(task.curator),
-        premiseVerifier: publicProfile(task.premiseVerifier),
+        triage: publicProfile(task.triage),
+        verifier: publicProfile(task.verifier),
         sourceChecker: task.sourceChecker,
-        proofVerifier: publicProfile(task.proofVerifier),
       },
       createdAtMs: declaration.atMs,
       lastSeq: last?.seq ?? declaration.seq,
@@ -268,7 +289,13 @@ export function inspectCampaign(path: string, options: InspectionOptions = {}) {
       indexTokens: semantic.indexTokens,
       explorations,
       curations,
+      triages,
+      verdicts,
+      serves,
       notes,
+      ...(semantic.mechanicalGaps.length === 0
+        ? {}
+        : { mechanicalGaps: semantic.mechanicalGaps }),
       ...(semantic.solution === undefined
         ? {}
         : { solution: semantic.solution }),
@@ -282,21 +309,84 @@ export function inspectCampaign(path: string, options: InspectionOptions = {}) {
   }
 }
 
+// Export emits the verified goal note followed by its ancestor closure in
+// dependency order (a note's dependencies precede it), exactly as
+// docs/protocol.md promises. Assembly into a reader-facing document is
+// external tooling over this output.
 export function exportAnswer(path: string): Uint8Array {
   const reader = openReader(path);
   try {
     const task = parseCampaign(reader.records()[0]).task;
     const semantic = snapshot(reader, task);
     if (semantic.phase !== "solved" || semantic.solution === undefined) {
-      throw new Error("campaign has no accepted v16 candidate");
+      throw new Error("campaign has no verified v17 goal");
     }
     if (!deriveCandidateStatus(reader.records(), semantic.solution).verified) {
       throw new Error("accepted candidate verifier contract is unsatisfied");
     }
-    return reader.material(semantic.solution);
+    const accepted = semantic.candidates.find(
+      (candidate) => candidate.id === semantic.solution,
+    );
+    if (accepted === undefined) {
+      throw new Error("solved campaign lost its accepted candidate");
+    }
+    const notes = new Map(semantic.notes.map((note) => [note.id, note]));
+    const goal = notes.get(accepted.goalNote);
+    if (goal === undefined) {
+      throw new Error("solved campaign lost its goal note");
+    }
+    const closure = closureInDependencyOrder(accepted.goalNote, notes);
+    const sections = [
+      `[${goal.id}] ${goal.summary}`,
+      "",
+      goal.text,
+      ...closure.flatMap((id) => {
+        const note = notes.get(id);
+        if (note === undefined) throw new Error(`closure lost note ${id}`);
+        return ["", `--- [${note.id}] ${note.summary}`, "", note.text];
+      }),
+      "",
+    ];
+    return new TextEncoder().encode(sections.join("\n"));
   } finally {
     reader.close();
   }
+}
+
+// Topological order over the goal's ancestor closure: every note's
+// dependencies precede it; ties break by mint ordinal for determinism.
+function closureInDependencyOrder(
+  goal: string,
+  notes: ReadonlyMap<string, { readonly parents: readonly string[] }>,
+): string[] {
+  const members = new Set<string>();
+  const gather = (id: string) => {
+    for (const parent of notes.get(id)?.parents ?? []) {
+      if (members.has(parent)) continue;
+      members.add(parent);
+      gather(parent);
+    }
+  };
+  gather(goal);
+  const ordered: string[] = [];
+  const placed = new Set<string>();
+  const place = (id: string) => {
+    if (placed.has(id)) return;
+    placed.add(id);
+    const parents = [...(notes.get(id)?.parents ?? [])].sort(
+      (a, b) => Number(a.slice(1)) - Number(b.slice(1)),
+    );
+    for (const parent of parents) {
+      if (members.has(parent)) place(parent);
+    }
+    ordered.push(id);
+  };
+  for (const id of [...members].sort(
+    (a, b) => Number(a.slice(1)) - Number(b.slice(1)),
+  )) {
+    place(id);
+  }
+  return ordered;
 }
 
 type SemanticView = Omit<CampaignSnapshot, "phase"> & {
@@ -317,7 +407,11 @@ function semanticSnapshot(
       indexTokens: 0,
       turns: [],
       curations: [],
+      triages: [],
+      noteVerdicts: [],
+      serves: [],
       candidates: [],
+      mechanicalGaps: [],
       notes: [],
     };
   }

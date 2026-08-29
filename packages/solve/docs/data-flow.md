@@ -1,6 +1,6 @@
 # Model data-flow contract
 
-Status: `exploration-v15` authority for information passed into fresh calls.
+Status: `exploration-v17` authority for information passed into fresh calls.
 
 The journal retains more information than any model role may see. Every prompt uses an allowlisted projection. Replay and inspection access do not imply prompt visibility.
 
@@ -9,65 +9,85 @@ The journal retains more information than any model role may see. Every prompt u
 Receives:
 
 - exact task and explorer guidance
+- the complete standing-annotated live index: every non-refuted note's ID, standing, and summary
+- the served working set: full texts of the notes the curator expanded, plus the previous curation's live mints and refinements
+- the transient objective, when the previous serve stated one
+- after a failed boundary battery, the goal note's text and the failing verdicts
 - no earlier context on the first turn
-- one exact handoff and its assessment after an incomplete turn
-- one exact rejected candidate and one harness-bounded defect after candidate failure
-- with a configured archivist, the exact recalled note texts and stated relevances, preassembled by the harness
 - one terminal submission tool
 
 Excluded:
 
 - raw prior transcripts
-- unselected or older notes outside the recalled packet
-- note IDs and origin calls
-- source-search reports, transcripts, and nonblocking fields
-- complete premise inventories
-- previous PASS verdicts
+- note versions, refuted notes, and full texts outside the working set
+- triage plans, rationales, and verdict reports outside failure context
 - retrieval tools of any kind
 - filesystem, shell, web, browser control, memory, plugins, and delegation
 
-## Archivist
+## Curator ingest
 
 Receives:
 
 - exact task
-- the next explorer's exact context block
-- every durable note with its ID and exact text
-- one terminal selection tool
+- the turn's findings: exact bytes, numbered, with their `basedOn` references
+- the standing-annotated live index
+- one terminal filing tool
 
 Excluded:
 
-- raw prior transcripts and handoff history
-- candidates, verdicts, and premise material outside the context block
+- note full texts and versions
+- triage plans and verdicts
+- raw prior transcripts
+- any invalidation or verification power
 - web and execution capabilities
 
-## Handoff verifier
+## Curator serve
 
 Receives:
 
-- exact task
-- one exact handoff containing next objective, selected note bytes, and intended uses
-- one terminal assessment tool
+- exact task and completion criteria
+- the standing-annotated live index
+- the previous explorer's expansion requests and next objective, as hints
+- one terminal serving tool
 
 Excluded:
 
-- unselected notes
-- prior transcripts and handoffs
-- candidates and candidate verdicts
+- note full texts
+- verdict reports and triage rationales
+- raw prior transcripts
 - web and execution capabilities
 
-## Offline premise verifier
+## Triage
 
 Receives:
 
-- exact task
-- exact standalone candidate
-- one terminal premise-inventory tool
+- exact task and completion criteria
+- each batch note's exact text and ID
+- each batch note's `basedOn` IDs with their summaries
+- one terminal planning tool
 
 Excluded:
 
-- every note and handoff
-- previous candidate or verifier history
+- notes outside the batch beyond the cited summaries
+- verdict history and prior plans
+- raw prior transcripts
+- web and execution capabilities
+
+## Mode verifier
+
+Every mode receives the exact task and one terminal assessment tool, then exactly its mode's material:
+
+- `proof-audit` — the note's exact text and statement, with its `basedOn` statements given as premises
+- `reconstruction` — the note's statement and its premise statements only, never its derivation
+- `refutation` — the note's exact statement and text
+- `criteria-match` (boundary only) — the goal note's statement and the completion criteria
+- `external-premises` — the note's exact text for premise inventory; unresolved premises go to the source checker
+
+Excluded from every mode:
+
+- other notes' texts beyond the given premise statements
+- prior verdicts, plans, and rationales
+- raw prior transcripts
 - web and execution capabilities
 
 ## Source checker
@@ -75,36 +95,19 @@ Excluded:
 Receives:
 
 - exact unresolved premise statements and hypotheses
-- concise premise-verifier descriptions of their candidate applications
-- exact candidate excerpts applying them
+- concise inventory descriptions of their applications
+- the exact note excerpt applying them
 - asserted citation metadata
 - web search and one structured output schema
 
 Excluded:
 
-- complete candidate text outside the supplied excerpts
-- notes, handoffs, and verifier history
+- the store, the index, and every note outside the supplied excerpts
+- verdict history
 - workspace, filesystem, shell, browser control, memory, plugins, and delegation
-
-## Proof verifier
-
-Receives:
-
-- exact task
-- exact candidate
-- verified external source certificates
-- one terminal assessment tool
-
-Excluded:
-
-- notes and handoffs
-- rejected candidates
-- premise-verifier reports
-- source-search reasoning and unrelated discoveries
-- every previous verdict
 
 ## Tests
 
-Projection tests use unique sentinels for selected and unselected notes, handoff reports, candidate text, premise reports, source packets, and proof reports. Every test asserts that required sentinels appear and forbidden sentinels do not.
+Projection tests use unique sentinels for index entries, working-set texts, findings, plans, and verdict reports. Every test asserts that required sentinels appear and forbidden sentinels do not.
 
 Inspection exposes exact requests only under `--include-inputs`. No runtime role can request raw journal history.

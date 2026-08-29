@@ -5,7 +5,6 @@ import { start } from "../exploration";
 import { exportAnswer, inspectCampaign } from "../inspect";
 import {
   campaignPath,
-  candidate,
   cleanupCampaigns,
   criteria,
   dependencies,
@@ -17,51 +16,68 @@ afterEach(cleanupCampaigns);
 
 const firstTurn = {
   submission: {
-    action: "continue",
-    findings: [{ text: "EVEN_SUM_LEMMA_TEXT" }, { text: "DOUBLING_TEXT" }],
+    findings: [{ text: "LEMMA_TEXT" }],
     nextObjective: "OBJECTIVE_ONE",
   },
 } as const;
 const firstCuration = {
+  submission: { filings: [{ finding: 1, summary: "LEMMA_SUMMARY" }] },
+} as const;
+const firstTriage = {
   submission: {
-    filings: [
-      { finding: 1, summary: "EVEN_SUM_LEMMA_SUMMARY" },
-      { finding: 2, summary: "DOUBLING_SUMMARY" },
+    plans: [
+      { note: "n1", modes: ["proof-audit"], rationale: "carries derivation" },
     ],
   },
 } as const;
+const lemmaVerdict = {
+  submission: { verdict: "PASS", report: "LEMMA_OK" },
+} as const;
+const firstServe = {
+  submission: { expand: ["n1"], objective: "OBJECTIVE_TWO" },
+} as const;
 const secondTurn = {
-  submission: {
-    action: "continue",
-    findings: [{ text: "SHARPER_LEMMA_TEXT", basedOn: ["n1"] }],
-  },
+  submission: { findings: [{ text: "GOAL_TEXT", basedOn: ["n1"] }] },
 } as const;
 const secondCuration = {
+  submission: { filings: [{ finding: 1, summary: "GOAL_SUMMARY" }] },
+} as const;
+const secondTriage = {
   submission: {
-    filings: [{ finding: 1, summary: "SHARPER_LEMMA_SUMMARY", refines: "n1" }],
+    plans: [
+      { note: "n2", modes: ["proof-audit"], rationale: "the goal claim" },
+    ],
   },
 } as const;
-const submitTurn = {
-  submission: { action: "submit", answer: candidate, basedOn: ["n1"] },
+const goalVerdict = {
+  submission: { verdict: "PASS", report: "GOAL_OK" },
 } as const;
+const goalServe = { submission: { goalNote: "n2" } } as const;
+const batteryPass = (report: string) =>
+  ({ submission: { verdict: "PASS", report } }) as const;
 const noPremises = {
   submission: { report: "NO_PREMISES", premises: [] },
-} as const;
-const proofPass = {
-  submission: { verdict: "PASS", report: "PROOF_PASS" },
 } as const;
 
 const solvedReplies = [
   firstTurn,
   firstCuration,
+  firstTriage,
+  lemmaVerdict,
+  firstServe,
   secondTurn,
   secondCuration,
-  submitTurn,
+  secondTriage,
+  goalVerdict,
+  goalServe,
+  batteryPass("B_PROOF"),
+  batteryPass("B_RECONSTRUCTION"),
+  batteryPass("B_REFUTATION"),
   noPremises,
-  proofPass,
+  batteryPass("B_CRITERIA"),
 ] as const;
 
-test("inspection exposes the v16 policy on a fresh campaign", async () => {
+test("inspection exposes the v17 policy on a fresh campaign", async () => {
   const path = campaignPath();
   await start(
     {
@@ -73,20 +89,26 @@ test("inspection exposes the v16 policy on a fresh campaign", async () => {
     dependencies([]),
   );
   expect(inspectCampaign(path)).toMatchObject({
-    protocol: "exploration-v16",
+    protocol: "exploration-v17",
     phase: "explorer",
     maxIndexTokens: 100_000,
     explorations: [],
     curations: [],
+    triages: [],
+    verdicts: [],
+    serves: [],
     notes: [],
     candidates: [],
     calls: [],
   });
+  expect(inspectCampaign(path).profiles.triage).toMatchObject({
+    model: "premise-v1",
+  });
 });
 
-test("inspection reports the notes projection, curations, and candidates", async () => {
+test("inspection reports the verified tower and export unfolds it", async () => {
   const path = campaignPath();
-  await start(
+  const report = await start(
     {
       problem,
       completionCriteria: criteria,
@@ -95,65 +117,109 @@ test("inspection reports the notes projection, curations, and candidates", async
     },
     dependencies([...solvedReplies]),
   );
+  expect(report.outcome).toBe("solved");
+
   const inspection = inspectCampaign(path);
   expect(inspection).toMatchObject({
-    protocol: "exploration-v16",
+    protocol: "exploration-v17",
     phase: "solved",
   });
-  expect(inspection.profiles.curator).toMatchObject({ model: "handoff-v1" });
   expect(inspection.indexTokens).toBeGreaterThan(0);
 
-  expect(inspection.explorations).toHaveLength(3);
+  expect(inspection.explorations).toHaveLength(2);
   expect(inspection.explorations[0]).toMatchObject({
-    action: "continue",
-    findings: 2,
+    findings: 1,
     nextObjective: "OBJECTIVE_ONE",
-  });
-  expect(inspection.explorations[2]).toMatchObject({
-    action: "submit",
-    basedOn: ["n1"],
   });
 
   expect(inspection.curations).toHaveLength(2);
   expect(inspection.curations[0]).toMatchObject({
-    minted: ["n1", "n2"],
+    minted: ["n1"],
     refined: [],
     duplicates: 0,
-    invalidations: [],
   });
-  expect(inspection.curations[1]).toMatchObject({
-    minted: [],
-    refined: ["n1"],
+  expect(inspection.curations[1]).toMatchObject({ minted: ["n2"] });
+
+  expect(inspection.triages).toHaveLength(2);
+  expect(inspection.triages[0]!.plans).toEqual([
+    { note: "n1", modes: ["proof-audit"] },
+  ]);
+
+  expect(inspection.verdicts).toEqual([
+    expect.objectContaining({
+      note: "n1",
+      mode: "proof-audit",
+      verdict: "PASS",
+    }),
+    expect.objectContaining({
+      note: "n2",
+      mode: "proof-audit",
+      verdict: "PASS",
+    }),
+  ]);
+  expect(inspection.verdicts[0]).not.toHaveProperty("report");
+
+  expect(inspection.serves).toHaveLength(2);
+  expect(inspection.serves[0]).toMatchObject({
+    expand: ["n1"],
+    objective: "OBJECTIVE_TWO",
   });
+  expect(inspection.serves[1]).toMatchObject({ goalNote: "n2" });
 
   expect(inspection.notes).toHaveLength(2);
   expect(inspection.notes[0]).toMatchObject({
     id: "n1",
-    summary: "SHARPER_LEMMA_SUMMARY",
-    versions: 2,
+    summary: "LEMMA_SUMMARY",
+    standing: "verified",
+    versions: 1,
   });
-  expect(inspection.notes[0]).not.toHaveProperty("invalidated");
+  expect(inspection.notes[1]).toMatchObject({
+    id: "n2",
+    standing: "verified",
+    parents: ["n1"],
+  });
   expect(inspection.notes[0]).not.toHaveProperty("text");
-  expect(inspectCampaign(path, { includeInputs: true }).notes[0]).toMatchObject(
-    { text: "SHARPER_LEMMA_TEXT" },
-  );
+  expect(inspection).not.toHaveProperty("mechanicalGaps");
 
   expect(inspection.candidates).toHaveLength(1);
   expect(inspection.candidates[0]).toMatchObject({
-    answer: candidate,
-    basedOn: ["n1"],
+    goalNote: "n2",
     verified: true,
   });
   expect(
-    inspection.candidates[0]!.verdicts.map(({ verdict }) => verdict),
-  ).toEqual(["PASS", "PASS"]);
+    inspection.candidates[0]!.verdicts.map(({ mode, verdict }) => [
+      mode,
+      verdict,
+    ]),
+  ).toEqual([
+    ["proof-audit", "PASS"],
+    ["reconstruction", "PASS"],
+    ["refutation", "PASS"],
+    ["external-premises", "PASS"],
+    ["criteria-match", "PASS"],
+  ]);
   expect(inspection.solution).toBe(inspection.candidates[0]!.id);
   expect(inspection.spend).toBeDefined();
 
-  expect(new TextDecoder().decode(exportAnswer(path))).toBe(candidate);
+  const withInputs = inspectCampaign(path, { includeInputs: true });
+  expect(withInputs.notes[0]).toMatchObject({ text: "LEMMA_TEXT" });
+  expect(withInputs.verdicts[0]).toMatchObject({ report: "LEMMA_OK" });
+
+  expect(new TextDecoder().decode(exportAnswer(path))).toBe(
+    [
+      "[n2] GOAL_SUMMARY",
+      "",
+      "GOAL_TEXT",
+      "",
+      "--- [n1] LEMMA_SUMMARY",
+      "",
+      "LEMMA_TEXT",
+      "",
+    ].join("\n"),
+  );
 });
 
-test("a paused campaign inspects with its current phase", async () => {
+test("a paused campaign inspects with its current phase and refuses export", async () => {
   const path = campaignPath();
   await start(
     {
@@ -168,7 +234,7 @@ test("a paused campaign inspects with its current phase", async () => {
   expect(inspection.phase).toBe("curation");
   expect(inspection.explorations).toHaveLength(1);
   expect(inspection.curations).toHaveLength(0);
-  expect(() => exportAnswer(path)).toThrow("no accepted v16 candidate");
+  expect(() => exportAnswer(path)).toThrow("no verified v17 goal");
 });
 
 test("inspection gates exact requests behind include-inputs", async () => {
@@ -192,7 +258,7 @@ test("inspection gates exact requests behind include-inputs", async () => {
   expect(call.declaredTools).toHaveLength(1);
 });
 
-test("CLI inspection emits v16 JSON", async () => {
+test("CLI inspection emits v17 JSON", async () => {
   const path = campaignPath();
   await start(
     {
@@ -209,7 +275,7 @@ test("CLI inspection emits v16 JSON", async () => {
   });
   expect(result.status).toBe(0);
   expect(JSON.parse(result.stdout)).toMatchObject({
-    protocol: "exploration-v16",
+    protocol: "exploration-v17",
     phase: "explorer",
   });
 });
