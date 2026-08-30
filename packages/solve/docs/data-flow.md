@@ -10,6 +10,7 @@ Receives:
 
 - exact task and explorer guidance
 - the complete standing-annotated live index: every non-refuted note's ID, standing, and summary
+- `basedOn` authority for the non-report entries of that index only
 - the served working set: full texts of the notes the curator expanded, plus the previous curation's newly minted notes
 - the transient objective, when the previous serve stated one
 - after a failed boundary battery, the goal note's text and the failing verdicts
@@ -20,6 +21,7 @@ Excluded:
 
 - raw prior transcripts
 - refuted notes outside an explicitly served repair context, and full texts outside the working set
+- working-set-only and failure-context-only note IDs as proof premises
 - triage plans, rationales, and verdict reports outside failure context
 - retrieval tools of any kind
 - filesystem, shell, web, browser control, memory, plugins, and delegation
@@ -112,6 +114,6 @@ Excluded:
 
 ## Tests
 
-Behavior tests drive scripted campaigns through the real loop and assert prompt bytes, immutable identity, same-turn dependency resolution, truth-establishing standing, refuted-premise preservation, local-to-boundary authority, and failed-goal progress. Reconstruction withholds the goal text while criteria-match receives it. Triage rationales and note verdict reports appear in no later prompt.
+Behavior tests drive scripted campaigns through the real loop and assert prompt bytes, immutable identity, same-turn dependency resolution, truth-establishing standing, index-scoped premise eligibility, local-to-boundary authority, and failed-goal progress. Reconstruction withholds the goal text while criteria-match receives it. Failed boundary verdicts appear only in the explicit failure context. Triage rationales and local verdict reports do not reach later prompts.
 
 Inspection exposes exact requests only under `--include-inputs`. No runtime role can request raw journal history.

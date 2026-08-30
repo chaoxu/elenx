@@ -2,8 +2,9 @@ import { afterEach, expect, test } from "bun:test";
 
 import { openReader } from "elenx";
 
-import { resume } from "../exploration";
+import { resume, start } from "../exploration";
 import {
+  campaignPath,
   cleanupCampaigns,
   curation,
   dependencies,
@@ -255,6 +256,36 @@ test("a local FAIL cannot veto a goal before the boundary battery", async () => 
   expect(report.outcome).toBe("solved");
 });
 
+test("criteria mismatch rejects completion without refuting mathematical standing", async () => {
+  const { path, report } = await startCampaign([
+    turn([{ text: goalText }]),
+    curation([{ finding: 1, summary: "the sum of two even integers is even" }]),
+    triage([{ note: "n1", modes: ["proof-audit"], rationale: "local audit" }]),
+    verdict("PASS", "the stored proof is mathematically valid"),
+    goalServe("n1"),
+    verdict("PASS", "boundary proof holds"),
+    verdict("PASS", "independent proof holds"),
+    verdict("PASS", "no refutation"),
+    { submission: { report: "no external premises", premises: [] } },
+    verdict("FAIL", "the proof omits one requested presentation detail"),
+  ]);
+
+  expect(report.outcome).toBe("paused");
+  const inspection = (await import("../inspect")).inspectCampaign(path);
+  expect(inspection.notes).toEqual([
+    expect.objectContaining({ id: "n1", standing: "verified" }),
+  ]);
+  expect(inspection.candidates).toHaveLength(1);
+  expect(inspection.candidates[0]).toMatchObject({
+    goalNote: "n1",
+    verified: false,
+  });
+  expect(inspection.candidates[0]!.verdicts.at(-1)).toMatchObject({
+    mode: "criteria-match",
+    verdict: "FAIL",
+  });
+});
+
 test("an unchanged failed goal cannot be redeclared without new evidence", async () => {
   await expect(
     startCampaign([
@@ -277,6 +308,36 @@ test("an unchanged failed goal cannot be redeclared without new evidence", async
       goalServe("n1"),
     ]),
   ).rejects.toThrow("unknown note id");
+});
+
+test("failed candidate material bytes stay suppressed across note ids", async () => {
+  const loneSurrogateProof = `${goalText}\ud800`;
+  const replacementCharacterProof = `${goalText}\ufffd`;
+  expect(loneSurrogateProof).not.toBe(replacementCharacterProof);
+  expect(new TextEncoder().encode(loneSurrogateProof)).toEqual(
+    new TextEncoder().encode(replacementCharacterProof),
+  );
+
+  const { drive, report } = await startCampaign([
+    turn([{ text: loneSurrogateProof }]),
+    curation([{ finding: 1, summary: "first summary of the goal proof" }]),
+    triage([{ note: "n1", modes: ["proof-audit"], rationale: "local audit" }]),
+    verdict("PASS", "local audit holds"),
+    goalServe("n1"),
+    verdict("FAIL", "boundary proof has a gap"),
+    curation([{ finding: 1, summary: "boundary failure on n1" }]),
+    triage([{ note: "n2", modes: [], rationale: "defect record" }]),
+    turn([{ text: replacementCharacterProof }]),
+    curation([{ finding: 1, summary: "drifted summary of the same proof" }]),
+    triage([{ note: "n3", modes: ["proof-audit"], rationale: "local audit" }]),
+    verdict("PASS", "local audit still holds"),
+    serve([], "find new proof bytes"),
+  ]);
+
+  expect(report.outcome).toBe("paused");
+  const finalServe = drive.calls.at(-1)!;
+  expect(finalServe.label).toContain("/serve/");
+  expect(finalServe.prompt).not.toContain("drifted summary of the same proof");
 });
 
 test("an unchanged mechanically blocked goal cannot loop", async () => {
@@ -518,27 +579,108 @@ test("the index tripwire also fires at a defect-segment curation entry", async (
   ).toHaveLength(1);
 });
 
-test("a finding keeps its refuted premise and cannot bypass the ancestor gate", async () => {
-  const { drive, report } = await startCampaign([
+test("a hallucinated hidden dependency is rejected before filing and remains resumable", async () => {
+  const path = campaignPath();
+  const drive = dependencies([
     turn([{ text: "Claim: 1 = 2 after rescaling." }]),
     curation([{ finding: 1, summary: "claim: 1 equals 2" }]),
     triage([{ note: "n1", modes: ["refutation"], rationale: "attack it" }]),
     verdict("FAIL", "concrete counterexample"),
     serve([], "restart without the claim"),
     turn([{ text: goalText, basedOn: ["n1"] }]),
-    curation([{ finding: 1, summary: "goal statement" }]),
-    triage([{ note: "n2", modes: ["proof-audit"], rationale: "derivation" }]),
-    verdict("PASS", "derivation holds"),
-    goalServe("n2"),
-    curation([{ finding: 1, summary: "goal blocked on refuted n1" }]),
   ]);
-  expect(report.outcome).toBe("paused");
-  expect(drive.calls).toHaveLength(11);
+  await expect(
+    start(
+      {
+        problem: "Prove that the sum of two even integers is even.",
+        completionCriteria:
+          "Give one standalone proof for arbitrary even integers.",
+        campaignPath: path,
+        settings: runSettings(),
+      },
+      drive,
+    ),
+  ).rejects.toThrow("unknown note id");
+
+  expect(drive.calls).toHaveLength(6);
+  expect(drive.calls[5]!.system).toContain(
+    "basedOn only non-report note ids that appear in the current Note index",
+  );
+  const nextExplorerTool = drive.calls[5]!.tools?.[0];
+  expect(nextExplorerTool).toBeDefined();
   expect(
-    drive.calls.some((call) => call.label.includes("/candidate/proof-audit")),
+    nextExplorerTool!.input.safeParse({
+      findings: [{ text: goalText, basedOn: ["n1"] }],
+    }).success,
   ).toBe(false);
-  expect(drive.calls[10]!.prompt).toContain("unverified ancestors");
-  expect(drive.calls[10]!.prompt).toContain("refuted");
+
+  const reader = openReader(path);
+  const records = reader.records();
+  const failedExplorer = records.findLast((entry) => entry.kind === "call");
+  expect(failedExplorer).toMatchObject({
+    kind: "call",
+    label: drive.calls[5]!.label,
+  });
+  expect(
+    records.some(
+      (entry) =>
+        entry.kind === "tool-call" && entry.call === failedExplorer?.seq,
+    ),
+  ).toBe(false);
+  expect(
+    records.find(
+      (entry) =>
+        entry.kind === "call-result" && entry.parent === failedExplorer?.seq,
+    ),
+  ).toMatchObject({ kind: "call-result", state: "threw" });
+  reader.close();
+
+  const resumed = dependencies([
+    turn([{ text: "A fresh route independent of the refuted claim." }]),
+  ]);
+  const report = await resume(
+    { campaignPath: path, settings: runSettings() },
+    resumed,
+  );
+  expect(report.outcome).toBe("paused");
+  expect(resumed.calls).toHaveLength(1);
+  expect(resumed.calls[0]!.label).toBe(drive.calls[5]!.label);
+});
+
+test("a visible process report cannot be cited as a proof premise", async () => {
+  const path = campaignPath();
+  const drive = dependencies([
+    turn([{ text: "Plan: try induction." }]),
+    curation([{ finding: 1, summary: "process plan: try induction" }]),
+    triage([{ note: "n1", modes: [], rationale: "process report" }]),
+    serve([], "carry out the plan"),
+    turn([{ text: goalText, basedOn: ["n1"] }]),
+  ]);
+
+  await expect(
+    start(
+      {
+        problem: "Prove that the sum of two even integers is even.",
+        completionCriteria:
+          "Give one standalone proof for arbitrary even integers.",
+        campaignPath: path,
+        settings: runSettings(),
+      },
+      drive,
+    ),
+  ).rejects.toThrow("unknown note id");
+
+  const nextExplorer = drive.calls[4]!;
+  expect(nextExplorer.prompt).toContain("process plan: try induction");
+  expect(nextExplorer.prompt).toContain('"standing": "report"');
+  expect(nextExplorer.system).toContain(
+    "basedOn only non-report note ids that appear in the current Note index",
+  );
+  expect(
+    nextExplorer.tools![0]!.input.safeParse({
+      findings: [{ text: goalText, basedOn: ["n1"] }],
+    }).success,
+  ).toBe(false);
 });
 
 test("an exact repeated finding is mechanically reused without re-verification", async () => {
@@ -588,7 +730,28 @@ test("the curator statement participates in immutable note identity", async () =
   ]);
 });
 
-test("a note-mode external premise resolves through the source check and verifies", async () => {
+test("proof-audit plus external-premises can establish mathematical standing", async () => {
+  const { drive, report } = await startCampaign([
+    turn([{ text: goalText }]),
+    curation([{ finding: 1, summary: "the sum of two even integers is even" }]),
+    triage([
+      {
+        note: "n1",
+        modes: ["proof-audit", "external-premises"],
+        rationale: "audit the proof and its sources",
+      },
+    ]),
+    verdict("PASS", "the derivation holds"),
+    { submission: { report: "no external premises", premises: [] } },
+    serve([], "build on the audited proof"),
+    turn([{ text: "Next direction using the audited proof." }]),
+  ]);
+
+  expect(report.outcome).toBe("paused");
+  expect(drive.calls[6]!.prompt).toContain('"standing": "verified"');
+});
+
+test("external-premises alone does not establish mathematical standing", async () => {
   const noteText =
     "The bound follows from closure under addition, giving r+s an integer.";
   const premise = {
@@ -632,7 +795,7 @@ test("a note-mode external premise resolves through the source check and verifie
         },
       },
       serve([], "build on the sourced claim"),
-      turn([{ text: "Next direction on the verified bound." }]),
+      turn([{ text: "Next direction on the sourced bound." }]),
     ],
     { sourceReplies: [sourceResult([resolution])] },
   );
@@ -648,12 +811,56 @@ test("a note-mode external premise resolves through the source check and verifie
       answerQuote: "r+s an integer",
     },
   ]);
-  // the premise audit ran under the note's verify label, and the sourced
-  // PASS completes the plan: the next explorer sees the note verified
+  // The premise audit ran under the note's verify label and resolved its
+  // source question, but it did not audit the note's mathematical derivation.
   expect(drive.calls[3]!.label).toMatch(
     /^elenx-solve\/exploration-v17\/verify\/n1\/external-premises\//,
   );
-  expect(drive.calls[5]!.prompt).toContain('"standing": "verified"');
+  expect(drive.calls[5]!.prompt).toContain('"standing": "conjecture"');
+});
+
+test("boundary external-premises failure rejects the candidate without refuting the note", async () => {
+  const { path, report } = await startCampaign([
+    turn([{ text: goalText }]),
+    curation([{ finding: 1, summary: "the sum of two even integers is even" }]),
+    triage([{ note: "n1", modes: ["proof-audit"], rationale: "derivation" }]),
+    verdict("PASS", "the stored derivation is mathematically valid"),
+    goalServe("n1"),
+    verdict("PASS", "boundary proof audit passes"),
+    verdict("PASS", "independent reconstruction passes"),
+    verdict("PASS", "no mathematical refutation found"),
+    {
+      submission: {
+        report: "The external-premise application is defective.",
+        premises: [
+          {
+            statement: "The integers are closed under addition.",
+            hypotheses: ["r and s are integers"],
+            application: "The proof uses closure to infer r+s is an integer.",
+            answerQuote: "r+s an integer",
+            standing: "MISAPPLIED",
+            defect:
+              "The cited source does not establish the stated application.",
+          },
+        ],
+      },
+    },
+  ]);
+
+  expect(report.outcome).toBe("paused");
+  const inspection = (await import("../inspect")).inspectCampaign(path);
+  expect(inspection.notes).toEqual([
+    expect.objectContaining({ id: "n1", standing: "conjecture" }),
+  ]);
+  expect(inspection.candidates).toHaveLength(1);
+  expect(inspection.candidates[0]).toMatchObject({
+    goalNote: "n1",
+    verified: false,
+  });
+  expect(inspection.candidates[0]!.verdicts.at(-1)).toMatchObject({
+    mode: "external-premises",
+    verdict: "FAIL",
+  });
 });
 
 test("a boundary premise resolves through the isolated source check and solves", async () => {

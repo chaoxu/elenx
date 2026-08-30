@@ -1,6 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 
+import { callSurface } from "../exploration-protocol";
 import { exportAnswer, inspectCampaign } from "../inspect";
 import {
   cleanupCampaigns,
@@ -44,7 +45,7 @@ test("inspection exposes the v17 policy on a fresh campaign", async () => {
   const { path } = await startCampaign([]);
   expect(inspectCampaign(path)).toMatchObject({
     protocol: "exploration-v17",
-    callSurface: "immutable-notes-scoped-boundary",
+    callSurface,
     phase: "explorer",
     maxIndexTokens: 100_000,
     explorations: [],

@@ -6,7 +6,7 @@ import {
   callActivity,
   boundaryModes,
   curationSubmissionFor,
-  explorerSubmission,
+  explorerSubmissionFor,
   parseCampaign,
   serveSubmissionFor,
   settingsSchema,
@@ -69,6 +69,8 @@ describe("v17 settings", () => {
 });
 
 describe("v17 explorer submissions", () => {
+  const explorerSubmission = explorerSubmissionFor(["n1", "n2"]);
+
   test("a turn carries prior-note and earlier-finding dependencies", () => {
     const parsed = explorerSubmission.parse({
       findings: [
@@ -138,6 +140,24 @@ describe("v17 explorer submissions", () => {
         }).success,
       ).toBe(false);
     }
+  });
+
+  test("prior-note dependencies are restricted to notes visible this turn", () => {
+    expect(
+      explorerSubmission.safeParse({
+        findings: [{ text: "finding", basedOn: ["n2"] }],
+      }).success,
+    ).toBe(true);
+    expect(
+      explorerSubmission.safeParse({
+        findings: [{ text: "finding", basedOn: ["n3"] }],
+      }).success,
+    ).toBe(false);
+    expect(
+      explorerSubmissionFor([]).safeParse({
+        findings: [{ text: "first-turn finding", basedOn: ["n1"] }],
+      }).success,
+    ).toBe(false);
   });
 });
 

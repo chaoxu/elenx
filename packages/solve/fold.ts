@@ -4,7 +4,7 @@
 // stops at the first unresolved one. runCampaign dispatches the fold's
 // phase; snapshot projects the rest for the CLI. Everything here is pure
 // over the journal. Matching re-derives the frozen bytes in turns.ts, and
-// the defect-text builders below author frozen bytes of their own.
+// fold-authored.ts supplies the frozen defect and repair bytes.
 
 import { isDeepStrictEqual } from "node:util";
 
@@ -20,6 +20,14 @@ import { piRequest, piStoredResult } from "elenx/pi";
 import { z } from "zod";
 
 import {
+  batteryFinding,
+  mechanicalFinding,
+  offlinePremiseRejection,
+  premiseRepairFindings,
+  sourceRepairFindings,
+  sourceVerificationRejection,
+} from "./fold-authored";
+import {
   boundaryModes,
   type Assessment,
   type CurationSubmission,
@@ -34,7 +42,6 @@ import {
 // verbatim, scoped to one note's exact text instead of a whole candidate.
 import {
   boundaryLabel,
-  callParameters,
   candidateVerifierLabels,
   curationLabel,
   curationTurn,
@@ -45,6 +52,7 @@ import {
   renderIndexBlock,
   serveLabel,
   serveTurn,
+  structuredCallReplayIdentity,
   triageLabel,
   triageTurn,
   verdictTurn,
@@ -61,7 +69,6 @@ import {
 } from "./turns";
 import {
   premiseVerdict,
-  type PremiseFinding,
   type PremiseSubmission,
   type UnresolvedPremise,
 } from "./verifiers/premise-audit";
@@ -191,120 +198,6 @@ export function phaseRole(phase: ModelPhase): string {
   if (phase.kind === "verify") return "verifier";
   if (phase.kind === "note-source-check") return "source-check";
   return phase.kind;
-}
-
-// ---------------------------------------------------------------------------
-// Frozen defect texts. These strings become finding and report bytes that
-// flow into later prompts and journal evidence, so they are replay-frozen
-// exactly like the call surface in turns.ts.
-// ---------------------------------------------------------------------------
-
-function mechanicalFinding(
-  goal: string,
-  gap: {
-    readonly report?: boolean;
-    readonly unverified: readonly {
-      readonly id: string;
-      readonly standing: string;
-    }[];
-    readonly cyclic: boolean;
-  },
-): Finding {
-  const reasons: string[] = [];
-  if (gap.report === true) {
-    reasons.push("the declared note is a process report, not a claim");
-  }
-  if (gap.unverified.length > 0) {
-    reasons.push(`unverified ancestors: ${JSON.stringify(gap.unverified)}`);
-  }
-  if (gap.cyclic) reasons.push("the declared note sits on a dependency cycle");
-  return {
-    text: `Goal declaration for note ${goal} was rejected before verification.\n\nBlocking gaps:\n${reasons.join("\n")}`,
-    basedOn: [],
-    basedOnFindings: [],
-  };
-}
-
-function batteryFinding(
-  candidate: EntryId,
-  goal: string,
-  failing: readonly VerdictRecord[],
-): Finding {
-  const quoted = failing.map(({ mode, verdict, report }) => ({
-    mode,
-    verdict,
-    report,
-  }));
-  return {
-    text: `Goal candidate ${candidate} for note ${goal} failed boundary verification.\n\nFailing verdicts:\n${JSON.stringify(quoted, null, 2)}`,
-    basedOn: [],
-    basedOnFindings: [],
-  };
-}
-
-function defectReport(report: string, details: unknown): string {
-  return `${report}\n\nExact blocking findings:\n${JSON.stringify(details, null, 2)}`;
-}
-
-function premiseRepairFindings(findings: readonly PremiseFinding[]): Json[] {
-  const selected: Json[] = [];
-  for (const finding of findings) {
-    if (finding.standing === "REFUTED") {
-      selected.push({
-        statement: finding.statement,
-        standing: finding.standing,
-        refutation: finding.refutation,
-      });
-    }
-    if (finding.standing === "MISAPPLIED") {
-      selected.push({
-        statement: finding.statement,
-        standing: finding.standing,
-        defect: finding.defect,
-      });
-    }
-  }
-  return selected;
-}
-
-function sourceRepairFindings(
-  resolutions: readonly SourceResolution[],
-): Json[] {
-  const selected: Json[] = [];
-  for (const resolution of resolutions) {
-    if (resolution.standing === "REFUTED") {
-      selected.push({
-        statement: resolution.statement,
-        standing: resolution.standing,
-        refutation: resolution.refutation,
-      });
-    }
-    if (resolution.standing === "MISAPPLIED") {
-      selected.push({
-        statement: resolution.statement,
-        standing: resolution.standing,
-        defect: resolution.defect,
-      });
-    }
-    if (resolution.standing === "UNRESOLVED") {
-      selected.push({
-        statement: resolution.statement,
-        standing: resolution.standing,
-        gap: resolution.gap,
-      });
-    }
-    if (
-      resolution.standing === "SOURCED" &&
-      resolution.candidateCitationMatch === "MISMATCH"
-    ) {
-      selected.push({
-        statement: resolution.statement,
-        standing: "CITATION_MISMATCH",
-        defect: resolution.candidateCitationCheck,
-      });
-    }
-  }
-  return selected;
 }
 
 interface NoteModeContext {
@@ -438,8 +331,8 @@ function resolvePremiseCascade(
       verdict: initial,
       report:
         initial === "FAIL"
-          ? defectReport(
-              `Offline premise verification rejected the ${options.subject}.`,
+          ? offlinePremiseRejection(
+              options.subject,
               premiseRepairFindings(offline.value.premises),
             )
           : offline.value.report,
@@ -474,8 +367,8 @@ function resolvePremiseCascade(
     verdict,
     report:
       verdict === "FAIL"
-        ? defectReport(
-            `Source verification rejected the ${options.subject}.`,
+        ? sourceVerificationRejection(
+            options.subject,
             sourceRepairFindings(source.result.resolutions),
           )
         : source.result.report,
@@ -736,28 +629,10 @@ function matchesStructuredCall(
   if (!parsed.success || parsed.data.modelProfile === undefined) return false;
   const { modelProfile: _profile, ...request } = parsed.data;
   void _profile;
+  const expected = structuredCallReplayIdentity(turn);
   return (
-    isDeepStrictEqual(request, {
-      protocol: "elenx/pi-run/v1",
-      model: {
-        provider: turn.profile.provider,
-        id: turn.profile.model,
-        api: turn.profile.api,
-        baseUrl: turn.profile.baseUrl,
-      },
-      system: turn.system,
-      prompt: turn.prompt,
-      reasoning: turn.profile.reasoning,
-      ...callParameters,
-      cacheKey: turn.cacheKey,
-    }) &&
-    isDeepStrictEqual(entry.tools, [
-      {
-        name: turn.tool,
-        description: turn.description,
-        inputSchema: z.toJSONSchema(turn.schema),
-      },
-    ])
+    isDeepStrictEqual(request, expected.request) &&
+    isDeepStrictEqual(entry.tools, expected.tools)
   );
 }
 
@@ -818,10 +693,11 @@ export function jsonSnapshot(value: unknown): Json {
 }
 
 // Standing is derived, never stored. A triage plan and its later mode verdicts
-// apply to one immutable note. Any valid FAIL refutes; an empty valid plan
-// marks a process report. Every planned mode must pass, and at least one mode
-// must establish truth rather than merely fail to refute. Verification remains
-// conditional on basedOn statements, which the boundary re-checks mechanically.
+// apply to one immutable note. Any valid mathematical FAIL refutes; an empty
+// valid plan marks a process report. Every planned mode must pass, and at least
+// one mode must audit or reconstruct the derivation rather than merely check
+// refutation or sources. Verification remains conditional on basedOn
+// statements, which the boundary re-checks mechanically.
 function deriveStanding(
   versionAt: EntryId,
   plan: { readonly modes: readonly string[]; readonly at: EntryId } | undefined,
@@ -832,7 +708,21 @@ function deriveStanding(
   }[],
 ): Standing {
   const valid = verdicts.filter((entry) => entry.at > versionAt);
-  if (valid.some((entry) => entry.verdict === "FAIL")) return "refuted";
+  const mathematicalFailure = valid.some(
+    (entry) =>
+      entry.verdict === "FAIL" &&
+      (entry.mode === "proof-audit" ||
+        entry.mode === "reconstruction" ||
+        entry.mode === "refutation"),
+  );
+  if (mathematicalFailure) return "refuted";
+  if (
+    valid.some(
+      (entry) => entry.mode === "external-premises" && entry.verdict === "FAIL",
+    )
+  ) {
+    return "conjecture";
+  }
   if (plan === undefined || plan.at <= versionAt) return "conjecture";
   if (plan.modes.length === 0) return "report";
   const passed = new Set(
@@ -840,8 +730,8 @@ function deriveStanding(
       .filter((entry) => entry.verdict === "PASS")
       .map((entry) => entry.mode),
   );
-  const establishesTruth = plan.modes.some((mode) =>
-    ["proof-audit", "reconstruction", "external-premises"].includes(mode),
+  const establishesTruth = plan.modes.some(
+    (mode) => mode === "proof-audit" || mode === "reconstruction",
   );
   return establishesTruth && plan.modes.every((mode) => passed.has(mode))
     ? "verified"
@@ -966,9 +856,9 @@ export function foldCampaign(reader: Reader, task: Task): CampaignFold {
   const candidateIndex = (): StandingEntry[] =>
     order.flatMap((id) => {
       const standing = standingOf(id);
-      const attempted = state.candidates.some(
-        (candidate) =>
-          candidate.goalNote === id && candidate.answer === noteOf(id).text,
+      const material = new TextEncoder().encode(noteOf(id).text);
+      const attempted = state.candidates.some((candidate) =>
+        isDeepStrictEqual(reader.material(candidate.id), material),
       );
       const unchangedMechanicalGap = mechanicalGaps.some(
         (gap) =>
@@ -1260,7 +1150,7 @@ export function foldCampaign(reader: Reader, task: Task): CampaignFold {
             );
             pipelineCursor = outcome.record.settled;
             if (outcome.record.verdict === "FAIL") {
-              refuted.add(id);
+              if (mode !== "external-premises") refuted.add(id);
               break;
             }
           }
@@ -1357,8 +1247,14 @@ export function foldCampaign(reader: Reader, task: Task): CampaignFold {
       if ("pending" in outcome) return finish(outcome.pending);
       state.candidates.push(outcome.candidate);
       for (const verdict of outcome.candidate.verdicts) {
+        if (verdict.mode === "criteria-match") continue;
         applyVerdict(goal, verdict.mode, verdict.verdict, verdict.record);
-        if (verdict.verdict === "FAIL") refuted.add(goal);
+        if (
+          verdict.mode !== "external-premises" &&
+          verdict.verdict === "FAIL"
+        ) {
+          refuted.add(goal);
+        }
       }
       if (outcome.solved) {
         return finish({ kind: "solved", candidate: found.id });

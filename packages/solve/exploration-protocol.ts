@@ -4,7 +4,10 @@ import { z } from "zod";
 
 export const applicationId = "elenx-solve";
 export const protocolName = "exploration-v17";
-export const callSurface = "immutable-notes-scoped-boundary";
+// The file tests/fixtures/call-surfaces/<callSurface>.json pins the exact
+// structured call identity for this stamp. The updater refuses to replace an
+// existing file, so changed prompt or schema bytes require a new stamp.
+export const callSurface = "immutable-notes-scoped-boundary-proof-dependencies";
 
 const modelProfile = z.strictObject({
   provider: z.string().min(1),
@@ -133,38 +136,42 @@ export function parseCampaign(declaration: Entry | undefined): {
 // submit path: completion is the curator's judgment, not an explorer impulse.
 // ---------------------------------------------------------------------------
 
-const finding = z.strictObject({
-  text: nonblank,
-  basedOn: z.array(noteId).default([]),
-  basedOnFindings: z.array(positiveInteger).default([]),
-});
-export type Finding = z.output<typeof finding>;
-
-export const explorerSubmission = z
-  .strictObject({
-    findings: z.array(finding).min(1),
-    nextObjective: nonblank.optional(),
-    expand: z.array(noteId).default([]),
-  })
-  .superRefine((value, ctx) => {
-    for (const [index, entry] of value.findings.entries()) {
-      const position = index + 1;
-      for (const [
-        referenceIndex,
-        reference,
-      ] of entry.basedOnFindings.entries()) {
-        if (reference >= position) {
-          ctx.addIssue({
-            code: "custom",
-            message:
-              "finding-local dependencies must reference an earlier finding",
-            path: ["findings", index, "basedOnFindings", referenceIndex],
-          });
+export function explorerSubmissionFor(visibleNoteIds: readonly string[]) {
+  const visibleNote = noteIdIn(visibleNoteIds, "unknown note id");
+  const finding = z.strictObject({
+    text: nonblank,
+    basedOn: z.array(visibleNote).default([]),
+    basedOnFindings: z.array(positiveInteger).default([]),
+  });
+  return z
+    .strictObject({
+      findings: z.array(finding).min(1),
+      nextObjective: nonblank.optional(),
+      expand: z.array(noteId).default([]),
+    })
+    .superRefine((value, ctx) => {
+      for (const [index, entry] of value.findings.entries()) {
+        const position = index + 1;
+        for (const [
+          referenceIndex,
+          reference,
+        ] of entry.basedOnFindings.entries()) {
+          if (reference >= position) {
+            ctx.addIssue({
+              code: "custom",
+              message:
+                "finding-local dependencies must reference an earlier finding",
+              path: ["findings", index, "basedOnFindings", referenceIndex],
+            });
+          }
         }
       }
-    }
-  });
-export type ExplorerSubmission = z.output<typeof explorerSubmission>;
+    });
+}
+export type ExplorerSubmission = z.output<
+  ReturnType<typeof explorerSubmissionFor>
+>;
+export type Finding = ExplorerSubmission["findings"][number];
 
 // ---------------------------------------------------------------------------
 // Curator ingest

@@ -19,7 +19,7 @@ A separate name requires distinct bytes, authority, or lifecycle.
 | **mode**               | One verification method: `proof-audit`, `reconstruction`, `refutation`, or `external-premises`.              |
 | **assessment**         | `PASS`, `FAIL`, or `INCONCLUSIVE` plus one report.                                                           |
 | **standing**           | Derived note status: `verified`, `conjecture`, `report`, or `refuted`. Never stored.                         |
-| **verified**           | Standing of a note whose valid plan holds a valid `PASS` for every mode, conditional on its `basedOn`.       |
+| **verified**           | A note with proof audit or reconstruction and `PASS` for every planned mode, conditional on its `basedOn`.   |
 | **goal note**          | The live note whose statement the curator declares to meet the completion criteria.                          |
 | **boundary battery**   | Every mode plus `criteria-match`, run against the goal note with unconditional authority.                    |
 | **verified tower**     | The goal note and its fully verified, acyclic ancestor closure — the campaign's result.                      |
