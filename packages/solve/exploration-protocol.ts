@@ -4,7 +4,7 @@ import { z } from "zod";
 
 export const applicationId = "elenx-solve";
 export const protocolName = "exploration-v17";
-export const callSurface = "summary-goal-exact-criteria";
+export const callSurface = "immutable-notes-scoped-boundary";
 
 const modelProfile = z.strictObject({
   provider: z.string().min(1),
@@ -136,61 +136,56 @@ export function parseCampaign(declaration: Entry | undefined): {
 const finding = z.strictObject({
   text: nonblank,
   basedOn: z.array(noteId).default([]),
+  basedOnFindings: z.array(positiveInteger).default([]),
 });
 export type Finding = z.output<typeof finding>;
 
-export const explorerSubmission = z.strictObject({
-  findings: z.array(finding).min(1),
-  nextObjective: nonblank.optional(),
-  expand: z.array(noteId).default([]),
-});
+export const explorerSubmission = z
+  .strictObject({
+    findings: z.array(finding).min(1),
+    nextObjective: nonblank.optional(),
+    expand: z.array(noteId).default([]),
+  })
+  .superRefine((value, ctx) => {
+    for (const [index, entry] of value.findings.entries()) {
+      const position = index + 1;
+      for (const [
+        referenceIndex,
+        reference,
+      ] of entry.basedOnFindings.entries()) {
+        if (reference >= position) {
+          ctx.addIssue({
+            code: "custom",
+            message:
+              "finding-local dependencies must reference an earlier finding",
+            path: ["findings", index, "basedOnFindings", referenceIndex],
+          });
+        }
+      }
+    }
+  });
 export type ExplorerSubmission = z.output<typeof explorerSubmission>;
 
 // ---------------------------------------------------------------------------
 // Curator ingest
 //
-// The curator files every finding of a turn exactly once: minted as a new
-// note, recorded as a new version of an existing note it refines, or dropped
-// as a duplicate. Text is the finding's exact bytes; the curator writes only
-// the summary. The curator holds no verification power: standing comes from
-// triage plans and verifier verdicts alone.
+// The curator summarizes every finding exactly once. Findings are immutable:
+// the fold mints every new exact (text, basedOn) pair and mechanically reuses
+// only byte-identical pairs. The curator holds no replacement, deduplication,
+// or verification power.
 // ---------------------------------------------------------------------------
 
-export function curationSubmissionFor(
-  findingCount: number,
-  existingNoteIds: readonly string[],
-) {
-  const knownNote = noteIdIn(existingNoteIds, "unknown note id");
-  const filing = z
-    .strictObject({
-      finding: positiveInteger.max(findingCount),
-      summary: nonblank.optional(),
-      refines: knownNote.optional(),
-      duplicateOf: knownNote.optional(),
-    })
-    .superRefine((value, ctx) => {
-      if (value.refines !== undefined && value.duplicateOf !== undefined) {
-        ctx.addIssue({
-          code: "custom",
-          message: "a filing is a mint, a refinement, or a duplicate",
-          path: ["refines"],
-        });
-      }
-      if (value.duplicateOf === undefined && value.summary === undefined) {
-        ctx.addIssue({
-          code: "custom",
-          message: "minting or refining requires a summary",
-          path: ["summary"],
-        });
-      }
-    });
+export function curationSubmissionFor(findingCount: number) {
+  const filing = z.strictObject({
+    finding: positiveInteger.max(findingCount),
+    summary: nonblank,
+  });
   return z
     .strictObject({
       filings: z.array(filing),
     })
     .superRefine((value, ctx) => {
       const seen = new Set<number>();
-      const refined = new Set<string>();
       for (const [index, entry] of value.filings.entries()) {
         if (seen.has(entry.finding)) {
           ctx.addIssue({
@@ -200,18 +195,6 @@ export function curationSubmissionFor(
           });
         }
         seen.add(entry.finding);
-        if (entry.refines !== undefined) {
-          // One version per note per curation: a second same-turn revision
-          // would share the first's journal seq and silently replace it.
-          if (refined.has(entry.refines)) {
-            ctx.addIssue({
-              code: "custom",
-              message: "each note is refined at most once per curation",
-              path: ["filings", index, "refines"],
-            });
-          }
-          refined.add(entry.refines);
-        }
       }
       if (seen.size !== findingCount) {
         ctx.addIssue({

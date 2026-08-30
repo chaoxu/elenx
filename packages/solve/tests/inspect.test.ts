@@ -44,7 +44,7 @@ test("inspection exposes the v17 policy on a fresh campaign", async () => {
   const { path } = await startCampaign([]);
   expect(inspectCampaign(path)).toMatchObject({
     protocol: "exploration-v17",
-    callSurface: "summary-goal-exact-criteria",
+    callSurface: "immutable-notes-scoped-boundary",
     phase: "explorer",
     maxIndexTokens: 100_000,
     explorations: [],
@@ -81,7 +81,6 @@ test("inspection reports the verified tower and export unfolds it", async () => 
   expect(inspection.curations).toHaveLength(2);
   expect(inspection.curations[0]).toMatchObject({
     minted: ["n1"],
-    refined: [],
     duplicates: 0,
   });
   expect(inspection.curations[1]).toMatchObject({ minted: ["n2"] });
@@ -117,7 +116,6 @@ test("inspection reports the verified tower and export unfolds it", async () => 
     id: "n1",
     summary: "LEMMA_SUMMARY",
     standing: "verified",
-    versions: 1,
   });
   expect(inspection.notes[1]).toMatchObject({
     id: "n2",

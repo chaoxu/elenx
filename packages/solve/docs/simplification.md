@@ -19,6 +19,7 @@ V17 replaces its predecessor rather than adapting it.
 - the archivist and recall packets
 - repair mode and repair depth
 - curator invalidation power
+- curator-selected refinement and semantic deduplication
 - per-gate verifier roles and their separate tools
 - the replay-release ladder for earlier protocols
 

@@ -10,7 +10,7 @@ Receives:
 
 - exact task and explorer guidance
 - the complete standing-annotated live index: every non-refuted note's ID, standing, and summary
-- the served working set: full texts of the notes the curator expanded, plus the previous curation's live mints and refinements
+- the served working set: full texts of the notes the curator expanded, plus the previous curation's newly minted notes
 - the transient objective, when the previous serve stated one
 - after a failed boundary battery, the goal note's text and the failing verdicts
 - no earlier context on the first turn
@@ -19,7 +19,7 @@ Receives:
 Excluded:
 
 - raw prior transcripts
-- note versions, refuted notes, and full texts outside the working set
+- refuted notes outside an explicitly served repair context, and full texts outside the working set
 - triage plans, rationales, and verdict reports outside failure context
 - retrieval tools of any kind
 - filesystem, shell, web, browser control, memory, plugins, and delegation
@@ -29,16 +29,17 @@ Excluded:
 Receives:
 
 - exact task
-- the turn's findings: exact bytes, numbered, with their `basedOn` references
+- the turn's findings: exact bytes, numbered, with prior-note `basedOn` references and backward `basedOnFindings` references
 - the standing-annotated live index
 - one terminal filing tool
 
 Excluded:
 
-- note full texts and versions
+- existing note full texts
 - triage plans and verdicts
 - raw prior transcripts
 - any invalidation or verification power
+- replacement, merge, semantic-deduplication, or drop authority
 - web and execution capabilities
 
 ## Curator serve
@@ -46,12 +47,12 @@ Excluded:
 Receives:
 
 - exact task and completion criteria
-- the standing-annotated live index
+- every non-report note not already attempted at the boundary, including locally refuted notes
 - the completed explorer-turn count
 - the previous explorer's expansion requests and next objective, as hints
 - one terminal serving tool
 
-Serve uses summaries only to identify a note that states the requested conclusion, parameters, and direction. It leaves definitions, derivations, citations, and other proof-content criteria to the boundary battery over the exact stored note text.
+Serve uses summaries only to identify a note that states the requested conclusion, parameters, and direction. It declares that note without waiting for local standing. Definitions, derivations, citations, and other proof-content criteria belong to the boundary battery over the exact stored note text.
 
 Excluded:
 
@@ -78,10 +79,10 @@ Excluded:
 
 ## Mode verifier
 
-Every mode receives the exact task and one terminal assessment tool, then exactly its mode's material:
+Local modes receive the problem as context and one terminal assessment tool. They do not receive the campaign completion criteria and judge only the note's own claim. Boundary modes receive the exact task and completion criteria. Each mode then receives exactly its material:
 
 - `proof-audit` — the note's exact text and statement, with its `basedOn` statements given as premises
-- `reconstruction` — the note's statement and its premise statements only, never its derivation
+- `reconstruction` — the note's statement and premise statements only, never its derivation; at the boundary the statement is the exact problem
 - `refutation` — the note's exact statement and text, with its `basedOn` statements given as premises
 - `criteria-match` (boundary only) — the goal note's statement and exact text plus the completion criteria, with its `basedOn` statements given as premises
 - `external-premises` — the note's exact text for premise inventory, with its `basedOn` statements given as established premises; unresolved premises go to the source checker
@@ -111,6 +112,6 @@ Excluded:
 
 ## Tests
 
-Behavior tests drive scripted campaigns through the real loop and assert directly on the dispatched prompt bytes: required material appears and excluded material stays out — reconstruction withholds the goal text while criteria-match receives it, a refuted note leaves the next explorer's index, and triage rationales and note verdict reports appear in no prompt at all.
+Behavior tests drive scripted campaigns through the real loop and assert prompt bytes, immutable identity, same-turn dependency resolution, truth-establishing standing, refuted-premise preservation, local-to-boundary authority, and failed-goal progress. Reconstruction withholds the goal text while criteria-match receives it. Triage rationales and note verdict reports appear in no later prompt.
 
 Inspection exposes exact requests only under `--include-inputs`. No runtime role can request raw journal history.

@@ -12,13 +12,13 @@ A separate name requires distinct bytes, authority, or lifecycle.
 | **provider request**   | One model-provider operation inside a call.                                                                  |
 | **tool submission**    | One model's structured terminal output.                                                                      |
 | **finding**            | One self-contained free-text report from an explorer, with the note IDs it builds on.                        |
-| **note**               | One filed finding: `summary` is the index entry, `text` is the finding's exact bytes.                        |
+| **note**               | One immutable `(summary, exact text, dependency IDs)` finding.                                               |
 | **index**              | Every non-refuted note's ID, standing, and summary, shown whole to every explorer.                           |
 | **working set**        | The full note texts served to one explorer turn.                                                             |
 | **triage plan**        | The frozen-menu mode list one triage call assigns to one note, with a rationale.                             |
 | **mode**               | One verification method: `proof-audit`, `reconstruction`, `refutation`, or `external-premises`.              |
 | **assessment**         | `PASS`, `FAIL`, or `INCONCLUSIVE` plus one report.                                                           |
-| **standing**           | Derived note status: `verified`, `conjecture`, `report`, or `refuted`. Never stored; a revision stales it.   |
+| **standing**           | Derived note status: `verified`, `conjecture`, `report`, or `refuted`. Never stored.                         |
 | **verified**           | Standing of a note whose valid plan holds a valid `PASS` for every mode, conditional on its `basedOn`.       |
 | **goal note**          | The live note whose statement the curator declares to meet the completion criteria.                          |
 | **boundary battery**   | Every mode plus `criteria-match`, run against the goal note with unconditional authority.                    |

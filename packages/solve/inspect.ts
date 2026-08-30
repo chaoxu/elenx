@@ -178,14 +178,11 @@ export function inspectCampaign(path: string, options: InspectionOptions = {}) {
       }),
     );
     const curations = semantic.curations.map(
-      ({ call, settled, submission, minted, refined }) => ({
+      ({ call, settled, minted, duplicates }) => ({
         call,
         settled,
         minted,
-        refined,
-        duplicates: submission.filings.filter(
-          ({ duplicateOf }) => duplicateOf !== undefined,
-        ).length,
+        duplicates,
       }),
     );
     const triages = semantic.triages.map(({ call, settled, submission }) => ({
@@ -215,11 +212,10 @@ export function inspectCampaign(path: string, options: InspectionOptions = {}) {
         : { goalNote: submission.goalNote }),
     }));
     const notes = semantic.notes.map(
-      ({ id, summary, standing, versions, at, parents, text }) => ({
+      ({ id, summary, standing, at, parents, text }) => ({
         id,
         summary,
         standing,
-        versions,
         at,
         ...(parents.length === 0 ? {} : { parents }),
         ...(options.includeInputs === true ? { text } : {}),

@@ -12,7 +12,7 @@ Every explorer starts from a fresh root. It receives no web, filesystem, shell, 
 
 ## Curator
 
-The curator is one role with two call sites. Ingest files every reported finding exactly once; serve composes what the next explorer sees, or points at the goal note. The curator writes summaries but never rewrites finding bytes, and it holds no verification power: it cannot plan audits, issue verdicts, or invalidate a note. What it controls is observation — the working set and the goal declaration — never standing and never acceptance.
+The curator is one role with two call sites. Ingest writes one summary for every reported finding; immutable note identity and exact deduplication are mechanical. Serve composes what the next explorer sees, or points at the goal note. The curator cannot replace, merge, drop, grade, or invalidate findings. It controls observation — the working set and the goal declaration — while standing and acceptance remain separate.
 
 ## Verification subsystem
 

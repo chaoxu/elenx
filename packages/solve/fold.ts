@@ -84,7 +84,7 @@ export interface CurationRecord {
   readonly settled: EntryId;
   readonly submission: CurationSubmission;
   readonly minted: readonly string[];
-  readonly refined: readonly string[];
+  readonly duplicates: number;
 }
 
 export interface TriageRecord {
@@ -221,6 +221,7 @@ function mechanicalFinding(
   return {
     text: `Goal declaration for note ${goal} was rejected before verification.\n\nBlocking gaps:\n${reasons.join("\n")}`,
     basedOn: [],
+    basedOnFindings: [],
   };
 }
 
@@ -237,6 +238,7 @@ function batteryFinding(
   return {
     text: `Goal candidate ${candidate} for note ${goal} failed boundary verification.\n\nFailing verdicts:\n${JSON.stringify(quoted, null, 2)}`,
     basedOn: [],
+    basedOnFindings: [],
   };
 }
 
@@ -323,6 +325,7 @@ function resolveNoteMode(
 ): { readonly pending: Phase } | { readonly record: NoteVerdictRecord } {
   const label = verifyLabel(context.note, context.mode, context.trigger);
   const view: VerifyView = {
+    scope: "note",
     note: context.note,
     statement: context.statement,
     text: context.text,
@@ -354,7 +357,7 @@ function resolveNoteMode(
   }
 
   // For a note-level source check the request's candidate field carries the
-  // note's current version seq as deterministic provenance.
+  // immutable note's journal seq as deterministic provenance.
   const outcome = resolvePremiseCascade(records, task, {
     subject: "note",
     text: context.text,
@@ -482,7 +485,6 @@ function resolvePremiseCascade(
 }
 
 interface BoundaryContext {
-  readonly statement: string;
   readonly premises: readonly PremiseStatement[];
 }
 
@@ -499,8 +501,9 @@ function resolveBoundary(
   for (const mode of boundaryModes) {
     const label = boundaryLabel(mode);
     const view: VerifyView = {
+      scope: "boundary",
       note: candidate.goalNote,
-      statement: context.statement,
+      statement: task.problem,
       text: candidate.answer,
       premises: context.premises,
       mode,
@@ -814,12 +817,11 @@ export function jsonSnapshot(value: unknown): Json {
   return JSON.parse(encoded) as Json;
 }
 
-// Standing is derived, never stored: a triage plan and its mode verdicts
-// apply to the note version they were issued against, so a revision stales
-// them and the note returns to conjecture until re-triaged. Any valid FAIL
-// refutes; an empty valid plan marks a process report; a valid plan whose
-// every mode holds a valid PASS verifies — conditionally on the note's
-// basedOn statements, which the boundary's mechanical gates re-check.
+// Standing is derived, never stored. A triage plan and its later mode verdicts
+// apply to one immutable note. Any valid FAIL refutes; an empty valid plan
+// marks a process report. Every planned mode must pass, and at least one mode
+// must establish truth rather than merely fail to refute. Verification remains
+// conditional on basedOn statements, which the boundary re-checks mechanically.
 function deriveStanding(
   versionAt: EntryId,
   plan: { readonly modes: readonly string[]; readonly at: EntryId } | undefined,
@@ -838,7 +840,10 @@ function deriveStanding(
       .filter((entry) => entry.verdict === "PASS")
       .map((entry) => entry.mode),
   );
-  return plan.modes.every((mode) => passed.has(mode))
+  const establishesTruth = plan.modes.some((mode) =>
+    ["proof-audit", "reconstruction", "external-premises"].includes(mode),
+  );
+  return establishesTruth && plan.modes.every((mode) => passed.has(mode))
     ? "verified"
     : "conjecture";
 }
@@ -847,7 +852,6 @@ export interface NoteSnapshot {
   readonly id: string;
   readonly summary: string;
   readonly standing: Standing;
-  readonly versions: number;
   readonly at: EntryId;
   readonly text: string;
   readonly parents: readonly string[];
@@ -879,7 +883,6 @@ interface FoldNote {
   summary: string;
   text: string;
   at: EntryId;
-  versions: number;
 }
 
 interface State {
@@ -960,6 +963,27 @@ export function foldCampaign(reader: Reader, task: Task): CampaignFold {
       if (standing === "refuted") return [];
       return [{ id, summary: noteOf(id).summary, standing }];
     });
+  const candidateIndex = (): StandingEntry[] =>
+    order.flatMap((id) => {
+      const standing = standingOf(id);
+      const attempted = state.candidates.some(
+        (candidate) =>
+          candidate.goalNote === id && candidate.answer === noteOf(id).text,
+      );
+      const unchangedMechanicalGap = mechanicalGaps.some(
+        (gap) =>
+          gap.goalNote === id &&
+          (gap.report ||
+            gap.cyclic ||
+            gap.unverified.some(
+              (ancestor) => standingOf(ancestor) !== "verified",
+            )),
+      );
+      if (standing === "report" || attempted || unchangedMechanicalGap) {
+        return [];
+      }
+      return [{ id, summary: noteOf(id).summary, standing }];
+    });
   const summaryOf = (id: string): string => noteOf(id).summary;
   const textOf = (id: string): string => noteOf(id).text;
   const premisesOf = (ids: readonly string[]): PremiseStatement[] =>
@@ -979,7 +1003,7 @@ export function foldCampaign(reader: Reader, task: Task): CampaignFold {
     const requested = [...recentIds, ...expandIds];
     const selected: { id: string; text: string }[] = [];
     for (const id of requested) {
-      if (refuted.has(id) || selected.some((note) => note.id === id)) continue;
+      if (selected.some((note) => note.id === id)) continue;
       selected.push({ id, text: noteOf(id).text });
     }
     return selected;
@@ -1004,23 +1028,41 @@ export function foldCampaign(reader: Reader, task: Task): CampaignFold {
   ): string[] => {
     const knownBefore = new Set(order);
     const minted: string[] = [];
-    const refined: string[] = [];
-    for (const filing of curated.value.filings) {
+    let duplicates = 0;
+    const resolvedByFinding = new Map<number, string>();
+    const filings = [...curated.value.filings].sort(
+      (left, right) => left.finding - right.finding,
+    );
+    for (const filing of filings) {
       const finding = findings[filing.finding - 1];
       if (finding === undefined) {
         throw new Error("curation filing references an absent finding");
       }
-      if (filing.duplicateOf !== undefined) continue;
-      if (filing.summary === undefined) {
-        throw new Error("curation filing is missing its summary");
+      const unknown = finding.basedOn.find(
+        (parent) => !knownBefore.has(parent),
+      );
+      if (unknown !== undefined) {
+        throw new Error(`finding depends on unknown note ${unknown}`);
       }
-      if (filing.refines !== undefined) {
-        const existing = noteOf(filing.refines);
-        existing.summary = filing.summary;
-        existing.text = finding.text;
-        existing.at = curated.settled;
-        existing.versions += 1;
-        refined.push(filing.refines);
+      const localParents = finding.basedOnFindings.map((reference) => {
+        const parent = resolvedByFinding.get(reference);
+        if (parent === undefined) {
+          throw new Error(
+            `finding depends on unresolved local finding ${reference}`,
+          );
+        }
+        return parent;
+      });
+      const dependsOn = [...new Set([...finding.basedOn, ...localParents])];
+      const duplicate = order.find(
+        (id) =>
+          noteOf(id).summary === filing.summary &&
+          noteOf(id).text === finding.text &&
+          isDeepStrictEqual(parents.get(id) ?? [], dependsOn),
+      );
+      if (duplicate !== undefined) {
+        duplicates += 1;
+        resolvedByFinding.set(filing.finding, duplicate);
         continue;
       }
       // order is push-only and dependsOn edges point at earlier notes only,
@@ -1028,27 +1070,24 @@ export function foldCampaign(reader: Reader, task: Task): CampaignFold {
       // minting here and export ordering (inspect.ts) both rest on this.
       const id = `n${order.length + 1}`;
       order.push(id);
-      const dependsOn = finding.basedOn.filter(
-        (parent) => knownBefore.has(parent) && !refuted.has(parent),
-      );
       notes.set(id, {
         summary: filing.summary,
         text: finding.text,
         at: curated.settled,
-        versions: 1,
       });
       parents.set(id, dependsOn);
       minted.push(id);
+      resolvedByFinding.set(filing.finding, id);
     }
     state.curations.push({
       call: curated.call,
       settled: curated.settled,
       submission: curated.value,
       minted,
-      refined,
+      duplicates,
     });
-    recentIds = [...minted, ...refined];
-    return [...minted, ...refined];
+    recentIds = minted;
+    return minted;
   };
   const finish = (phase: Phase): CampaignFold => ({
     phase,
@@ -1066,7 +1105,6 @@ export function foldCampaign(reader: Reader, task: Task): CampaignFold {
         id,
         summary: note.summary,
         standing: standingOf(id),
-        versions: note.versions,
         at: note.at,
         text: note.text,
         parents: parents.get(id) ?? [],
@@ -1239,7 +1277,7 @@ export function foldCampaign(reader: Reader, task: Task): CampaignFold {
       }
 
       const serveView: ServeView = {
-        index: liveIndex(),
+        index: candidateIndex(),
         turns: state.turns.length,
         hints,
       };
@@ -1314,7 +1352,6 @@ export function foldCampaign(reader: Reader, task: Task): CampaignFold {
         return finish({ kind: "create-candidate", answer: goalText });
       }
       const outcome = resolveBoundary(records, task, found, {
-        statement: summaryOf(goal),
         premises: premisesOf(parents.get(goal) ?? []),
       });
       if ("pending" in outcome) return finish(outcome.pending);

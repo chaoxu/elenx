@@ -69,18 +69,40 @@ describe("v17 settings", () => {
 });
 
 describe("v17 explorer submissions", () => {
-  test("a turn carries findings and defaults their basedOn", () => {
+  test("a turn carries prior-note and earlier-finding dependencies", () => {
     const parsed = explorerSubmission.parse({
       findings: [
         { text: "lemma L holds" },
-        { text: "route B dies", basedOn: ["n2"] },
+        {
+          text: "route B dies",
+          basedOn: ["n2"],
+          basedOnFindings: [1],
+        },
       ],
       nextObjective: "close the parity case",
       expand: ["n1"],
     });
     expect(parsed.findings[0]?.basedOn).toEqual([]);
+    expect(parsed.findings[0]?.basedOnFindings).toEqual([]);
     expect(parsed.findings[1]?.basedOn).toEqual(["n2"]);
+    expect(parsed.findings[1]?.basedOnFindings).toEqual([1]);
     expect(parsed.expand).toEqual(["n1"]);
+  });
+
+  test("finding-local dependencies must point backward", () => {
+    expect(
+      explorerSubmission.safeParse({
+        findings: [
+          { text: "first", basedOnFindings: [1] },
+          { text: "second", basedOnFindings: [2] },
+        ],
+      }).success,
+    ).toBe(false);
+    expect(
+      explorerSubmission.safeParse({
+        findings: [{ text: "first" }, { text: "second", basedOnFindings: [1] }],
+      }).success,
+    ).toBe(true);
   });
 
   test("a turn requires at least one finding", () => {
@@ -120,7 +142,7 @@ describe("v17 explorer submissions", () => {
 });
 
 describe("v17 curation submissions", () => {
-  const schema = curationSubmissionFor(2, ["n1", "n2"]);
+  const schema = curationSubmissionFor(2);
 
   test("files every finding exactly once", () => {
     expect(
@@ -152,7 +174,7 @@ describe("v17 curation submissions", () => {
     ).toBe(false);
   });
 
-  test("minting and refining require a summary; duplicates do not", () => {
+  test("every finding requires a summary", () => {
     expect(
       schema.safeParse({
         filings: [{ finding: 1 }, { finding: 2, summary: "second" }],
@@ -161,49 +183,19 @@ describe("v17 curation submissions", () => {
     expect(
       schema.safeParse({
         filings: [
-          { finding: 1, duplicateOf: "n1" },
+          { finding: 1, summary: "first" },
           { finding: 2, summary: "second" },
         ],
       }).success,
     ).toBe(true);
   });
 
-  test("a filing cannot refine and duplicate at once", () => {
-    expect(
-      schema.safeParse({
-        filings: [
-          { finding: 1, summary: "s", refines: "n1", duplicateOf: "n2" },
-          { finding: 2, summary: "second" },
-        ],
-      }).success,
-    ).toBe(false);
-  });
-
-  test("each note is refined at most once per curation", () => {
-    expect(
-      schema.safeParse({
-        filings: [
-          { finding: 1, summary: "first pass", refines: "n1" },
-          { finding: 2, summary: "second pass", refines: "n1" },
-        ],
-      }).success,
-    ).toBe(false);
-    expect(
-      schema.safeParse({
-        filings: [
-          { finding: 1, summary: "first", refines: "n1" },
-          { finding: 2, summary: "second", refines: "n2" },
-        ],
-      }).success,
-    ).toBe(true);
-  });
-
-  test("refinement and duplicate targets must exist", () => {
-    for (const target of [{ refines: "n9" }, { duplicateOf: "n9" }]) {
+  test("the curator cannot replace, merge, or drop findings", () => {
+    for (const mutation of [{ refines: "n1" }, { duplicateOf: "n1" }]) {
       expect(
         schema.safeParse({
           filings: [
-            { finding: 1, summary: "s", ...target },
+            { finding: 1, summary: "first", ...mutation },
             { finding: 2, summary: "second" },
           ],
         }).success,

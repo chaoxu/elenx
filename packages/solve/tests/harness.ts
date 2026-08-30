@@ -270,7 +270,11 @@ function replyBody(
 // ---------------------------------------------------------------------------
 
 export const turn = (
-  findings: readonly { text: string; basedOn?: readonly string[] }[],
+  findings: readonly {
+    text: string;
+    basedOn?: readonly string[];
+    basedOnFindings?: readonly number[];
+  }[],
   extra: {
     readonly nextObjective?: string;
     readonly expand?: readonly string[];
