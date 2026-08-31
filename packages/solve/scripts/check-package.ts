@@ -60,7 +60,24 @@ try {
     consumer,
   );
   await run(
+    [
+      process.execPath,
+      "-e",
+      'import { runDecomposedLoop } from "elenx-solve/decomposed"; if (typeof runDecomposedLoop !== "function") process.exit(1);',
+    ],
+    consumer,
+  );
+  await run(
     [process.execPath, "run", "node_modules/elenx-solve/solve.ts", "contract"],
+    consumer,
+  );
+  await run(
+    [
+      process.execPath,
+      "run",
+      "node_modules/elenx-solve/decomposed-cli.ts",
+      "--help",
+    ],
     consumer,
   );
 } finally {
