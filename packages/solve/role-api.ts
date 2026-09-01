@@ -1,5 +1,6 @@
 export { allVerifiers, runTrial } from "./roles";
 export type {
+  CandidateKind,
   CoordinatorInput,
   CoordinatorResult,
   ExplorerInput,

@@ -57,29 +57,42 @@ function requestedTool(body: Record<string, unknown>): string {
 }
 
 function submissionFor(tool: string, request: string): unknown {
+  const refutation = request.includes(falseTournamentClaim);
   if (tool === "submit_findings") {
     return {
       findings: [
         {
-          text: request.includes("Previous verifier response")
-            ? completeProof
-            : incompleteProof,
+          text: refutation
+            ? tournamentCounterexample
+            : request.includes("Previous verifier response")
+              ? completeProof
+              : incompleteProof,
         },
       ],
     };
   }
   if (tool === "submit_coordination") {
     return {
-      filings: [{ finding: 1, summary: "Euclid proof candidate" }],
+      filings: [
+        {
+          finding: 1,
+          summary: refutation
+            ? "transitive tournament counterexample"
+            : "Euclid proof candidate",
+        },
+      ],
       action: {
         kind: "verify",
+        candidateKind: refutation ? "refutation" : "solution",
         answer: { kind: "finding", finding: 1 },
         support: [],
       },
     };
   }
   if (tool === "submit_verification") {
-    const pass = request.includes("2 is prime");
+    const pass =
+      request.includes("2 is prime") ||
+      (refutation && request.includes("transitive tournament"));
     const verdict = pass ? "PASS" : "FAIL";
     return {
       audits: {
@@ -160,3 +173,7 @@ const incompleteProof =
   "Assume all primes are p_1,...,p_n. Their product plus one has a prime divisor outside the list.";
 const completeProof =
   "Since 2 is prime, the finite list is nonempty. Assume all primes are p_1,...,p_n. Their product plus one has a prime divisor outside the list, a contradiction.";
+const falseTournamentClaim =
+  "every tournament on three vertices has a directed cycle";
+const tournamentCounterexample =
+  "The claim is false. In the transitive tournament on vertices a,b,c, orient a to b, a to c, and b to c. Every edge increases the order a<b<c, so there is no directed cycle.";

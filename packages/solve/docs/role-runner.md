@@ -17,7 +17,7 @@ elenx-solve verifier verifier-input.json roles.db settings.json
 elenx-solve inspect roles.db
 ```
 
-Verifier input contains only the task, nominated answer, and support notes. The trial uses an internal hash to suppress an unchanged rejected proposal. Callers never supply that hash.
+Verifier input contains only the task, the nominated answer and support notes, and an untrusted `candidateKind` of `solution` or `refutation`. The trial uses an internal hash to suppress an unchanged rejected proposal. Callers never supply that hash.
 
 The Pi-backed verifier must complete this fixed internal audit set:
 
@@ -30,7 +30,7 @@ The Pi-backed verifier must complete this fixed internal audit set:
 Each internal audit returns `PASS` or `FAIL`. The terminal schema requires every audit exactly once. Elenx derives the public result in code:
 
 ```text
-every required audit PASS -> ACCEPT
+every required audit PASS -> ACCEPT the declared candidate kind
 any required audit FAIL   -> REJECT
 missing or repeated audit -> invalid verifier submission
 operational failure       -> propagated error
@@ -44,7 +44,9 @@ The model cannot submit `ACCEPT` or `REJECT`. Standard role output and inspectio
 elenx-solve trial trial-input.json roles.db settings.json
 ```
 
-The trial files every explorer finding as an immutable note. The coordinator then requests another exploration or nominates an answer for verification. A rejection becomes the next explorer's repair objective. An acceptance or the explorer-turn limit ends the trial.
+The trial files every explorer finding as an immutable note. The coordinator then requests another exploration or nominates a candidate for verification. A `solution` candidate claims to satisfy the requested task. A `refutation` candidate claims to prove that the exact requested mathematical target is false or impossible. The coordinator's label has no authority: the verifier checks both the mathematics and the declared candidate kind. An accepted solution ends as `accepted`, and an accepted refutation ends as `refuted`. A rejection becomes the next explorer's repair objective. The explorer-turn limit ends an unresolved trial.
+
+`refuted` requires a verified certificate against the exact target. A defect in one attempted proof, a missing exposition requirement, an ambiguity, or a claim that the problem is open remains a rejection or unresolved search.
 
 Trial notes and its cursor live in memory. Every role call is durable. An interrupted trial must restart with a new database because the trial cursor is not reconstructed. Standalone role commands remain suitable for externally orchestrated workflows.
 

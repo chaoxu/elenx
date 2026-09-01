@@ -16,7 +16,7 @@ VerifierInput    -> verifier    -> VerifierResult
 
 The same roles run separately through `elenx-solve explorer`, `elenx-solve coordinator`, and `elenx-solve verifier`, or connect through `elenx-solve trial`. The public `Roles` interface contains only the three typed functions. The Pi adapter and journal dependencies remain private to the CLI. `allVerifiers` demonstrates that several verifier implementations can aggregate behind one `VerifierResult` without changing the trial. Each function returns its role result directly, while inspection exposes journal metadata. Full trial-state replay remains deliberately unimplemented.
 
-The role suite covers standalone Elenx execution, trial composition, unchanged-candidate suppression, verifier rejection and repair, multiple-verifier aggregation, operational failure propagation, coordinator reference validation, input validation, and unified CLI inspection.
+The role suite covers standalone Elenx execution, trial composition, accepted refutations, unchanged-candidate suppression, verifier rejection and repair, multiple-verifier aggregation, operational failure propagation, coordinator reference validation, input validation, and unified CLI inspection.
 
 ## Infinite-primes smoke
 
@@ -34,6 +34,16 @@ The smoke used `gpt-5.6-luna` at low reasoning for every role.
 | Request errors    |          0 |
 
 The explorer supplied Euclid's construction together with a least-divisor proof that every integer greater than one has a prime divisor. The coordinator nominated it with no support notes. The verifier accepted it without repair.
+
+## False-target regression
+
+The regression asked for a proof that every finite tournament with at least three vertices has a directed Hamiltonian cycle. A transitive three-vertex tournament is a decisive counterexample.
+
+Before the repair, the explorer produced that counterexample and the coordinator nominated it as an answer. The verifier correctly returned `REJECT`: the candidate did not satisfy the literal proof criterion, even though its mathematics resolved the false target. The explorer repeated the same counterexample, the coordinator requested another confirmation turn, and the trial ended at `turn-limit` after five calls and 4,592 tokens.
+
+The repaired contract lets the coordinator label a nomination as `solution` or `refutation`. The label is untrusted. The same verifier checks it through the same three required audits, and every audit must pass before `ACCEPT`. A fresh Luna/low run selected `refutation`, verified the transitive-tournament counterexample, and ended as `refuted` after one explorer, one coordinator, and one verifier call. It used 2,902 tokens, cost an estimated $0.0017294, and recorded zero request errors.
+
+`refuted` applies only when the stored candidate proves the exact requested mathematical target false or impossible. A failed proof attempt, a missing presentation requirement, ambiguity, or an unsupported claim that the problem is open remains rejected or unresolved.
 
 ## Cyclic-couples run
 

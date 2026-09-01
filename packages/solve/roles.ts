@@ -73,6 +73,8 @@ const freshRef = z.strictObject({
 });
 export const noteRef = z.discriminatedUnion("kind", [existingRef, freshRef]);
 export type NoteRef = z.output<typeof noteRef>;
+export const candidateKind = z.enum(["solution", "refutation"]);
+export type CandidateKind = z.output<typeof candidateKind>;
 
 export const coordinatorInput = z.strictObject({
   task: task,
@@ -89,6 +91,7 @@ const exploreAction = z.strictObject({
 });
 const verifyAction = z.strictObject({
   kind: z.literal("verify"),
+  candidateKind,
   answer: noteRef,
   support: z.array(noteRef),
 });
@@ -165,6 +168,7 @@ export type CoordinatorResult = z.output<
 export const verifierInput = z
   .strictObject({
     task: task,
+    candidateKind,
     answer: note,
     support: z.array(note),
   })
@@ -229,6 +233,13 @@ export type TrialResult =
       readonly outcome: "accepted";
       readonly turns: number;
       readonly answer: Note;
+      readonly verifier: VerifierResult;
+      readonly notes: readonly Note[];
+    }
+  | {
+      readonly outcome: "refuted";
+      readonly turns: number;
+      readonly refutation: Note;
       readonly verifier: VerifierResult;
       readonly notes: readonly Note[];
     }
@@ -309,7 +320,12 @@ export async function runTrial(
 
     const answer = resolve(coordinated.action.answer);
     const support = coordinated.action.support.map(resolve);
-    const proposal = verifierInput.parse({ task: spec.task, answer, support });
+    const proposal = verifierInput.parse({
+      task: spec.task,
+      candidateKind: coordinated.action.candidateKind,
+      answer,
+      support,
+    });
     const proposalHash = verifierInputHash(proposal);
     if (attemptedProposals.has(proposalHash)) {
       previousVerifierResult = {
@@ -324,6 +340,15 @@ export async function runTrial(
     attemptedProposals.add(proposalHash);
     const verified = verifierResult.parse(await roles.verifier(proposal));
     if (verified.verdict === "ACCEPT") {
+      if (proposal.candidateKind === "refutation") {
+        return {
+          outcome: "refuted",
+          turns: turn,
+          refutation: answer,
+          verifier: verified,
+          notes,
+        };
+      }
       return {
         outcome: "accepted",
         turns: turn,

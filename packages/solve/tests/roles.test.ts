@@ -50,6 +50,7 @@ test("explorer, coordinator, and verifier each run one model session", async () 
         filings: [{ finding: 1, summary: "proof of P" }],
         action: {
           kind: "verify",
+          candidateKind: "solution",
           answer: { kind: "finding", finding: 1 },
           support: [],
         },
@@ -92,6 +93,7 @@ test("explorer, coordinator, and verifier each run one model session", async () 
 
     const verifierProposal = {
       task,
+      candidateKind: "solution" as const,
       answer: { id: "n1", summary: "proof of P", text: "Proof of P." },
       support: [],
     };
@@ -183,6 +185,7 @@ test("verifier accepts exactly when every required audit passes", () => {
 test("inspection exposes no verdict from failed or malformed verifier calls", async () => {
   const proposal = {
     task,
+    candidateKind: "solution" as const,
     answer: { id: "n1", summary: "candidate", text: "Candidate proof." },
     support: [],
   };
@@ -305,6 +308,7 @@ test("the same roles recombine into the trial workflow", async () => {
           filings: [{ finding: 1, summary: "candidate proof" }],
           action: {
             kind: "verify",
+            candidateKind: "solution",
             answer: { kind: "finding", finding: 1 },
             support: [{ kind: "note", id: "n1" }],
           },
@@ -315,6 +319,7 @@ test("the same roles recombine into the trial workflow", async () => {
         filings: [{ finding: 1, summary: "repaired proof" }],
         action: {
           kind: "verify",
+          candidateKind: "solution",
           answer: { kind: "finding", finding: 1 },
           support: [],
         },
@@ -349,6 +354,80 @@ test("the same roles recombine into the trial workflow", async () => {
   ]);
 });
 
+test("an accepted exact refutation terminates without a repair turn", async () => {
+  const calls: string[] = [];
+  const refutation = "A concrete counterexample disproves P.";
+  const result = await runTrial(
+    { task, objective: "Resolve P.", maxExplorerTurns: 3 },
+    {
+      async explorer() {
+        calls.push("explorer");
+        return { findings: [{ text: refutation }] };
+      },
+      async coordinator() {
+        calls.push("coordinator");
+        return {
+          filings: [{ finding: 1, summary: "counterexample to P" }],
+          action: {
+            kind: "verify",
+            candidateKind: "refutation",
+            answer: { kind: "finding", finding: 1 },
+            support: [],
+          },
+        };
+      },
+      async verifier(input) {
+        calls.push("verifier");
+        expect(input.candidateKind).toBe("refutation");
+        return {
+          verdict: "ACCEPT",
+          report: "The counterexample conclusively refutes P.",
+        };
+      },
+    },
+  );
+
+  expect(result).toMatchObject({
+    outcome: "refuted",
+    turns: 1,
+    refutation: { id: "n1", text: refutation },
+    verifier: { verdict: "ACCEPT" },
+  });
+  expect(calls).toEqual(["explorer", "coordinator", "verifier"]);
+});
+
+test("a claimed refutation still requires verifier acceptance", async () => {
+  const result = await runTrial(
+    { task, objective: "Resolve P.", maxExplorerTurns: 1 },
+    {
+      async explorer() {
+        return { findings: [{ text: "Purported counterexample." }] };
+      },
+      async coordinator() {
+        return {
+          filings: [{ finding: 1, summary: "purported counterexample" }],
+          action: {
+            kind: "verify",
+            candidateKind: "refutation",
+            answer: { kind: "finding", finding: 1 },
+            support: [],
+          },
+        };
+      },
+      async verifier() {
+        return {
+          verdict: "REJECT",
+          report: "The example does not satisfy the hypotheses.",
+        };
+      },
+    },
+  );
+
+  expect(result.outcome).toBe("turn-limit");
+  if (result.outcome !== "turn-limit") throw new Error("expected turn limit");
+  expect(result.lastVerifierResult?.verdict).toBe("REJECT");
+});
+
 test("trial does not send an unchanged rejected proposal twice", async () => {
   let verifierCalls = 0;
   const result = await runTrial(
@@ -364,11 +443,13 @@ test("trial does not send an unchanged rejected proposal twice", async () => {
             input.notes.length === 0
               ? {
                   kind: "verify" as const,
+                  candidateKind: "solution" as const,
                   answer: { kind: "finding" as const, finding: 1 },
                   support: [],
                 }
               : {
                   kind: "verify" as const,
+                  candidateKind: "solution" as const,
                   answer: { kind: "note" as const, id: "n1" },
                   support: [],
                 },
@@ -398,6 +479,7 @@ test("multiple verifiers compose behind one verifier response", async () => {
   const combined = allVerifiers(accepting, rejecting);
   const proposal = {
     task,
+    candidateKind: "solution" as const,
     answer: { id: "n1", summary: "candidate", text: "Candidate proof." },
     support: [],
   };
@@ -416,6 +498,7 @@ test("verifier aggregation propagates operational failure", async () => {
   };
   const proposal = {
     task,
+    candidateKind: "solution" as const,
     answer: { id: "n1", summary: "candidate", text: "Candidate proof." },
     support: [],
   };
@@ -450,6 +533,7 @@ test("coordinator packets cannot omit findings or invent references", () => {
       ],
       action: {
         kind: "verify",
+        candidateKind: "solution",
         answer: { kind: "note", id: "n9" },
         support: [],
       },
@@ -473,6 +557,7 @@ test("coordinator packets cannot omit findings or invent references", () => {
       filings: [{ finding: 1, summary: "first" }],
       action: {
         kind: "verify",
+        candidateKind: "solution",
         answer: { kind: "finding", finding: 1 },
         support: [{ kind: "finding", finding: 1 }],
       },
@@ -492,10 +577,15 @@ test("explorer and verifier inputs validate their supplied material", () => {
 
   const proposal = {
     task,
+    candidateKind: "solution" as const,
     answer: { id: "n1", summary: "candidate", text: "Candidate proof." },
     support: [],
   };
   expect(verifierInput.safeParse(proposal).success).toBe(true);
+  expect(
+    verifierInput.safeParse({ ...proposal, candidateKind: "counterexample" })
+      .success,
+  ).toBe(false);
 });
 
 test("the main CLI inspects a role journal", () => {

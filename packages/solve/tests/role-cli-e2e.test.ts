@@ -38,6 +38,7 @@ test("standalone role commands cross the real CLI, model runtime, Pi, and journa
   });
   const verifierInput = await writeJson(directory, "verifier.json", {
     task,
+    candidateKind: "solution",
     answer: { id: "n1", summary: "complete proof", text: completeProof },
     support: [],
   });
@@ -146,11 +147,47 @@ test("trial repairs one rejected proof and accepts the next exact proposal", asy
   });
 });
 
+test("trial terminates when the verifier accepts an exact refutation", async () => {
+  const directory = await testDirectory();
+  const settings = await writeSettings(directory);
+  const trialInput = await writeJson(directory, "trial.json", {
+    task: {
+      problem:
+        "Prove that every tournament on three vertices has a directed cycle.",
+      completionCriteria:
+        "Give a complete proof of the stated universal claim.",
+    },
+    objective:
+      "Produce a complete proof or establish that the target is false.",
+    maxExplorerTurns: 2,
+  });
+  const campaign = join(directory, "refuted.db");
+
+  const result = await cli(directory, "trial", trialInput, campaign, settings);
+  expect(result.code).toBe(0);
+  expect(JSON.parse(result.stdout)).toMatchObject({
+    outcome: "refuted",
+    turns: 1,
+    refutation: { summary: "transitive tournament counterexample" },
+    verifier: { verdict: "ACCEPT" },
+  });
+
+  const inspection = JSON.parse(
+    (await cli(directory, "inspect", campaign)).stdout,
+  );
+  expect(inspection.calls.map(({ role }: { role: string }) => role)).toEqual([
+    "explorer",
+    "coordinator",
+    "verifier",
+  ]);
+});
+
 test("provider failure exits nonzero and inspection exposes no mathematical result", async () => {
   const directory = await testDirectory();
   const settings = await writeSettings(directory);
   const input = await writeJson(directory, "verifier.json", {
     task: primeTask(),
+    candidateKind: "solution",
     answer: {
       id: "n1",
       summary: "synthetic failure",
