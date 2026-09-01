@@ -7,12 +7,11 @@
     "bun": ">=1.3.13"
   },
   "bin": {
-    "elenx-solve": "./solve.ts",
-    "elenx-solve-decomposed": "./decomposed-cli.ts"
+    "elenx-solve": "./solve.ts"
   },
   "exports": {
     ".": "./solve.ts",
-    "./decomposed": "./decomposed.ts"
+    "./roles": "./roles.ts"
   },
   "files": [
     "*.ts",
@@ -27,7 +26,6 @@
     "typecheck": "tsc --noEmit",
     "test": "bun test",
     "call-surface:update": "bun scripts/update-call-surface.ts",
-    "decomposed": "bun decomposed-cli.ts",
     "pack:check": "bun scripts/check-package.ts",
     "check": "bun run format:check && bun run typecheck && bun run test && bun run pack:check && bun solve.ts --help"
   },

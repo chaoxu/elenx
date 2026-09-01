@@ -12,6 +12,12 @@ import {
   inspectCampaign,
   type CampaignInspection,
 } from "./inspect";
+import {
+  inspectRoleCampaign,
+  isRoleCampaign,
+  isRoleCommand,
+  runRoleCommand,
+} from "./role-cli";
 import { withSerialToolCalls } from "./serial-tools";
 
 export type { SolveDependencies, SolveModels } from "./runtime";
@@ -25,6 +31,10 @@ const usage = `Usage:
   elenx-solve run PROBLEM.md CRITERIA.md CAMPAIGN.db SETTINGS.json
   elenx-solve start PROBLEM.md CRITERIA.md CAMPAIGN.db SETTINGS.json
   elenx-solve resume CAMPAIGN.db SETTINGS.json
+  elenx-solve explorer INPUT.json CAMPAIGN.db SETTINGS.json
+  elenx-solve coordinator INPUT.json CAMPAIGN.db SETTINGS.json
+  elenx-solve verifier INPUT.json CAMPAIGN.db SETTINGS.json
+  elenx-solve trial TRIAL.json CAMPAIGN.db SETTINGS.json
   elenx-solve inspect [--include-inputs] CAMPAIGN.db
   elenx-solve export CAMPAIGN.db
 
@@ -38,7 +48,12 @@ run starts the campaign, or resumes it when CAMPAIGN.db already exists, so a
 killed process restarts with the identical invocation. The campaign runner retries
 transient call failures in place with capped exponential backoff; a run report
 with outcome call-failure means that retry budget was exhausted by consecutive
-failures.`;
+failures.
+
+explorer, coordinator, and verifier each run one journaled model session. trial
+connects those same roles into an in-memory experimental workflow; individual
+calls are journaled, but an interrupted trial does not reconstruct its workflow
+state.`;
 
 async function main(args: readonly string[]): Promise<void> {
   const parsed = parseArgs({
@@ -55,6 +70,11 @@ async function main(args: readonly string[]): Promise<void> {
     return;
   }
   const [command, ...positionals] = parsed.positionals;
+  if (isRoleCommand(command)) {
+    if (parsed.values["include-inputs"] === true) throw new Error(usage);
+    writeJson(await runRoleCommand(command, positionals));
+    return;
+  }
   if (command === "contract") {
     if (positionals.length !== 0 || parsed.values["include-inputs"] === true) {
       throw new Error(usage);
@@ -64,10 +84,14 @@ async function main(args: readonly string[]): Promise<void> {
   }
   if (command === "inspect") {
     if (positionals.length !== 1) throw new Error(usage);
+    const path = positionals[0]!;
+    const options = {
+      includeInputs: parsed.values["include-inputs"] === true,
+    };
     writeJson(
-      inspectCampaign(positionals[0]!, {
-        includeInputs: parsed.values["include-inputs"] === true,
-      }),
+      isRoleCampaign(path)
+        ? inspectRoleCampaign(path, options)
+        : inspectCampaign(path, options),
     );
     return;
   }

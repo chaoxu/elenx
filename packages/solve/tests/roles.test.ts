@@ -1,20 +1,18 @@
 import { afterEach, expect, test } from "bun:test";
+import { spawnSync } from "node:child_process";
 
 import { createCampaign } from "elenx";
 
+import { createPiRoles } from "../pi-roles";
 import {
-  coordinatorResponseFor,
+  coordinatorResultFor,
   explorerInput,
-  requireAllVerifiers,
-  runCoordinator,
-  runDecomposedLoop,
-  runExplorer,
-  runVerifier,
-  verifierBundleHash,
+  allVerifiers,
+  runTrial,
   verifierInput,
-  type Components,
-  type VerifierComponent,
-} from "../decomposed";
+  type Roles,
+  type Verifier,
+} from "../roles";
 import {
   campaignPath,
   cleanupCampaigns,
@@ -30,7 +28,7 @@ const task = {
   completionCriteria: "Give a complete proof of P.",
 };
 
-test("explorer, coordinator, and verifier run as standalone Elenx components", async () => {
+test("explorer, coordinator, and verifier each run one model session", async () => {
   const replies: Reply[] = [
     { submission: { findings: [{ text: "Proof of P." }] } },
     {
@@ -46,62 +44,62 @@ test("explorer, coordinator, and verifier run as standalone Elenx components", a
     { submission: { verdict: "ACCEPT", report: "The proof is complete." } },
   ];
   const drive = dependencies(replies);
-  const campaign = createCampaign(campaignPath(), "component-test", {});
+  const campaign = createCampaign(campaignPath(), "role-test", {});
   const settings = runSettings();
   try {
-    const explorer = await runExplorer(
+    const roles = createPiRoles(
       campaign,
-      { task, index: [], context: [], objective: "Prove P." },
-      settings.explorer,
+      {
+        explorer: settings.explorer,
+        coordinator: settings.curator,
+        verifier: settings.verifier,
+      },
       { models: drive.models!, run: drive.run! },
     );
-    expect(explorer.response).toEqual({
+    const explorer = await roles.explorer({
+      task,
+      index: [],
+      context: [],
+      objective: "Prove P.",
+    });
+    expect(explorer).toEqual({
       findings: [{ text: "Proof of P." }],
     });
 
-    const coordinator = await runCoordinator(
-      campaign,
-      { task, notes: [], findings: explorer.response.findings },
-      settings.curator,
-      { models: drive.models!, run: drive.run! },
-    );
-    expect(coordinator.response.action.kind).toBe("verify");
+    const coordinator = await roles.coordinator({
+      task,
+      notes: [],
+      findings: explorer.findings,
+    });
+    expect(coordinator.action.kind).toBe("verify");
 
-    const verifierBundle = {
+    const verifierProposal = {
       task,
       answer: { id: "n1", summary: "proof of P", text: "Proof of P." },
       support: [],
     };
-    const verifier = await runVerifier(
-      campaign,
-      {
-        ...verifierBundle,
-        bundleHash: verifierBundleHash(verifierBundle),
-      },
-      settings.verifier,
-      { models: drive.models!, run: drive.run! },
-    );
-    expect(verifier.response).toEqual({
+    const verifier = await roles.verifier(verifierProposal);
+    expect(verifier).toEqual({
       verdict: "ACCEPT",
       report: "The proof is complete.",
     });
     expect(drive.calls.map(({ label }) => label)).toEqual([
-      "elenx-solve/decomposed/explorer",
-      "elenx-solve/decomposed/coordinator",
-      "elenx-solve/decomposed/verifier",
+      "elenx-solve/role/explorer",
+      "elenx-solve/role/coordinator",
+      "elenx-solve/role/verifier",
     ]);
   } finally {
     campaign.close();
   }
 });
 
-test("the same components recombine into the minimal repair loop", async () => {
+test("the same roles recombine into the trial workflow", async () => {
   const calls: string[] = [];
   let explorerTurn = 0;
   let coordinatorTurn = 0;
   let verifierTurn = 0;
-  const components: Components = {
-    async explore(input) {
+  const roles: Roles = {
+    async explorer(input) {
       calls.push("explorer");
       explorerTurn += 1;
       if (explorerTurn === 1) {
@@ -112,10 +110,10 @@ test("the same components recombine into the minimal repair loop", async () => {
         expect(input.context.map(({ id }) => id)).toEqual(["n1"]);
         return { findings: [{ text: "Candidate proof using L." }] };
       }
-      expect(input.previousVerifierResponse?.verdict).toBe("REJECT");
+      expect(input.previousVerifierResult?.verdict).toBe("REJECT");
       return { findings: [{ text: "Repaired complete proof." }] };
     },
-    async coordinate(input) {
+    async coordinator(input) {
       calls.push("coordinator");
       coordinatorTurn += 1;
       if (coordinatorTurn === 1) {
@@ -138,7 +136,7 @@ test("the same components recombine into the minimal repair loop", async () => {
           },
         };
       }
-      expect(input.previousVerifierResponse?.verdict).toBe("REJECT");
+      expect(input.previousVerifierResult?.verdict).toBe("REJECT");
       return {
         filings: [{ finding: 1, summary: "repaired proof" }],
         action: {
@@ -148,7 +146,7 @@ test("the same components recombine into the minimal repair loop", async () => {
         },
       };
     },
-    async verify(input) {
+    async verifier(input) {
       calls.push("verifier");
       verifierTurn += 1;
       if (verifierTurn === 1) {
@@ -159,9 +157,9 @@ test("the same components recombine into the minimal repair loop", async () => {
     },
   };
 
-  const result = await runDecomposedLoop(
+  const result = await runTrial(
     { task, objective: "Prove P.", maxExplorerTurns: 3 },
-    components,
+    roles,
   );
   expect(result.outcome).toBe("accepted");
   expect(result.turns).toBe(3);
@@ -177,15 +175,15 @@ test("the same components recombine into the minimal repair loop", async () => {
   ]);
 });
 
-test("the loop does not send an unchanged rejected bundle twice", async () => {
+test("trial does not send an unchanged rejected proposal twice", async () => {
   let verifierCalls = 0;
-  const result = await runDecomposedLoop(
+  const result = await runTrial(
     { task, objective: "Prove P.", maxExplorerTurns: 2 },
     {
-      async explore() {
+      async explorer() {
         return { findings: [{ text: "Unchanged candidate." }] };
       },
-      async coordinate(input) {
+      async coordinator(input) {
         return {
           filings: [{ finding: 1, summary: "unchanged candidate" }],
           action:
@@ -202,7 +200,7 @@ test("the loop does not send an unchanged rejected bundle twice", async () => {
                 },
         };
       },
-      async verify() {
+      async verifier() {
         verifierCalls += 1;
         return { verdict: "REJECT", report: "Missing implication." };
       },
@@ -211,52 +209,46 @@ test("the loop does not send an unchanged rejected bundle twice", async () => {
   expect(result.outcome).toBe("turn-limit");
   expect(verifierCalls).toBe(1);
   if (result.outcome !== "turn-limit") throw new Error("expected turn limit");
-  expect(result.lastVerifierResponse?.report).toContain("unchanged");
+  expect(result.lastVerifierResult?.report).toContain("unchanged");
 });
 
 test("multiple verifiers compose behind one verifier response", async () => {
-  const accepting: VerifierComponent = async () => ({
+  const accepting: Verifier = async () => ({
     verdict: "ACCEPT",
     report: "No defect found.",
   });
-  const rejecting: VerifierComponent = async () => ({
+  const rejecting: Verifier = async () => ({
     verdict: "REJECT",
     report: "The converse is missing.",
   });
-  const combined = requireAllVerifiers([accepting, rejecting]);
-  const bundle = {
+  const combined = allVerifiers(accepting, rejecting);
+  const proposal = {
     task,
     answer: { id: "n1", summary: "candidate", text: "Candidate proof." },
     support: [],
   };
-  const response = await combined({
-    ...bundle,
-    bundleHash: verifierBundleHash(bundle),
-  });
+  const response = await combined(proposal);
   expect(response.verdict).toBe("REJECT");
   expect(response.report).toContain("Verifier 1: ACCEPT");
   expect(response.report).toContain("Verifier 2: REJECT");
 });
 
-test("verifier aggregation turns operational failure into rejection", async () => {
-  const failing: VerifierComponent = async () => {
+test("verifier aggregation propagates operational failure", async () => {
+  const failing: Verifier = async () => {
     throw new Error("transport failed");
   };
-  const bundle = {
+  const proposal = {
     task,
     answer: { id: "n1", summary: "candidate", text: "Candidate proof." },
     support: [],
   };
-  const response = await requireAllVerifiers([failing])({
-    ...bundle,
-    bundleHash: verifierBundleHash(bundle),
-  });
-  expect(response.verdict).toBe("REJECT");
-  expect(response.report).toContain("transport failed");
+  await expect(allVerifiers(failing)(proposal)).rejects.toThrow(
+    "transport failed",
+  );
 });
 
 test("coordinator packets cannot omit findings or invent references", () => {
-  const schema = coordinatorResponseFor(["n1"], 2);
+  const schema = coordinatorResultFor(["n1"], 2);
   expect(
     schema.safeParse({
       filings: [{ finding: 1, summary: "first" }],
@@ -280,9 +272,32 @@ test("coordinator packets cannot omit findings or invent references", () => {
       },
     }).success,
   ).toBe(false);
+  expect(
+    coordinatorResultFor(["n1"], 1).safeParse({
+      filings: [{ finding: 1, summary: "first" }],
+      action: {
+        kind: "explore",
+        objective: "continue",
+        context: [
+          { kind: "note", id: "n1" },
+          { kind: "note", id: "n1" },
+        ],
+      },
+    }).success,
+  ).toBe(false);
+  expect(
+    coordinatorResultFor(["n1"], 1).safeParse({
+      filings: [{ finding: 1, summary: "first" }],
+      action: {
+        kind: "verify",
+        answer: { kind: "finding", finding: 1 },
+        support: [{ kind: "finding", finding: 1 }],
+      },
+    }).success,
+  ).toBe(false);
 });
 
-test("explorer and verifier packets bind their supplied material", () => {
+test("explorer and verifier inputs validate their supplied material", () => {
   expect(
     explorerInput.safeParse({
       task,
@@ -292,18 +307,30 @@ test("explorer and verifier packets bind their supplied material", () => {
     }).success,
   ).toBe(false);
 
-  const bundle = {
+  const proposal = {
     task,
     answer: { id: "n1", summary: "candidate", text: "Candidate proof." },
     support: [],
   };
-  expect(
-    verifierInput.safeParse({ ...bundle, bundleHash: "0".repeat(64) }).success,
-  ).toBe(false);
-  expect(
-    verifierInput.safeParse({
-      ...bundle,
-      bundleHash: verifierBundleHash(bundle),
-    }).success,
-  ).toBe(true);
+  expect(verifierInput.safeParse(proposal).success).toBe(true);
+});
+
+test("the main CLI inspects a role journal", () => {
+  const path = campaignPath();
+  createCampaign(path, "elenx-solve-roles", {
+    protocol: "role-calls.v1",
+  }).close();
+  const inspected = spawnSync(process.execPath, ["solve.ts", "inspect", path], {
+    cwd: import.meta.dir + "/..",
+    encoding: "utf8",
+  });
+  expect(inspected.status).toBe(0);
+  expect(JSON.parse(inspected.stdout)).toEqual({
+    calls: [],
+    spend: {
+      logicalProviderRequests: 0,
+      requestErrors: 0,
+      unmeasuredRequests: 0,
+    },
+  });
 });
