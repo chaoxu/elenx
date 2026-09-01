@@ -4,7 +4,7 @@
 
 The role runner ran the explorer, coordinator, and opaque verifier as independent Elenx calls, then connected the same operations into a trial. The trial exposes no verifier internals.
 
-The fresh infinite-primes smoke reached `ACCEPT` in its first explorer turn. The cyclic-couples experiment produced a complete proof candidate in one successful Sol/max explorer call, the coordinator nominated it immediately, and the verifier rejected it with three concrete mathematical defects. The workflow behaved correctly. The W[1]-hardness theorem remains unverified.
+The fresh infinite-primes smoke reached `ACCEPT` in its first explorer turn. The fresh cyclic-couples trial also reached `ACCEPT` in its first turn. Two independent Sol/max verifier calls accepted the exact proof, and a restricted Claude Fable/max hostile audit returned `PASS`. The system produced a complete proof of the stated W[1]-hardness theorem.
 
 ## Role boundary
 
@@ -37,26 +37,30 @@ The explorer supplied Euclid's construction together with a least-divisor proof 
 
 ## Cyclic-couples run
 
-The explorer, coordinator, and verifier used `gpt-5.6-sol` at max reasoning through codex-lb.
+The trial used `gpt-5.6-sol` at max reasoning through codex-lb for every role. Its input contained the exact theorem and ordinary proof-completeness requirements. It contained no earlier candidate, verifier defect, or published construction. The explorer had no search or retrieval tool.
 
-The first logical explorer call lasted 38 minutes 32.6 seconds. Its two provider streams ended with `stream_incomplete`, so it produced no mathematical response.
+The explorer returned one 19,958-character proof after 33 minutes 17.8 seconds. The candidate has SHA-256 `c65e1b79ab3e1d92d085c2c28e48e3939f5adf557a1d6ac8a56d93d4b02a7e45`. It proves an exact transposition-distance formula for equal-size partial matchings, builds parity-controlled port tests, and reduces from MULTICOLORED CLIQUE with output parameter `q<=p+1`.
 
-The identical explorer packet was retried as another journaled operation. It produced a 29 KB complete reduction after 63 minutes 17.1 seconds. The terminal finding was committed before Saturn ran out of disk space, although the outer call result could not be committed. Opening the database for writing recovered the journal, and the exact terminal finding remained available. An inactive 8.0 GiB Chrome testing profile under `~/.codex/tmp/coflat` was permanently removed to restore disk space.
+The coordinator took 9.8 seconds, filed the candidate as one self-contained note, and nominated it with no support notes. The first verifier took 9 minutes 53.1 seconds and returned `ACCEPT`. It explicitly checked the distance lemma, port-cycle bound, parity and consistency decoding, both threshold arguments, construction size, and parameter bound.
 
-The coordinator read the exact finding, wrote a 240-character navigation summary, nominated it immediately, and supplied no support notes because the answer was self-contained. Its call lasted 32.0 seconds, used 10,278 tokens, and cost $0.07159.
+| Trial operation | Duration |  Tokens | Reasoning tokens | Estimated cost |
+| --------------- | -------: | ------: | ---------------: | -------------: |
+| Explorer        |  33:17.8 |  84,843 |           78,689 |      $2.534665 |
+| Coordinator     |  00:09.8 |   6,996 |              294 |      $0.044405 |
+| Verifier        |  09:53.1 |  34,184 |           27,670 |      $0.865520 |
+| Trial total     |          | 126,023 |          106,653 |      $3.444590 |
 
-The opaque verifier read the exact proof and returned `REJECT` after 18 minutes 45.8 seconds. It used 40,451 tokens and cost $0.942336. Its response identified:
+A second fresh Sol/max role verifier then read the same frozen candidate and returned `ACCEPT` after 11 minutes 8.7 seconds. It used 37,303 tokens, including 30,748 reasoning tokens, and cost $0.95909. The complete Elenx record therefore contains four measured provider requests, 163,326 tokens, 137,401 reasoning tokens, $4.40368 estimated cost, and zero request errors.
 
-- a double-counted fixed reward in Lemma 3, making equations (14), (21), and (22) false for an allowed constant pair function
-- a residual-cycle bound justified only by “direct tracing,” leaving the normalization upper bound unproved
-- a negative-budget edge case for a one-vertex, two-colour source instance
+A restricted Claude Fable/max audit received only the frozen verifier input. It independently reconstructed the physical swap correspondence and distance formula, traced the port state machine, checked the parity layout and decoder, recomputed every threshold inequality, and verified completeness, soundness, parameter mapping, and polynomial running time. It returned `PASS` with two non-blocking exposition notes:
 
-This live call preceded unchanged-proposal suppression in the trial runner. The trial now computes an internal identity from the exact task, answer, and support bytes before repeating verification.
+- state explicitly that the source color classes are nonempty
+- spell out the empty-set conventions used for `max P_i` and `min N_i`
 
-The successful explorer provider request used 74,138 tokens and cost $2.21144. The measured successful candidate path therefore used 124,867 tokens and cost $3.225366 across explorer, coordinator, and verifier. Three failed explorer provider requests have no usage measurement and are excluded from those totals.
+The theorem already had an independently audited proof using a different threshold-rail construction. The new candidate instead uses port tests and leaves at most `p+1` people unpaired, so the successful run is not a replay of that proof architecture.
 
 ## Disposition
 
-The experiment validates the role boundary and rejects the submitted proof. A subsequent explorer can receive the exact verifier response and candidate as its only repair context. No triage, note standing, proof tower, synthesized defect note, or exposed verification subphase is required.
+The role runner solved the exact theorem in one explorer turn. The coordinator recognized completion immediately, both Elenx verifier calls accepted the frozen proof, and the outside-family hostile audit passed. This is proof-grade evidence for the mathematical result rather than a workflow-only success.
 
-Current V17 has not been replaced. The role runner remains an experimental path until its workflow state can be reconstructed after interruption.
+Whole-trial restartability remains the role runner's experimental limitation. Every individual role call and verifier result is durable in the journal.
