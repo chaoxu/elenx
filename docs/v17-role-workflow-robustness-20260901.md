@@ -2,9 +2,11 @@
 
 ## Outcome
 
-Elenx V17 now exposes a small role workflow whose mathematical output is bound to the kernel and can be launched as a frozen Elenx Lab collection. The explorer proposes findings, the coordinator either requests another turn or nominates a candidate, and the verifier returns `ACCEPT` or `REJECT`. Verifier audits remain internal. A terminal role report names the exact kernel-verified candidate.
+Elenx V17 now exposes a small role workflow whose mathematical output is bound to the kernel and can be launched as a frozen Elenx Lab collection. The explorer proposes findings, the coordinator either requests another turn or nominates a candidate, and the verifier returns `ACCEPT` or `REJECT`. Verifier audits remain internal. A terminal role report names the exact kernel-verified candidate. Every mathematical pilot result also receives a separate semantic review over the exact candidate bytes.
 
-The code and local execution gates passed. The current Sol/max verifier accepted the frozen cyclic-couples proof under the keyed-audit contract. The first production role-trial pilot froze correctly but did not start a container because Jupiter's Nomad-to-OpenBao JWT login returned `403` for the `elenx-pool` role. That infrastructure enrollment requires the controlled OpenBao root-token ceremony. No pilot run reached Elenx, so the failed Nomad generation supplies operational evidence only.
+Elenx Lab remains the run layer. It freezes inputs, submits and reconciles Nomad jobs, records attempt facts, and projects catalog state. It does not interpret mathematical prose. Independent semantic verification runs as a separate verifier operation over the terminal candidate.
+
+The code and local execution gates passed. The current Sol/max verifier accepted the frozen cyclic-couples proof under the keyed-audit contract. The first production role-trial generation froze correctly but did not start a container because Jupiter's Nomad-to-OpenBao JWT login returned `403` for the `elenx-pool` role. That failure is retained as operational evidence. It is not the final pilot result.
 
 ## Why the earlier workflow was slow
 
@@ -66,18 +68,22 @@ The first post-run checker expected the audit collection to be an array, while t
 
 ## Frozen production pilot
 
-The pilot collection is `known-answer-role-pilot-v1`: the benchmark's even-sum and infinite-primes tasks, three Luna/low replicates each, one baseline arm, and concurrency three.
+The final pilot collection is `known-answer-role-pilot-v9`. It contains the even-sum and infinite-primes tasks, three Luna/low replicates for each task, one baseline arm, and concurrency three.
 
-The Jupiter image is `sha256:61f4c914f1ec8c30b2d2eee470eebc8f97cf31acb066f2866503f05e7375594d`. Its manifest binds worker contract 4, Elenx `06ea4b4`, Lab `c7313e5`, and model-registry hash `cc50b8fe3174859921aff415b83db88bd7c15dcb1ea5e97b7e7621e4cb98a195`.
+The deployment failures before v9 were concrete and separate. The initial v1 generation failed before task start when Nomad could not authenticate to OpenBao. The next image builds exposed a cold Nix store, a missing workspace install, a worker command that did not use the allocation directory, and an init path that rejected Nomad's null defaults. The fixes moved credential delivery to the coordinator's `fleet-secret` lookup followed by `CODEX_LB_API_KEY` in Nomad job state, installed the workspace with the frozen lockfile, used the shared attempt executor, and made the worker command Nomad-compatible. Legacy OpenBao templates remain readable for reconciliation and cannot start a new generation.
 
-The frozen manifest SHA-256 is `735a8ba2bad364a615999531b289adc85f6c8ec3637c5297f68357f71a560b62`. Generation 1 used job `elenx-pool-known-answer-role-pilot-v1-d5372da409c96667-g1`. All nine allocation attempts failed before task start because OpenBao denied the JWT login. No campaign database or mathematical result was created.
+The v9 image is `sha256:35d7f2a340667cf86949effb0bec8e7176dce0c6c23f3c296658d36226421fa6`. Its worker manifest binds worker contract 4, Elenx `06ea4b4`, Lab `66b32c0`, and model-registry hash `cc50b8fe3174859921aff415b83db88bd7c15dcb1ea5e97b7e7621e4cb98a195`. Generation 1 used job `elenx-pool-known-answer-role-pilot-v9-d9c86dab71131b60-g1`.
 
-Two deployment costs surfaced before that failure. Jupiter's cold Nix store spent most of the image-build wall time downloading the locked toolchain. The clean host Elenx checkout also lacked workspace dependencies, so the first freeze could not import `elenx/pi`. Running the installed coordinator's pinned Bun 1.3.14 with `bun install --frozen-lockfile` repaired that preflight while leaving the Git checkout clean.
+All six allocations exited successfully with code 0. The three even-sum trials and the three infinite-primes trials each completed in one explorer turn. Every run produced a campaign database, named candidate 14, and had empty solver stderr. The original Luna/low pilot calls used three provider requests per trial with no request errors. Their campaign token and cost totals matched the read-only codex-lb projection on Jupiter.
 
-## Remaining production action
+The first external checker was a lexical smoke artifact. It searched proof prose with regular expressions and rejected valid prime proofs when their wording differed. Those records remain in the ignored diagnostic bundle and are excluded from the pilot catalog. A mathematical claim is never adjudicated by phrase matching.
 
-The frozen pilot can resume without changing its inputs, image, or template after an authorized operator installs and reads back the exact `elenx-pool` OpenBao JWT role and policy under the controlled root-token ceremony. The role must bind audience `openbao.nomad.fleet`, namespace `default`, job ID `elenx-pool-*`, and task `worker`, with only the `nomad-elenx-run` policy. Resume must first confirm that generation 1 has no active allocation.
+The external semantic review evidence is in `../elenx-lab/runs/role-pilot-semantic-20260901-1/`. For each run, the reviewer fetched the sole verified candidate from Observer, passed its complete UTF-8 text together with the frozen task and criteria to a fresh `elenx-solve verifier` campaign, and checked that the new kernel candidate bytes matched Observer byte for byte. The independent profile was `gpt-5.6-sol` at `max`. All six semantic reviews returned `ACCEPT`, and all six immutable Lab records use `method: "independent-review"` with candidate 14's exact digest.
 
-After the six runs finish, the operator should rebuild catalog schema V2 through a compatible Observer, adjudicate each terminal candidate by exact bytes, and report procedural outcome, external verdict, usage, and provenance separately.
+The six semantic calls used six measured provider requests, 8,147 total tokens, and an estimated `$0.132135`, with zero request errors. Each semantic journal contains one candidate-bound verifier call and one derived verdict. The original pilot journals and the semantic journals are separate artifacts.
 
-During diagnosis of the JWT failure, a secret-bearing OpenBao configuration was mistakenly rendered into the tool transcript. This document does not reproduce the value. An authorized operator should rotate the exposed credential through the controlled OpenBao ceremony.
+The final catalog on Jupiter is `/srv/elenx-lab/runs/catalog.sqlite`. Its six v9 rows have `result_class = pass`, `report_outcome = accepted`, `external_verdict = pass`, `adjudication_method = independent-review`, and no projection error. The catalog stores the semantic review separately from the procedural Elenx result.
+
+The semantic review calls are accounted for under the tags `independent-semantic/known-answer-role-pilot-v9/<run>/sol-max-1`. Their fresh journals and immutable records are the evidence for independent mathematical checking. The regex checker is retained only to document the false-negative incident.
+
+During diagnosis of the JWT failure, a secret-bearing OpenBao configuration was mistakenly rendered into the tool transcript. This report does not reproduce the value. Credential rotation remains an operator security action separate from the successful v9 pilot.
