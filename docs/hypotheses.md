@@ -1,6 +1,6 @@
 # Elenx policy hypotheses
 
-Status: historical — the experiment plan for the retired `exploration-v15` protocol. [`design.md`](design.md) defines its boundary; the current protocol documentation lives in [`../packages/solve/docs/`](../packages/solve/docs/).
+Status: historical — the experiment plan for the retired `exploration-v15` protocol. [`design.md`](design.md) defines its boundary; the current protocol documentation lives in [`../packages/solve/docs/`](../packages/solve/docs/). Current GPT-5.6-Sol mechanism findings are recorded in [`research/gpt-5-6-sol-mechanism-findings-20260901.md`](research/gpt-5-6-sol-mechanism-findings-20260901.md).
 
 ## Objective
 
