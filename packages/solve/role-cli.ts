@@ -60,6 +60,16 @@ function openRoleCampaign(path: string): Campaign {
   return campaign;
 }
 
+function validateExistingRoleCampaign(path: string): void {
+  if (!existsSync(path)) return;
+  const campaign = openCampaign(path);
+  try {
+    assertRoleDeclaration(campaign.records()[0]);
+  } finally {
+    campaign.close();
+  }
+}
+
 function declarationProtocol(declaration: Entry | undefined): unknown {
   if (
     declaration?.kind !== "campaign" ||
@@ -226,6 +236,7 @@ export async function runRoleCommand(
       "trial requires a new campaign database because trial state is not resumable",
     );
   }
+  validateExistingRoleCampaign(campaignPath);
   const settings = await readSettings(settingsPath);
   const { ModelRuntime } = await import("@earendil-works/pi-coding-agent");
   const runtime = await ModelRuntime.create({
