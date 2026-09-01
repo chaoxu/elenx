@@ -63,4 +63,4 @@ Run a fleet-backed development trial with durable local artifacts:
 bun run debug:trial -- TRIAL.json runs/debug-name SETTINGS.json debug/name--r01/attempt-1
 ```
 
-[`packages/solve/docs/role-runner.md`](packages/solve/docs/role-runner.md) defines the live-debug artifacts and the boundary with Elenx Lab.
+[`packages/solve/docs/role-runner.md`](packages/solve/docs/role-runner.md) defines the debug artifacts. Elenx Lab owns the shared local and Nomad attempt executor.
