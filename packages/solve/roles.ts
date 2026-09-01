@@ -200,9 +200,9 @@ export function allVerifiers(...verifiers: readonly Verifier[]): Verifier {
     throw new Error("allVerifiers needs at least one verifier");
   }
   return async (input) => {
-    const responses = await Promise.all(
-      verifiers.map((verifier) => verifier(input)),
-    );
+    const responses = (
+      await Promise.all(verifiers.map((verifier) => verifier(input)))
+    ).map((response) => verifierResult.parse(response));
     const rejected = responses.filter(
       (response) => response.verdict === "REJECT",
     );

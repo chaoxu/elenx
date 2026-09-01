@@ -12,12 +12,18 @@ import {
 } from "elenx";
 import { derivePiSpend, piStoredResult } from "elenx/pi";
 
-import { createPiRoles, piRoleSettings, type PiRoleSettings } from "./pi-roles";
+import {
+  createPiRoles,
+  piRoleSettings,
+  verifierResultFromSubmission,
+  type PiRoleSettings,
+} from "./pi-roles";
 import {
   coordinatorInput,
   explorerInput,
   runTrial,
   verifierInput,
+  verifierResult,
 } from "./roles";
 import { withSerialToolCalls } from "./serial-tools";
 
@@ -129,7 +135,9 @@ export function inspectRoleCampaign(
                 elapsedMs: result.atMs - entry.atMs,
                 settlement: result.state,
               }),
-          ...(terminal?.kind === "tool-call" ? { result: terminal.input } : {}),
+          ...(terminal?.kind === "tool-call"
+            ? { result: publicRoleResult(entry.role, terminal.input) }
+            : {}),
           ...(parsed?.success === true
             ? { piState: parsed.data.state, telemetry: parsed.data.telemetry }
             : {}),
@@ -144,6 +152,18 @@ export function inspectRoleCampaign(
   } finally {
     reader.close();
   }
+}
+
+function publicRoleResult(role: string | undefined, value: Json): Json {
+  if (role !== "verifier") return value;
+  const existing = verifierResult.safeParse(value);
+  if (existing.success) return existing.data;
+  const internal = isJsonObject(value) ? { audits: value["audits"] } : value;
+  return verifierResultFromSubmission(internal);
+}
+
+function isJsonObject(value: Json): value is { readonly [key: string]: Json } {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 function modelsPath(environment: NodeJS.ProcessEnv): string | null {

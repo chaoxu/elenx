@@ -3,13 +3,20 @@ import { spawnSync } from "node:child_process";
 
 import { createCampaign } from "elenx";
 
-import { createPiRoles } from "../pi-roles";
+import {
+  createPiRoles,
+  piVerifierSubmission,
+  requiredVerifierAudits,
+  verifierResultFromSubmission,
+} from "../pi-roles";
+import { inspectRoleCampaign } from "../role-cli";
 import {
   coordinatorResultFor,
   explorerInput,
   allVerifiers,
   runTrial,
   verifierInput,
+  verifierResult,
   type Roles,
   type Verifier,
 } from "../roles";
@@ -28,6 +35,14 @@ const task = {
   completionCriteria: "Give a complete proof of P.",
 };
 
+const passingAuditSubmission = {
+  audits: requiredVerifierAudits.map((audit) => ({
+    audit,
+    verdict: "PASS" as const,
+    report: `${audit} passed.`,
+  })),
+};
+
 test("explorer, coordinator, and verifier each run one model session", async () => {
   const replies: Reply[] = [
     { submission: { findings: [{ text: "Proof of P." }] } },
@@ -41,10 +56,13 @@ test("explorer, coordinator, and verifier each run one model session", async () 
         },
       },
     },
-    { submission: { verdict: "ACCEPT", report: "The proof is complete." } },
+    { submission: passingAuditSubmission },
   ];
   const drive = dependencies(replies);
-  const campaign = createCampaign(campaignPath(), "role-test", {});
+  const path = campaignPath();
+  const campaign = createCampaign(path, "elenx-solve-roles", {
+    protocol: "role-calls.v1",
+  });
   const settings = runSettings();
   try {
     const roles = createPiRoles(
@@ -81,7 +99,7 @@ test("explorer, coordinator, and verifier each run one model session", async () 
     const verifier = await roles.verifier(verifierProposal);
     expect(verifier).toEqual({
       verdict: "ACCEPT",
-      report: "The proof is complete.",
+      report: "Every required audit completed without a blocking defect.",
     });
     expect(drive.calls.map(({ label }) => label)).toEqual([
       "elenx-solve/role/explorer",
@@ -91,6 +109,58 @@ test("explorer, coordinator, and verifier each run one model session", async () 
   } finally {
     campaign.close();
   }
+  const inspection = inspectRoleCampaign(path) as {
+    readonly calls: readonly {
+      readonly role?: string;
+      readonly result?: unknown;
+    }[];
+  };
+  const visible = inspection.calls.find(({ role }) => role === "verifier");
+  expect(visible?.result).toEqual({
+    verdict: "ACCEPT",
+    report: "Every required audit completed without a blocking defect.",
+  });
+  expect(JSON.stringify(visible)).not.toContain('"PASS"');
+  expect(JSON.stringify(visible)).not.toContain('"audits"');
+});
+
+test("verifier accepts exactly when every required audit passes", () => {
+  expect(verifierResultFromSubmission(passingAuditSubmission)).toEqual({
+    verdict: "ACCEPT",
+    report: "Every required audit completed without a blocking defect.",
+  });
+
+  const failed = {
+    ...passingAuditSubmission,
+    audits: passingAuditSubmission.audits.map((audit) =>
+      audit.audit === "refutation"
+        ? {
+            ...audit,
+            verdict: "FAIL" as const,
+            report: "A counterexample remains.",
+          }
+        : audit,
+    ),
+  };
+  expect(verifierResultFromSubmission(failed)).toEqual({
+    verdict: "REJECT",
+    report: "refutation: A counterexample remains.",
+  });
+
+  expect(() =>
+    piVerifierSubmission.parse({
+      ...passingAuditSubmission,
+      audits: [
+        passingAuditSubmission.audits[0],
+        passingAuditSubmission.audits[0],
+        passingAuditSubmission.audits[1],
+      ],
+    }),
+  ).toThrow();
+  expect(
+    verifierResult.safeParse({ verdict: "PASS", report: "One audit passed." })
+      .success,
+  ).toBe(false);
 });
 
 test("the same roles recombine into the trial workflow", async () => {
@@ -231,6 +301,9 @@ test("multiple verifiers compose behind one verifier response", async () => {
   expect(response.verdict).toBe("REJECT");
   expect(response.report).toContain("Verifier 1: ACCEPT");
   expect(response.report).toContain("Verifier 2: REJECT");
+  expect((await allVerifiers(accepting, accepting)(proposal)).verdict).toBe(
+    "ACCEPT",
+  );
 });
 
 test("verifier aggregation propagates operational failure", async () => {
@@ -245,6 +318,11 @@ test("verifier aggregation propagates operational failure", async () => {
   await expect(allVerifiers(failing)(proposal)).rejects.toThrow(
     "transport failed",
   );
+  const invalid = (async () => ({
+    verdict: "PASS",
+    report: "Only one audit passed.",
+  })) as unknown as Verifier;
+  await expect(allVerifiers(invalid)(proposal)).rejects.toThrow();
 });
 
 test("coordinator packets cannot omit findings or invent references", () => {
