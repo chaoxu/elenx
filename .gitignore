@@ -8,3 +8,4 @@ runs/
 *.tgz
 .playwright-mcp/
 .playwright-cli/
+.DS_Store
