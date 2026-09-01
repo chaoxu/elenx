@@ -74,3 +74,9 @@ The theorem already had an independently audited proof using a different thresho
 The role runner solved the exact theorem in one explorer turn. The coordinator recognized completion immediately, both Elenx verifier calls accepted the frozen proof, and the outside-family hostile audit passed. This is proof-grade evidence for the mathematical result rather than a workflow-only success.
 
 Whole-trial restartability remains the role runner's experimental limitation. Every individual role call and verifier result is durable in the journal.
+
+## Current-contract release gate, 2026-09-01
+
+Elenx `06ea4b4` reran the frozen cyclic-couples candidate through the current candidate-bound, keyed-audit verifier. The candidate text retained SHA-256 `c65e1b79ab3e1d92d085c2c28e48e3939f5adf557a1d6ac8a56d93d4b02a7e45`, used `candidateKind: solution`, and had empty support.
+
+The Sol/max verifier returned aggregate `ACCEPT`. Its private correctness, requirements, and refutation audits all returned `PASS`. Kernel candidate 2 is verified and has the exact frozen answer bytes. Public inspection hides the audit object and internal `PASS` values. The single request used 28,169 tokens, including 20,927 reasoning tokens, cost `$0.68057`, and recorded zero request errors or unmeasured requests. The complete artifact is `runs/role-hard-keyed-v4-20260901-1/`.
