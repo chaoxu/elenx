@@ -203,11 +203,10 @@ export function allVerifiers(...verifiers: readonly Verifier[]): Verifier {
     const responses = (
       await Promise.all(verifiers.map((verifier) => verifier(input)))
     ).map((response) => verifierResult.parse(response));
-    const rejected = responses.filter(
-      (response) => response.verdict === "REJECT",
-    );
     return {
-      verdict: rejected.length === 0 ? "ACCEPT" : "REJECT",
+      verdict: responses.every(({ verdict }) => verdict === "ACCEPT")
+        ? "ACCEPT"
+        : "REJECT",
       report: responses
         .map(
           (response, index) =>

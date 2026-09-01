@@ -6,6 +6,7 @@ import {
   createCampaign,
   openCampaign,
   openReader,
+  returnedToolSubmission,
   type Campaign,
   type Entry,
   type Json,
@@ -18,17 +19,17 @@ import {
   verifierResultFromSubmission,
   type PiRoleSettings,
 } from "./pi-roles";
-import {
-  coordinatorInput,
-  explorerInput,
-  runTrial,
-  verifierInput,
-  verifierResult,
-} from "./roles";
+import { runTrial } from "./roles";
 import { withSerialToolCalls } from "./serial-tools";
 
 const application = "elenx-solve-roles";
 const protocol = "role-calls.v1";
+const roleTools = {
+  explorer: "submit_findings",
+  coordinator: "submit_coordination",
+  verifier: "submit_verification",
+} as const;
+type RoleName = keyof typeof roleTools;
 
 const roleCommands = ["explorer", "coordinator", "verifier", "trial"] as const;
 export type RoleCommand = (typeof roleCommands)[number];
@@ -109,24 +110,28 @@ export function inspectRoleCampaign(
     );
     const calls = records
       .filter(
-        (entry) =>
-          entry.kind === "call" && entry.label.startsWith("elenx-solve/role/"),
+        (entry): entry is Extract<Entry, { kind: "call" }> =>
+          entry.kind === "call" && roleFromLabel(entry.label) !== undefined,
       )
       .map((entry) => {
-        if (entry.kind !== "call") throw new Error("lost call narrowing");
+        const role = roleFromLabel(entry.label)!;
         const result = results.get(entry.seq);
-        const terminal = records.find(
-          (candidate) =>
-            candidate.kind === "tool-call" && candidate.call === entry.seq,
-        );
         const parsed =
           result?.kind === "call-result" && result.state === "returned"
             ? piStoredResult.safeParse(result.output)
             : undefined;
+        const visibleResult =
+          entry.role === role &&
+          result?.kind === "call-result" &&
+          result.state === "returned" &&
+          parsed?.success === true &&
+          parsed.data.state === "succeeded"
+            ? settledRoleResult(records, entry.seq, role)
+            : undefined;
         return {
           call: entry.seq,
-          role: entry.role,
-          label: `elenx-solve/role/${entry.role ?? "unknown"}`,
+          role,
+          label: entry.label,
           startedAtMs: entry.atMs,
           ...(result === undefined
             ? {}
@@ -135,9 +140,7 @@ export function inspectRoleCampaign(
                 elapsedMs: result.atMs - entry.atMs,
                 settlement: result.state,
               }),
-          ...(terminal?.kind === "tool-call"
-            ? { result: publicRoleResult(entry.role, terminal.input) }
-            : {}),
+          ...(visibleResult === undefined ? {} : { result: visibleResult }),
           ...(parsed?.success === true
             ? { piState: parsed.data.state, telemetry: parsed.data.telemetry }
             : {}),
@@ -146,24 +149,39 @@ export function inspectRoleCampaign(
             : {}),
         };
       });
+    const unsettledCalls = calls
+      .filter(({ settlement }) => settlement === undefined)
+      .map(({ call }) => call);
     return JSON.parse(
-      JSON.stringify({ calls, spend: derivePiSpend(records).summary }),
+      JSON.stringify({
+        calls,
+        ...(unsettledCalls.length === 0 ? {} : { unsettledCalls }),
+        spend: derivePiSpend(records).summary,
+      }),
     ) as Json;
   } finally {
     reader.close();
   }
 }
 
-function publicRoleResult(role: string | undefined, value: Json): Json {
-  if (role !== "verifier") return value;
-  const existing = verifierResult.safeParse(value);
-  if (existing.success) return existing.data;
-  const internal = isJsonObject(value) ? { audits: value["audits"] } : value;
-  return verifierResultFromSubmission(internal);
+function roleFromLabel(label: string): RoleName | undefined {
+  if (label === "elenx-solve/role/explorer") return "explorer";
+  if (label === "elenx-solve/role/coordinator") return "coordinator";
+  if (label === "elenx-solve/role/verifier") return "verifier";
+  return undefined;
 }
 
-function isJsonObject(value: Json): value is { readonly [key: string]: Json } {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
+function settledRoleResult(
+  records: readonly Entry[],
+  call: number,
+  role: RoleName,
+): Json | undefined {
+  try {
+    const input = returnedToolSubmission(records, call, roleTools[role]).input;
+    return role === "verifier" ? verifierResultFromSubmission(input) : input;
+  } catch {
+    return undefined;
+  }
 }
 
 function modelsPath(environment: NodeJS.ProcessEnv): string | null {
@@ -234,13 +252,13 @@ export async function runRoleCommand(
     const roles = createPiRoles(campaign, settings, dependencies);
     const input = await readJson(inputPath);
     if (command === "explorer") {
-      return toJson(await roles.explorer(explorerInput.parse(input)));
+      return toJson(await roles.explorer(input));
     }
     if (command === "coordinator") {
-      return toJson(await roles.coordinator(coordinatorInput.parse(input)));
+      return toJson(await roles.coordinator(input));
     }
     if (command === "verifier") {
-      return toJson(await roles.verifier(verifierInput.parse(input)));
+      return toJson(await roles.verifier(input));
     }
     return toJson(await runTrial(input, roles));
   } finally {

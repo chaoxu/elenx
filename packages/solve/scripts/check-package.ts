@@ -11,6 +11,13 @@ async function run(command: string[], cwd: string): Promise<void> {
   if ((await child.exited) !== 0) throw new Error(`${command[1]} failed`);
 }
 
+async function reject(command: string[], cwd: string): Promise<void> {
+  const child = Bun.spawn(command, { cwd, stdout: "pipe", stderr: "pipe" });
+  if ((await child.exited) === 0) {
+    throw new Error(`${command[1]} unexpectedly succeeded`);
+  }
+}
+
 const solver = process.cwd();
 const kernel = resolve(solver, "../..");
 const temporary = await mkdtemp(join(tmpdir(), "elenx-solve-package-"));
@@ -63,7 +70,19 @@ try {
     [
       process.execPath,
       "-e",
-      'import { allVerifiers, runTrial } from "elenx-solve/roles"; if (typeof allVerifiers !== "function" || typeof runTrial !== "function") process.exit(1);',
+      'import { executionContract } from "elenx-solve"; if (typeof executionContract !== "object") process.exit(1);',
+    ],
+    consumer,
+  );
+  await reject(
+    [process.execPath, "-e", 'await import("elenx-solve/pi-roles");'],
+    consumer,
+  );
+  await run(
+    [
+      process.execPath,
+      "-e",
+      'import * as roles from "elenx-solve/roles"; if (typeof roles.allVerifiers !== "function" || typeof roles.runTrial !== "function" || "verifierResult" in roles || "piVerifierSubmission" in roles) process.exit(1);',
     ],
     consumer,
   );

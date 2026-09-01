@@ -6,7 +6,6 @@ import { createCampaign } from "elenx";
 import {
   createPiRoles,
   piVerifierSubmission,
-  requiredVerifierAudits,
   verifierResultFromSubmission,
 } from "../pi-roles";
 import { inspectRoleCampaign } from "../role-cli";
@@ -36,12 +35,12 @@ const task = {
 };
 
 const passingAuditSubmission = {
-  audits: requiredVerifierAudits.map((audit) => ({
-    audit,
-    verdict: "PASS" as const,
-    report: `${audit} passed.`,
-  })),
-};
+  audits: {
+    correctness: { verdict: "PASS", report: "Correctness passed." },
+    requirements: { verdict: "PASS", report: "Requirements passed." },
+    refutation: { verdict: "PASS", report: "Refutation passed." },
+  },
+} as const;
 
 test("explorer, coordinator, and verifier each run one model session", async () => {
   const replies: Reply[] = [
@@ -130,37 +129,142 @@ test("verifier accepts exactly when every required audit passes", () => {
     report: "Every required audit completed without a blocking defect.",
   });
 
-  const failed = {
-    ...passingAuditSubmission,
-    audits: passingAuditSubmission.audits.map((audit) =>
-      audit.audit === "refutation"
-        ? {
-            ...audit,
-            verdict: "FAIL" as const,
-            report: "A counterexample remains.",
-          }
-        : audit,
-    ),
-  };
-  expect(verifierResultFromSubmission(failed)).toEqual({
+  for (const audit of ["correctness", "requirements", "refutation"] as const) {
+    const failed = {
+      audits: {
+        ...passingAuditSubmission.audits,
+        [audit]: {
+          verdict: "FAIL" as const,
+          report: `${audit} failed.`,
+        },
+      },
+    };
+    expect(verifierResultFromSubmission(failed)).toEqual({
+      verdict: "REJECT",
+      report: `${audit}: ${audit} failed.`,
+    });
+  }
+
+  expect(
+    verifierResultFromSubmission({
+      audits: {
+        ...passingAuditSubmission.audits,
+        correctness: { verdict: "FAIL", report: "Bad lemma." },
+        refutation: { verdict: "FAIL", report: "Counterexample." },
+      },
+    }),
+  ).toEqual({
     verdict: "REJECT",
-    report: "refutation: A counterexample remains.",
+    report: "correctness: Bad lemma.\n\nrefutation: Counterexample.",
   });
 
-  expect(() =>
-    piVerifierSubmission.parse({
-      ...passingAuditSubmission,
-      audits: [
-        passingAuditSubmission.audits[0],
-        passingAuditSubmission.audits[0],
-        passingAuditSubmission.audits[1],
-      ],
-    }),
-  ).toThrow();
+  expect(
+    piVerifierSubmission.safeParse({
+      audits: {
+        correctness: passingAuditSubmission.audits.correctness,
+        requirements: passingAuditSubmission.audits.requirements,
+      },
+    }).success,
+  ).toBe(false);
+  expect(
+    piVerifierSubmission.safeParse({
+      audits: {
+        ...passingAuditSubmission.audits,
+        extra: { verdict: "PASS", report: "Extra." },
+      },
+    }).success,
+  ).toBe(false);
   expect(
     verifierResult.safeParse({ verdict: "PASS", report: "One audit passed." })
       .success,
   ).toBe(false);
+});
+
+test("inspection exposes no verdict from failed or malformed verifier calls", async () => {
+  const proposal = {
+    task,
+    answer: { id: "n1", summary: "candidate", text: "Candidate proof." },
+    support: [],
+  };
+  const replies: Reply[] = [
+    {
+      submission: passingAuditSubmission,
+      state: "failed",
+      error: "transport failed",
+    },
+    {
+      submission: {
+        verdict: "ACCEPT",
+        report: "Forged aggregate without audits.",
+      },
+    },
+  ];
+
+  for (const reply of replies) {
+    const path = campaignPath();
+    const campaign = createCampaign(path, "elenx-solve-roles", {
+      protocol: "role-calls.v1",
+    });
+    const drive = dependencies([reply]);
+    const settings = runSettings();
+    const roles = createPiRoles(
+      campaign,
+      {
+        explorer: settings.explorer,
+        coordinator: settings.curator,
+        verifier: settings.verifier,
+      },
+      { models: drive.models!, run: drive.run! },
+    );
+    try {
+      await expect(roles.verifier(proposal)).rejects.toThrow();
+    } finally {
+      campaign.close();
+    }
+    const inspection = inspectRoleCampaign(path) as {
+      readonly calls: readonly {
+        readonly role?: string;
+        readonly result?: unknown;
+      }[];
+    };
+    expect(
+      inspection.calls.find(({ role }) => role === "verifier")?.result,
+    ).toBeUndefined();
+  }
+});
+
+test("inspection lists unsettled role calls without exposing a result", async () => {
+  const path = campaignPath();
+  const campaign = createCampaign(path, "elenx-solve-roles", {
+    protocol: "role-calls.v1",
+  });
+  let settle!: () => void;
+  const pending = campaign.call(
+    {
+      label: "elenx-solve/role/explorer",
+      role: "explorer",
+      request: {},
+    },
+    () =>
+      new Promise((resolve) => {
+        settle = () => resolve({ state: "succeeded" });
+      }),
+  );
+  try {
+    const inspection = inspectRoleCampaign(path) as {
+      readonly calls: readonly {
+        readonly call: number;
+        readonly result?: unknown;
+      }[];
+      readonly unsettledCalls: readonly number[];
+    };
+    expect(inspection.unsettledCalls).toEqual([inspection.calls[0]!.call]);
+    expect(inspection.calls[0]!.result).toBeUndefined();
+  } finally {
+    settle();
+    await pending;
+    campaign.close();
+  }
 });
 
 test("the same roles recombine into the trial workflow", async () => {
@@ -323,6 +427,7 @@ test("verifier aggregation propagates operational failure", async () => {
     report: "Only one audit passed.",
   })) as unknown as Verifier;
   await expect(allVerifiers(invalid)(proposal)).rejects.toThrow();
+  expect(() => allVerifiers()).toThrow("at least one verifier");
 });
 
 test("coordinator packets cannot omit findings or invent references", () => {

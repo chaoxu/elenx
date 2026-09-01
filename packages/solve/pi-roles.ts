@@ -13,7 +13,6 @@ import {
   verifierInput,
   type CoordinatorInput,
   type ExplorerInput,
-  type Roles,
   type Task,
   type VerifierInput,
   type VerifierResult,
@@ -39,50 +38,36 @@ export type PiRoleSettings = z.output<typeof piRoleSettings>;
 
 type RoleName = "explorer" | "coordinator" | "verifier";
 
-export const requiredVerifierAudits = [
+const verifierAuditNames = [
   "correctness",
   "requirements",
   "refutation",
 ] as const;
 const verifierAudit = z.strictObject({
-  audit: z.enum(requiredVerifierAudits),
   verdict: z.enum(["PASS", "FAIL"]),
   report: nonblank,
 });
-export const piVerifierSubmission = z
-  .strictObject({
-    audits: z.array(verifierAudit).length(requiredVerifierAudits.length),
-  })
-  .superRefine((value, ctx) => {
-    const seen = new Set(value.audits.map(({ audit }) => audit));
-    for (const required of requiredVerifierAudits) {
-      if (!seen.has(required)) {
-        ctx.addIssue({
-          code: "custom",
-          message: `missing required audit: ${required}`,
-          path: ["audits"],
-        });
-      }
-    }
-    if (seen.size !== value.audits.length) {
-      ctx.addIssue({
-        code: "custom",
-        message: "each required audit must appear exactly once",
-        path: ["audits"],
-      });
-    }
-  });
-export type PiVerifierSubmission = z.output<typeof piVerifierSubmission>;
+export const piVerifierSubmission = z.strictObject({
+  audits: z.strictObject({
+    correctness: verifierAudit,
+    requirements: verifierAudit,
+    refutation: verifierAudit,
+  }),
+});
 
 export function verifierResultFromSubmission(value: unknown): VerifierResult {
   const submission = piVerifierSubmission.parse(value);
-  const failed = submission.audits.filter(({ verdict }) => verdict === "FAIL");
+  const failed = verifierAuditNames.filter(
+    (audit) => submission.audits[audit].verdict === "FAIL",
+  );
   return verifierResult.parse({
     verdict: failed.length === 0 ? "ACCEPT" : "REJECT",
     report:
       failed.length === 0
         ? "Every required audit completed without a blocking defect."
-        : failed.map(({ audit, report }) => `${audit}: ${report}`).join("\n\n"),
+        : failed
+            .map((audit) => `${audit}: ${submission.audits[audit].report}`)
+            .join("\n\n"),
   });
 }
 
@@ -243,10 +228,10 @@ export function createPiRoles(
   campaign: Campaign,
   settingsValue: PiRoleSettings,
   dependencies: PiRoleDependencies,
-): Roles {
+) {
   const settings = piRoleSettings.parse(settingsValue);
   return {
-    explorer(inputValue) {
+    explorer(inputValue: unknown) {
       const input = explorerInput.parse(inputValue);
       return runTurn(
         campaign,
@@ -255,7 +240,7 @@ export function createPiRoles(
         dependencies,
       );
     },
-    coordinator(inputValue) {
+    coordinator(inputValue: unknown) {
       const input = coordinatorInput.parse(inputValue);
       return runTurn(
         campaign,
@@ -264,7 +249,7 @@ export function createPiRoles(
         dependencies,
       );
     },
-    async verifier(inputValue) {
+    async verifier(inputValue: unknown) {
       const input = verifierInput.parse(inputValue);
       return verifierResultFromSubmission(
         await runTurn(
