@@ -24,7 +24,11 @@ export type { SolveDependencies, SolveModels } from "./runtime";
 export { resume, settings, start } from "./exploration";
 export type { Report, Settings } from "./exploration";
 export { executionContract } from "./execution-contract";
-export type { ExecutionContract, ExecutionReport } from "./execution-contract";
+export type {
+  ExecutionContract,
+  ExecutionReport,
+  TrialExecutionReport,
+} from "./execution-contract";
 
 const usage = `Usage:
   elenx-solve contract

@@ -11,6 +11,9 @@ const summaryText = nonblank.refine((value) => value.length <= 240, {
 const positiveInteger = z.number().int().positive();
 const noteId = z.string().regex(/^n[1-9][0-9]*$/u);
 
+export const roleApplication = "elenx-solve-roles";
+export const roleProtocol = "role-calls.v2";
+
 export const task = z.strictObject({
   problem: nonblank,
   completionCriteria: nonblank,

@@ -13,6 +13,7 @@ The suite covers:
 - standalone explorer, coordinator, and verifier calls through the unified CLI, model runtime, Pi adapter, journal, and inspection
 - a rejected proposal followed by explorer repair and verifier acceptance
 - a verified counterexample that terminates the trial as `refuted`
+- an unresolved trial that terminates at its explorer-turn limit without an accepted candidate
 - a provider failure that exits nonzero and never becomes a mathematical result
 - wrong-database and existing-trial failures before settings or credential setup
 

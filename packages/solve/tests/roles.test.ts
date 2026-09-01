@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 
-import { createCampaign } from "elenx";
+import { createCampaign, deriveCandidateStatus } from "elenx";
 
 import {
   createPiRoles,
@@ -61,7 +61,7 @@ test("explorer, coordinator, and verifier each run one model session", async () 
   const drive = dependencies(replies);
   const path = campaignPath();
   const campaign = createCampaign(path, "elenx-solve-roles", {
-    protocol: "role-calls.v1",
+    protocol: "role-calls.v2",
   });
   const settings = runSettings();
   try {
@@ -102,6 +102,17 @@ test("explorer, coordinator, and verifier each run one model session", async () 
       verdict: "ACCEPT",
       report: "Every required audit completed without a blocking defect.",
     });
+    const candidate = campaign
+      .records()
+      .find((entry) => entry.kind === "candidate");
+    if (candidate?.kind !== "candidate") throw new Error("candidate missing");
+    expect(
+      deriveCandidateStatus(campaign.records(), candidate.seq).verified,
+    ).toBe(true);
+    expect(roles.acceptedCandidate()).toBe(candidate.seq);
+    expect(new TextDecoder().decode(campaign.material(candidate.seq))).toBe(
+      "Proof of P.",
+    );
     expect(drive.calls.map(({ label }) => label)).toEqual([
       "elenx-solve/role/explorer",
       "elenx-solve/role/coordinator",
@@ -123,6 +134,61 @@ test("explorer, coordinator, and verifier each run one model session", async () 
   });
   expect(JSON.stringify(visible)).not.toContain('"PASS"');
   expect(JSON.stringify(visible)).not.toContain('"audits"');
+});
+
+test("a rejected verifier proposal records a failed durable candidate", async () => {
+  const path = campaignPath();
+  const campaign = createCampaign(path, "elenx-solve-roles", {
+    protocol: "role-calls.v2",
+  });
+  const drive = dependencies([
+    {
+      submission: {
+        audits: {
+          ...passingAuditSubmission.audits,
+          correctness: { verdict: "FAIL", report: "A lemma is false." },
+        },
+      },
+    },
+  ]);
+  const settings = runSettings();
+  const roles = createPiRoles(
+    campaign,
+    {
+      explorer: settings.explorer,
+      coordinator: settings.curator,
+      verifier: settings.verifier,
+    },
+    { models: drive.models!, run: drive.run! },
+  );
+  try {
+    expect(
+      await roles.verifier({
+        task,
+        candidateKind: "solution",
+        answer: { id: "n2", summary: "candidate", text: "Candidate proof." },
+        support: [
+          { id: "n1", summary: "supporting lemma", text: "Lemma text." },
+        ],
+      }),
+    ).toMatchObject({ verdict: "REJECT" });
+    const candidate = campaign
+      .records()
+      .find((entry) => entry.kind === "candidate");
+    if (candidate?.kind !== "candidate") throw new Error("candidate missing");
+    expect(
+      deriveCandidateStatus(campaign.records(), candidate.seq),
+    ).toMatchObject({
+      verified: false,
+      failed: ["elenx-solve/role/verifier"],
+    });
+    expect(roles.acceptedCandidate()).toBeUndefined();
+    expect(new TextDecoder().decode(campaign.material(candidate.seq))).toBe(
+      "Candidate proof.\n\n--- SUPPORT ---\n\nLemma text.",
+    );
+  } finally {
+    campaign.close();
+  }
 });
 
 test("verifier accepts exactly when every required audit passes", () => {

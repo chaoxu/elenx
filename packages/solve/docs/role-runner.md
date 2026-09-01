@@ -36,7 +36,7 @@ missing or repeated audit -> invalid verifier submission
 operational failure       -> propagated error
 ```
 
-The model cannot submit `ACCEPT` or `REJECT`. Standard role output and inspection expose only the derived `VerifierResult`; internal `PASS` and `FAIL` records remain verifier implementation data.
+The model cannot submit `ACCEPT` or `REJECT`. Standard role output and inspection expose only the derived `VerifierResult`. Before each verifier call, Elenx declares a kernel candidate whose material starts with the nominated answer and appends each support note in order. The verifier call is bound to that candidate. Aggregate `ACCEPT` records a kernel `PASS`, while aggregate `REJECT` records `FAIL`. Internal audit records remain verifier implementation data.
 
 `trial` connects the same role calls into an experimental search:
 
@@ -45,6 +45,8 @@ elenx-solve trial trial-input.json roles.db settings.json
 ```
 
 The trial files every explorer finding as an immutable note. The coordinator then requests another exploration or nominates a candidate for verification. A `solution` candidate claims to satisfy the requested task. A `refutation` candidate claims to prove that the exact requested mathematical target is false or impossible. The coordinator's label has no authority: the verifier checks both the mathematics and the declared candidate kind. An accepted solution ends as `accepted`, and an accepted refutation ends as `refuted`. A rejection becomes the next explorer's repair objective. The explorer-turn limit ends an unresolved trial.
+
+CLI trials use role protocol `role-calls.v2` and emit a versioned execution report. `accepted` and `refuted` reports name the exact verified kernel candidate and its candidate kind. A `turn-limit` report names no candidate. `elenx-solve contract` publishes this report schema and the exact trial argument order for run managers.
 
 `refuted` requires a verified certificate against the exact target. A defect in one attempted proof, a missing exposition requirement, an ambiguity, or a claim that the problem is open remains a rejection or unresolved search.
 
@@ -86,4 +88,4 @@ The settings file selects one model profile per role:
 
 The library exports the `Roles` interface, its input and result types, `runTrial`, and `allVerifiers` from `elenx-solve/roles`. Runtime schemas and the Pi adapter remain private. A `Roles` value contains `explorer(input)`, `coordinator(input)`, and `verifier(input)`, each returning its typed result directly. Call IDs, timing, and token use remain available through `elenx-solve inspect`. `runTrial` accepts any `Roles` value, so callers can replace one function without changing the trial. `allVerifiers(verifierA, verifierB)` returns `ACCEPT` only when every supplied verifier returns `ACCEPT`. A rejection from any verifier yields `REJECT`, while operational errors propagate without becoming mathematical verdicts.
 
-`elenx-solve inspect` detects role journals and V17 campaign journals. Role calls use `elenx-solve/role/<role>` journal labels. Inspection exposes a role result only after the exact terminal tool, its tool result, and the enclosing model call have all succeeded. Unsettled role calls are listed separately.
+`elenx-solve inspect` detects role journals and V17 campaign journals. Role calls use `elenx-solve/role/<role>` journal labels. Inspection exposes a role result only after the exact terminal tool, its tool result, and the enclosing model call have all succeeded. Unsettled role calls are listed separately. Historical `role-calls.v1` journals remain readable, while new calls require `role-calls.v2`.

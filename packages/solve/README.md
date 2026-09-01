@@ -37,7 +37,7 @@ External run managers read the versioned CLI contract without loading credential
 bun solve.ts contract
 ```
 
-The contract identifies the application protocol, exact `run` argument order, report schema, and terminal conditions. Every CLI run report carries the same schema version, application ID, and protocol. A manager freezes this object with the run and refuses a checkout or worker image that reports a different contract.
+The contract identifies the campaign and role-trial protocols, their exact argument order, report schemas, and terminal conditions. Every managed CLI report carries the declared schema version, application ID, and protocol. Accepted and refuted role trials name their verified kernel candidate. A manager freezes this object with the run and refuses a checkout or worker image that reports a different contract.
 
 ## Model routing
 

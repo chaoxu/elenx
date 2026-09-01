@@ -183,7 +183,8 @@ async function runTurn<S extends z.ZodType>(
   profile: PiRoleProfile,
   turn: Turn<S>,
   dependencies: PiRoleDependencies,
-): Promise<z.output<S>> {
+  candidate?: number,
+): Promise<{ readonly call: number; readonly value: z.output<S> }> {
   const model = selectModel(dependencies.models, {
     provider: profile.provider,
     modelId: profile.model,
@@ -213,6 +214,7 @@ async function runTurn<S extends z.ZodType>(
     cacheKey: createHash("sha256")
       .update(`elenx-solve/role/${turn.role}\n${turn.system}`)
       .digest("hex"),
+    ...(candidate === undefined ? {} : { candidate }),
     ...(dependencies.signal === undefined
       ? {}
       : { signal: dependencies.signal }),
@@ -225,7 +227,7 @@ async function runTurn<S extends z.ZodType>(
     result.call,
     turn.tool,
   );
-  return turn.schema.parse(submission.input);
+  return { call: result.call, value: turn.schema.parse(submission.input) };
 }
 
 export function createPiRoles(
@@ -234,35 +236,63 @@ export function createPiRoles(
   dependencies: PiRoleDependencies,
 ) {
   const settings = piRoleSettings.parse(settingsValue);
+  let acceptedCandidate: number | undefined;
   return {
-    explorer(inputValue: unknown) {
+    async explorer(inputValue: unknown) {
       const input = explorerInput.parse(inputValue);
-      return runTurn(
-        campaign,
-        settings.explorer,
-        explorerTurn(input),
-        dependencies,
-      );
+      return (
+        await runTurn(
+          campaign,
+          settings.explorer,
+          explorerTurn(input),
+          dependencies,
+        )
+      ).value;
     },
-    coordinator(inputValue: unknown) {
+    async coordinator(inputValue: unknown) {
       const input = coordinatorInput.parse(inputValue);
-      return runTurn(
-        campaign,
-        settings.coordinator,
-        coordinatorTurn(input),
-        dependencies,
-      );
+      return (
+        await runTurn(
+          campaign,
+          settings.coordinator,
+          coordinatorTurn(input),
+          dependencies,
+        )
+      ).value;
     },
     async verifier(inputValue: unknown) {
       const input = verifierInput.parse(inputValue);
-      return verifierResultFromSubmission(
-        await runTurn(
-          campaign,
-          settings.verifier,
-          verifierTurn(input),
-          dependencies,
-        ),
+      acceptedCandidate = undefined;
+      const label = "elenx-solve/role/verifier";
+      const candidate = campaign.submitCandidate(roleCandidateMaterial(input), [
+        label,
+      ]);
+      const turn = await runTurn(
+        campaign,
+        settings.verifier,
+        verifierTurn(input),
+        dependencies,
+        candidate,
       );
+      const result = verifierResultFromSubmission(turn.value);
+      campaign.recordVerdict(
+        turn.call,
+        result.verdict === "ACCEPT" ? "PASS" : "FAIL",
+        { report: result.report, candidateKind: input.candidateKind },
+      );
+      if (result.verdict === "ACCEPT") acceptedCandidate = candidate;
+      return result;
+    },
+    acceptedCandidate() {
+      return acceptedCandidate;
     },
   };
+}
+
+function roleCandidateMaterial(input: VerifierInput): Uint8Array {
+  const text = [
+    input.answer.text,
+    ...input.support.map(({ text }) => text),
+  ].join("\n\n--- SUPPORT ---\n\n");
+  return new TextEncoder().encode(text);
 }

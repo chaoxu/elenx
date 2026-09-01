@@ -3,7 +3,12 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { createCampaign } from "elenx";
+import {
+  createCampaign,
+  deriveCandidateStatus,
+  openReader,
+  type Entry,
+} from "elenx";
 
 interface CliResult {
   readonly code: number;
@@ -118,11 +123,31 @@ test("trial repairs one rejected proof and accepts the next exact proposal", asy
 
   const result = await cli(directory, "trial", trialInput, campaign, settings);
   expect(result.code).toBe(0);
-  expect(JSON.parse(result.stdout)).toMatchObject({
+  const report = JSON.parse(result.stdout) as {
+    readonly candidate: number;
+    readonly answer: { readonly text: string };
+  };
+  expect(report).toMatchObject({
+    schemaVersion: 1,
+    application: "elenx-solve-roles",
+    protocol: "role-calls.v2",
     outcome: "accepted",
+    phase: "accepted",
     turns: 2,
+    candidateKind: "solution",
     verifier: { verdict: "ACCEPT" },
   });
+  expect(Number.isSafeInteger(report.candidate)).toBe(true);
+
+  const candidates = candidateEntries(campaign);
+  expect(candidates).toHaveLength(2);
+  expect(report.candidate).toBe(candidates[1]!.seq);
+  expect(candidateStatus(campaign, candidates[0]!.seq)).toMatchObject({
+    verified: false,
+    failed: ["elenx-solve/role/verifier"],
+  });
+  expect(candidateStatus(campaign, report.candidate).verified).toBe(true);
+  expect(candidateText(campaign, report.candidate)).toBe(report.answer.text);
 
   const inspection = JSON.parse(
     (await cli(directory, "inspect", campaign)).stdout,
@@ -165,12 +190,26 @@ test("trial terminates when the verifier accepts an exact refutation", async () 
 
   const result = await cli(directory, "trial", trialInput, campaign, settings);
   expect(result.code).toBe(0);
-  expect(JSON.parse(result.stdout)).toMatchObject({
+  const report = JSON.parse(result.stdout) as {
+    readonly candidate: number;
+    readonly refutation: { readonly text: string };
+  };
+  expect(report).toMatchObject({
+    schemaVersion: 1,
+    application: "elenx-solve-roles",
+    protocol: "role-calls.v2",
     outcome: "refuted",
+    phase: "refuted",
     turns: 1,
+    candidateKind: "refutation",
     refutation: { summary: "transitive tournament counterexample" },
     verifier: { verdict: "ACCEPT" },
   });
+  expect(Number.isSafeInteger(report.candidate)).toBe(true);
+  expect(candidateStatus(campaign, report.candidate).verified).toBe(true);
+  expect(candidateText(campaign, report.candidate)).toBe(
+    report.refutation.text,
+  );
 
   const inspection = JSON.parse(
     (await cli(directory, "inspect", campaign)).stdout,
@@ -180,6 +219,38 @@ test("trial terminates when the verifier accepts an exact refutation", async () 
     "coordinator",
     "verifier",
   ]);
+});
+
+test("trial turn limit is terminal without an accepted candidate", async () => {
+  const directory = await testDirectory();
+  const settings = await writeSettings(directory);
+  const trialInput = await writeJson(directory, "trial.json", {
+    task: primeTask(),
+    objective: "Produce a complete proof.",
+    maxExplorerTurns: 1,
+  });
+  const campaign = join(directory, "turn-limit.db");
+
+  const result = await cli(directory, "trial", trialInput, campaign, settings);
+  expect(result.code).toBe(0);
+  const report = JSON.parse(result.stdout);
+  expect(report).toMatchObject({
+    schemaVersion: 1,
+    application: "elenx-solve-roles",
+    protocol: "role-calls.v2",
+    outcome: "turn-limit",
+    phase: "turn-limit",
+    turns: 1,
+    lastVerifierResult: { verdict: "REJECT" },
+  });
+  expect(report).not.toHaveProperty("candidate");
+  expect(report).not.toHaveProperty("candidateKind");
+  const candidates = candidateEntries(campaign);
+  expect(candidates).toHaveLength(1);
+  expect(candidateStatus(campaign, candidates[0]!.seq)).toMatchObject({
+    verified: false,
+    failed: ["elenx-solve/role/verifier"],
+  });
 });
 
 test("provider failure exits nonzero and inspection exposes no mathematical result", async () => {
@@ -211,6 +282,13 @@ test("provider failure exits nonzero and inspection exposes no mathematical resu
   });
   expect(inspection.calls[0]).not.toHaveProperty("result");
   expect(inspection.spend.requestErrors).toBeGreaterThanOrEqual(1);
+  const candidates = candidateEntries(campaign);
+  expect(candidates).toHaveLength(1);
+  expect(candidateStatus(campaign, candidates[0]!.seq)).toMatchObject({
+    verified: false,
+    missing: ["elenx-solve/role/verifier"],
+    failed: [],
+  });
 });
 
 test("database type and existing-trial errors happen before credential setup", async () => {
@@ -389,6 +467,40 @@ async function recordedRequests(
     .split("\n")
     .filter(Boolean)
     .map((line) => JSON.parse(line) as Record<string, unknown>);
+}
+
+function candidateEntries(
+  campaign: string,
+): Extract<Entry, { readonly kind: "candidate" }>[] {
+  const reader = openReader(campaign);
+  try {
+    return reader
+      .records()
+      .filter(
+        (entry): entry is Extract<Entry, { readonly kind: "candidate" }> =>
+          entry.kind === "candidate",
+      );
+  } finally {
+    reader.close();
+  }
+}
+
+function candidateStatus(campaign: string, candidate: number) {
+  const reader = openReader(campaign);
+  try {
+    return deriveCandidateStatus(reader.records(), candidate);
+  } finally {
+    reader.close();
+  }
+}
+
+function candidateText(campaign: string, candidate: number): string {
+  const reader = openReader(campaign);
+  try {
+    return new TextDecoder().decode(reader.material(candidate));
+  } finally {
+    reader.close();
+  }
 }
 
 function primeTask() {

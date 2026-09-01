@@ -13,6 +13,7 @@ import {
 } from "elenx";
 import { derivePiSpend, piStoredResult } from "elenx/pi";
 
+import { trialExecutionReport } from "./execution-contract";
 import {
   createPiRoles,
   piRoleSettings,
@@ -22,14 +23,14 @@ import {
 import {
   coordinatorInput,
   explorerInput,
+  roleApplication,
+  roleProtocol,
   runTrial,
   trialInput,
   verifierInput,
 } from "./roles";
 import { withSerialToolCalls } from "./serial-tools";
 
-const application = "elenx-solve-roles";
-const protocol = "role-calls.v1";
 const roleTools = {
   explorer: "submit_findings",
   coordinator: "submit_coordination",
@@ -54,11 +55,11 @@ async function readSettings(path: string): Promise<PiRoleSettings> {
 
 function openRoleCampaign(path: string): Campaign {
   if (!existsSync(path)) {
-    return createCampaign(path, application, { protocol });
+    return createCampaign(path, roleApplication, { protocol: roleProtocol });
   }
   const campaign = openCampaign(path);
   try {
-    assertRoleDeclaration(campaign.records()[0]);
+    assertWritableRoleDeclaration(campaign.records()[0]);
   } catch (error) {
     campaign.close();
     throw error;
@@ -70,7 +71,7 @@ function validateExistingRoleCampaign(path: string): void {
   if (!existsSync(path)) return;
   const campaign = openCampaign(path);
   try {
-    assertRoleDeclaration(campaign.records()[0]);
+    assertWritableRoleDeclaration(campaign.records()[0]);
   } finally {
     campaign.close();
   }
@@ -91,14 +92,30 @@ function declarationProtocol(declaration: Entry | undefined): unknown {
 function isRoleDeclaration(declaration: Entry | undefined): boolean {
   if (declaration?.kind !== "campaign") return false;
   return (
-    declaration.application === application &&
-    declarationProtocol(declaration) === protocol
+    declaration.application === roleApplication &&
+    ["role-calls.v1", roleProtocol].includes(
+      String(declarationProtocol(declaration)),
+    )
+  );
+}
+
+function isWritableRoleDeclaration(declaration: Entry | undefined): boolean {
+  return (
+    declaration?.kind === "campaign" &&
+    declaration.application === roleApplication &&
+    declarationProtocol(declaration) === roleProtocol
   );
 }
 
 function assertRoleDeclaration(declaration: Entry | undefined): void {
   if (!isRoleDeclaration(declaration)) {
     throw new Error("not an Elenx role journal");
+  }
+}
+
+function assertWritableRoleDeclaration(declaration: Entry | undefined): void {
+  if (!isWritableRoleDeclaration(declaration)) {
+    throw new Error("not an Elenx role journal for the current protocol");
   }
 }
 
@@ -278,7 +295,8 @@ export async function runRoleCommand(
     if (command === "verifier") {
       return toJson(await roles.verifier(input));
     }
-    return toJson(await runTrial(input, roles));
+    const result = await runTrial(input, roles);
+    return toJson(trialExecutionReport(result, roles.acceptedCandidate()));
   } finally {
     campaign.close();
     process.off("SIGINT", stop);
