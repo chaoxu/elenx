@@ -33,6 +33,7 @@ import {
   type CurationSubmission,
   type ExplorerSubmission,
   type Finding,
+  type ReconstructionGuide,
   type ServeSubmission,
   type Task,
   type TriageSubmission,
@@ -42,6 +43,7 @@ import {
 // verbatim, scoped to one note's exact text instead of a whole candidate.
 import {
   boundaryLabel,
+  blindReconstructionTurn,
   candidateVerifierLabels,
   curationLabel,
   curationTurn,
@@ -50,6 +52,11 @@ import {
   explorerTurn,
   premiseTurn,
   renderIndexBlock,
+  reconstructionCertificationLabel,
+  reconstructionCertificationTurn,
+  reconstructionComparisonTurn,
+  reconstructionDerivationLabel,
+  reconstructionBundleContainsCandidate,
   serveLabel,
   serveTurn,
   structuredCallReplayIdentity,
@@ -60,6 +67,9 @@ import {
   type CuratorView,
   type ExplorerView,
   type PremiseStatement,
+  type ReconstructionBundleView,
+  type ReconstructionCertificationView,
+  type ReconstructionComparisonView,
   type ServeView,
   type Standing,
   type StandingEntry,
@@ -157,6 +167,27 @@ export type ModelPhase =
       readonly candidate?: EntryId;
     }
   | {
+      readonly kind: "reconstruction-certification";
+      readonly label: string;
+      readonly after: EntryId;
+      readonly view: ReconstructionCertificationView;
+      readonly candidate: EntryId;
+    }
+  | {
+      readonly kind: "reconstruction-derive";
+      readonly label: string;
+      readonly after: EntryId;
+      readonly bundle: ReconstructionBundleView;
+      readonly candidate: EntryId;
+    }
+  | {
+      readonly kind: "reconstruction-compare";
+      readonly label: string;
+      readonly after: EntryId;
+      readonly view: ReconstructionComparisonView;
+      readonly candidate: EntryId;
+    }
+  | {
       readonly kind: "note-source-check";
       readonly label: string;
       readonly after: EntryId;
@@ -191,11 +222,21 @@ type Phase =
   | {
       readonly kind: "index-limit";
       readonly tokens: number;
+    }
+  | {
+      readonly kind: "turn-limit";
+      readonly turns: number;
     };
 
 export function phaseRole(phase: ModelPhase): string {
   if (phase.kind === "curation" || phase.kind === "serve") return "curator";
-  if (phase.kind === "verify") return "verifier";
+  if (
+    phase.kind === "verify" ||
+    phase.kind === "reconstruction-certification" ||
+    phase.kind === "reconstruction-derive" ||
+    phase.kind === "reconstruction-compare"
+  )
+    return "verifier";
   if (phase.kind === "note-source-check") return "source-check";
   return phase.kind;
 }
@@ -211,6 +252,14 @@ interface NoteModeContext {
   readonly after: EntryId;
 }
 
+function reconstructionPremises(
+  premises: readonly PremiseStatement[],
+  targets: readonly string[],
+): readonly PremiseStatement[] {
+  const targetSet = new Set(targets);
+  return premises.filter(({ statement }) => !targetSet.has(statement));
+}
+
 function resolveNoteMode(
   records: readonly Entry[],
   task: Task,
@@ -222,7 +271,10 @@ function resolveNoteMode(
     note: context.note,
     statement: context.statement,
     text: context.text,
-    premises: context.premises,
+    premises:
+      context.mode === "reconstruction"
+        ? reconstructionPremises(context.premises, [context.statement])
+        : context.premises,
     mode: context.mode,
   };
   const phase: Extract<ModelPhase, { kind: "verify" }> = {
@@ -379,6 +431,175 @@ function resolvePremiseCascade(
 
 interface BoundaryContext {
   readonly premises: readonly PremiseStatement[];
+  readonly trustedClosure: readonly PremiseStatement[];
+  readonly reconstruction: ReconstructionGuide;
+  readonly goalStatement: string;
+}
+
+function reconstructionBundle(
+  task: Task,
+  candidate: CandidateRecord,
+  context: BoundaryContext,
+): ReconstructionBundleView {
+  return {
+    note: candidate.goalNote,
+    target: task.problem,
+    keyIdeas: context.reconstruction.keyIdeas,
+    allowedSources: context.reconstruction.allowedSources,
+    premises: context.premises,
+  };
+}
+
+function resolveBoundaryReconstruction(
+  records: readonly Entry[],
+  task: Task,
+  candidate: CandidateRecord,
+  context: BoundaryContext,
+  after: EntryId,
+):
+  { readonly pending: Phase } | { readonly records: readonly VerdictRecord[] } {
+  const bundle = reconstructionBundle(task, candidate, context);
+  const certificationLabel = reconstructionCertificationLabel();
+  const certificationView: ReconstructionCertificationView = {
+    candidate: candidate.answer,
+    bundle,
+    trustedClosure: context.trustedClosure,
+  };
+  const certificationTurn = reconstructionCertificationTurn(
+    task,
+    certificationView,
+  );
+  const certification = findSubmission(records, {
+    label: certificationLabel,
+    after,
+    candidate: candidate.id,
+    turn: certificationTurn,
+  });
+  if (certification === undefined) {
+    return {
+      pending: {
+        kind: "reconstruction-certification",
+        label: certificationLabel,
+        after,
+        view: certificationView,
+        candidate: candidate.id,
+      },
+    };
+  }
+
+  const deriveTurn = blindReconstructionTurn(task, bundle);
+  const mechanicalLeak = reconstructionBundleContainsCandidate(
+    bundle,
+    candidate.answer,
+  );
+  const certificationAssessment: Assessment = mechanicalLeak
+    ? {
+        verdict: "FAIL",
+        report:
+          "The decoded blind-reconstruction bundle contains the whitespace-normalized candidate proof, so dispatch was refused.",
+      }
+    : {
+        verdict: certification.value.verdict,
+        report: certification.value.report,
+      };
+  const certificationEvidence = jsonSnapshot({
+    certification: certification.value,
+    mechanicalCandidateLeak: mechanicalLeak,
+  });
+  if (certificationAssessment.verdict !== "PASS") {
+    const recordedCertification = recordedVerdict(
+      records,
+      candidate.id,
+      certificationLabel,
+      "reconstruction-certification",
+      after,
+      certification.call,
+      certificationAssessment,
+      certificationEvidence,
+    );
+    if (recordedCertification === undefined) {
+      return {
+        pending: {
+          kind: "record-verdict",
+          candidate: candidate.id,
+          call: certification.call,
+          verdict: certificationAssessment.verdict,
+          evidence: certificationEvidence,
+        },
+      };
+    }
+    return { records: [recordedCertification] };
+  }
+
+  const derivationLabel = reconstructionDerivationLabel();
+  const derivation = findSubmission(records, {
+    label: derivationLabel,
+    after: certification.settled,
+    candidate: candidate.id,
+    turn: deriveTurn,
+  });
+  if (derivation === undefined) {
+    return {
+      pending: {
+        kind: "reconstruction-derive",
+        label: derivationLabel,
+        after: certification.settled,
+        bundle,
+        candidate: candidate.id,
+      },
+    };
+  }
+
+  const comparisonLabel = boundaryLabel("reconstruction");
+  const comparisonView: ReconstructionComparisonView = {
+    candidate: candidate.answer,
+    bundle,
+    reconstruction: {
+      call: derivation.call,
+      artifact: derivation.value,
+    },
+  };
+  const comparisonTurn = reconstructionComparisonTurn(task, comparisonView);
+  const comparison = findSubmission(records, {
+    label: comparisonLabel,
+    after: derivation.settled,
+    candidate: candidate.id,
+    turn: comparisonTurn,
+  });
+  if (comparison === undefined) {
+    return {
+      pending: {
+        kind: "reconstruction-compare",
+        label: comparisonLabel,
+        after: derivation.settled,
+        view: comparisonView,
+        candidate: candidate.id,
+      },
+    };
+  }
+  const comparisonEvidence = jsonSnapshot(comparison.value);
+  const recordedComparison = recordedVerdict(
+    records,
+    candidate.id,
+    comparisonLabel,
+    "reconstruction",
+    certification.settled,
+    comparison.call,
+    comparison.value,
+    comparisonEvidence,
+  );
+  if (recordedComparison === undefined) {
+    return {
+      pending: {
+        kind: "record-verdict",
+        candidate: candidate.id,
+        call: comparison.call,
+        verdict: comparison.value.verdict,
+        evidence: comparisonEvidence,
+      },
+    };
+  }
+  return { records: [recordedComparison] };
 }
 
 function resolveBoundary(
@@ -392,12 +613,33 @@ function resolveBoundary(
   const verdicts: VerdictRecord[] = [];
   let after: EntryId = candidate.id;
   for (const mode of boundaryModes) {
+    if (mode === "reconstruction") {
+      const reconstruction = resolveBoundaryReconstruction(
+        records,
+        task,
+        candidate,
+        context,
+        after,
+      );
+      if ("pending" in reconstruction) return reconstruction;
+      verdicts.push(...reconstruction.records);
+      const last = reconstruction.records.at(-1);
+      if (last === undefined) {
+        throw new Error("reconstruction gate returned no verdict records");
+      }
+      after = last.record;
+      if (last.verdict !== "PASS") {
+        return { candidate: { ...candidate, verdicts }, solved: false };
+      }
+      continue;
+    }
     const label = boundaryLabel(mode);
     const view: VerifyView = {
       scope: "boundary",
       note: candidate.goalNote,
       statement: task.problem,
       text: candidate.answer,
+      storedStatement: context.goalStatement,
       premises: context.premises,
       mode,
     };
@@ -707,7 +949,9 @@ function deriveStanding(
     at: EntryId;
   }[],
 ): Standing {
-  const valid = verdicts.filter((entry) => entry.at > versionAt);
+  if (plan === undefined || plan.at <= versionAt) return "conjecture";
+  if (plan.modes.length === 0) return "report";
+  const valid = verdicts.filter((entry) => entry.at > plan.at);
   const mathematicalFailure = valid.some(
     (entry) =>
       entry.verdict === "FAIL" &&
@@ -723,8 +967,6 @@ function deriveStanding(
   ) {
     return "conjecture";
   }
-  if (plan === undefined || plan.at <= versionAt) return "conjecture";
-  if (plan.modes.length === 0) return "report";
   const passed = new Set(
     valid
       .filter((entry) => entry.verdict === "PASS")
@@ -741,6 +983,8 @@ function deriveStanding(
 export interface NoteSnapshot {
   readonly id: string;
   readonly summary: string;
+  readonly statement: string;
+  readonly reconstruction: ReconstructionGuide;
   readonly standing: Standing;
   readonly at: EntryId;
   readonly text: string;
@@ -771,6 +1015,8 @@ export interface CampaignSnapshot {
 
 interface FoldNote {
   summary: string;
+  statement: string;
+  reconstruction: ReconstructionGuide;
   text: string;
   at: EntryId;
 }
@@ -813,6 +1059,7 @@ export function foldCampaign(reader: Reader, task: Task): CampaignFold {
     string,
     { readonly modes: readonly string[]; readonly at: EntryId }
   >();
+  const planRevisions = new Map<string, number>();
   const verdictTable = new Map<
     string,
     Map<
@@ -823,7 +1070,6 @@ export function foldCampaign(reader: Reader, task: Task): CampaignFold {
       }
     >
   >();
-  const refuted = new Set<string>();
   let cursor = records[0]?.seq ?? 0;
   let explorerCallLabel = explorerLabel();
   let objective: string | undefined;
@@ -837,8 +1083,8 @@ export function foldCampaign(reader: Reader, task: Task): CampaignFold {
     if (note === undefined) throw new Error(`fold lost note ${id}`);
     return note;
   };
-  const standingOf = (id: string): Standing =>
-    deriveStanding(
+  const standingOf = (id: string): Standing => {
+    const local = deriveStanding(
       noteOf(id).at,
       plans.get(id),
       [...(verdictTable.get(id)?.entries() ?? [])].map(([mode, entry]) => ({
@@ -847,37 +1093,30 @@ export function foldCampaign(reader: Reader, task: Task): CampaignFold {
         at: entry.at,
       })),
     );
+    const accepted = state.candidates.some(
+      (candidate) =>
+        candidate.goalNote === id &&
+        deriveCandidateStatus(records, candidate.id).verified,
+    );
+    if (accepted) return "verified";
+    const candidateDoubt = state.candidates.some(
+      (candidate) =>
+        candidate.goalNote === id &&
+        candidate.verdicts.some(
+          (verdict) =>
+            verdict.mode !== "criteria-match" &&
+            verdict.mode !== "reconstruction-certification" &&
+            verdict.verdict !== "PASS",
+        ),
+    );
+    return local === "verified" && candidateDoubt ? "conjecture" : local;
+  };
   const liveIndex = (): StandingEntry[] =>
     order.flatMap((id) => {
       const standing = standingOf(id);
       if (standing === "refuted") return [];
       return [{ id, summary: noteOf(id).summary, standing }];
     });
-  const candidateIndex = (): StandingEntry[] =>
-    order.flatMap((id) => {
-      const standing = standingOf(id);
-      const material = new TextEncoder().encode(noteOf(id).text);
-      const attempted = state.candidates.some((candidate) =>
-        isDeepStrictEqual(reader.material(candidate.id), material),
-      );
-      const unchangedMechanicalGap = mechanicalGaps.some(
-        (gap) =>
-          gap.goalNote === id &&
-          (gap.report ||
-            gap.cyclic ||
-            gap.unverified.some(
-              (ancestor) => standingOf(ancestor) !== "verified",
-            )),
-      );
-      if (standing === "report" || attempted || unchangedMechanicalGap) {
-        return [];
-      }
-      return [{ id, summary: noteOf(id).summary, standing }];
-    });
-  const summaryOf = (id: string): string => noteOf(id).summary;
-  const textOf = (id: string): string => noteOf(id).text;
-  const premisesOf = (ids: readonly string[]): PremiseStatement[] =>
-    ids.map((id) => ({ id, statement: summaryOf(id) }));
   const ancestorsOf = (id: string): string[] => {
     const seen = new Set<string>();
     const stack = [...(parents.get(id) ?? [])];
@@ -887,10 +1126,161 @@ export function foldCampaign(reader: Reader, task: Task): CampaignFold {
       seen.add(parent);
       stack.push(...(parents.get(parent) ?? []));
     }
-    return [...seen].sort();
+    return order.filter((candidate) => seen.has(candidate));
+  };
+  const directBoundaryIdentity = (id: string) => ({
+    directPremises: (parents.get(id) ?? []).map((parent) => ({
+      id: parent,
+      statement: noteOf(parent).statement,
+    })),
+  });
+  const reconstructionBoundaryIdentity = (id: string) => ({
+    ...directBoundaryIdentity(id),
+    reconstruction: noteOf(id).reconstruction,
+    trustedClosure: ancestorsOf(id)
+      .filter((ancestor) => !(parents.get(id) ?? []).includes(ancestor))
+      .map((ancestor) => ({
+        id: ancestor,
+        statement: noteOf(ancestor).statement,
+      })),
+  });
+  const sameCandidateInput = (
+    candidate: CandidateRecord,
+    id: string,
+    reconstructionOnly: boolean,
+  ): boolean =>
+    isDeepStrictEqual(
+      reader.material(candidate.id),
+      new TextEncoder().encode(noteOf(id).text),
+    ) &&
+    isDeepStrictEqual(
+      reconstructionOnly
+        ? reconstructionBoundaryIdentity(candidate.goalNote)
+        : directBoundaryIdentity(candidate.goalNote),
+      reconstructionOnly
+        ? reconstructionBoundaryIdentity(id)
+        : directBoundaryIdentity(id),
+    );
+  const materialAttempts = (id: string): CandidateRecord[] =>
+    state.candidates.filter((candidate) => {
+      const failures = candidate.verdicts.filter(
+        ({ verdict }) => verdict !== "PASS",
+      );
+      const reconstructionOnly =
+        failures.length > 0 &&
+        failures.every(
+          ({ mode }) =>
+            mode === "reconstruction-certification" ||
+            mode === "reconstruction",
+        );
+      return sameCandidateInput(candidate, id, reconstructionOnly);
+    });
+  const candidateSuppressed = (id: string): boolean => {
+    return materialAttempts(id).length > 0;
+  };
+  const candidateIndex = (): StandingEntry[] =>
+    order.flatMap((id) => {
+      const standing = standingOf(id);
+      // Local standing cannot veto a possible goal: a fresh boundary battery
+      // may correct a mistaken local refutation. Reports are non-mathematical
+      // and remain ineligible; exact attempted bytes and live gaps are bounded.
+      const unchangedMechanicalGap = mechanicalGaps.some(
+        (gap) =>
+          gap.goalNote === id &&
+          (gap.report ||
+            gap.cyclic ||
+            gap.unverified.some(
+              (ancestor) => standingOf(ancestor) !== "verified",
+            )),
+      );
+      if (
+        standing === "report" ||
+        candidateSuppressed(id) ||
+        unchangedMechanicalGap
+      ) {
+        return [];
+      }
+      return [{ id, summary: noteOf(id).summary, standing }];
+    });
+  const summaryOf = (id: string): string => noteOf(id).summary;
+  const statementOf = (id: string): string => noteOf(id).statement;
+  const textOf = (id: string): string => noteOf(id).text;
+  const premisesOf = (ids: readonly string[]): PremiseStatement[] =>
+    ids.map((id) => ({ id, statement: statementOf(id) }));
+  const serveControlIndex = (): ServeView["index"] => {
+    const goalEligible = new Set(candidateIndex().map(({ id }) => id));
+    return order.map((id) => {
+      const standing = standingOf(id);
+      const plan = plans.get(id);
+      const ancestors = ancestorsOf(id);
+      const cyclic = ancestors.includes(id);
+      const closureVerified =
+        !cyclic &&
+        ancestors.every((ancestor) => standingOf(ancestor) === "verified");
+      const verdicts = [...(verdictTable.get(id)?.entries() ?? [])]
+        .filter(([, entry]) => plan === undefined || entry.at > plan.at)
+        .map(([mode, entry]) => {
+          const report = state.noteVerdicts.findLast(
+            (row) =>
+              row.note === id && row.mode === mode && row.settled === entry.at,
+          )?.report;
+          if (report === undefined) {
+            throw new Error(`fold lost verdict report for ${id}/${mode}`);
+          }
+          return { mode, verdict: entry.verdict, report };
+        });
+      const attempts = materialAttempts(id).flatMap((candidate) => {
+        const reasons = candidate.verdicts.filter(
+          (
+            verdict,
+          ): verdict is VerdictRecord & {
+            readonly verdict: "FAIL" | "INCONCLUSIVE";
+          } => verdict.verdict !== "PASS",
+        );
+        const outcome = reasons.some((verdict) => verdict.verdict === "FAIL")
+          ? ("FAIL" as const)
+          : reasons.some((verdict) => verdict.verdict === "INCONCLUSIVE")
+            ? ("INCONCLUSIVE" as const)
+            : undefined;
+        return outcome === undefined
+          ? []
+          : [
+              {
+                candidate: candidate.id,
+                outcome,
+                reasons: reasons.map(({ mode, verdict, report }) => ({
+                  mode,
+                  verdict,
+                  report,
+                })),
+              },
+            ];
+      });
+      const retriable =
+        standing === "conjecture" &&
+        plan !== undefined &&
+        plan.modes.length > 0 &&
+        (planRevisions.get(id) ?? 0) < 2 &&
+        verdicts.some(({ verdict }) => verdict !== "PASS");
+      return {
+        id,
+        summary: summaryOf(id),
+        statement: statementOf(id),
+        standing,
+        parents: parents.get(id) ?? [],
+        textTokens: estimatedTextTokens(textOf(id)),
+        recent: recentIds.includes(id),
+        ...(plan === undefined ? {} : { plan: plan.modes }),
+        verdicts,
+        closureVerified,
+        boundaryAttempts: attempts,
+        goalEligible: goalEligible.has(id),
+        retriable,
+      };
+    });
   };
   const expandedNotes = () => {
-    const requested = [...recentIds, ...expandIds];
+    const requested = [...expandIds];
     const selected: { id: string; text: string }[] = [];
     for (const id of requested) {
       if (selected.some((note) => note.id === id)) continue;
@@ -947,6 +1337,8 @@ export function foldCampaign(reader: Reader, task: Task): CampaignFold {
       const duplicate = order.find(
         (id) =>
           noteOf(id).summary === filing.summary &&
+          noteOf(id).statement === filing.statement &&
+          isDeepStrictEqual(noteOf(id).reconstruction, filing.reconstruction) &&
           noteOf(id).text === finding.text &&
           isDeepStrictEqual(parents.get(id) ?? [], dependsOn),
       );
@@ -962,6 +1354,8 @@ export function foldCampaign(reader: Reader, task: Task): CampaignFold {
       order.push(id);
       notes.set(id, {
         summary: filing.summary,
+        statement: filing.statement,
+        reconstruction: filing.reconstruction,
         text: finding.text,
         at: curated.settled,
       });
@@ -994,6 +1388,8 @@ export function foldCampaign(reader: Reader, task: Task): CampaignFold {
       return {
         id,
         summary: note.summary,
+        statement: note.statement,
+        reconstruction: note.reconstruction,
         standing: standingOf(id),
         at: note.at,
         text: note.text,
@@ -1001,6 +1397,76 @@ export function foldCampaign(reader: Reader, task: Task): CampaignFold {
       };
     }),
   });
+
+  const resolveTriageBatch = (
+    batch: readonly string[],
+    trigger: EntryId,
+    after: EntryId,
+  ):
+    | { readonly pending: Phase }
+    | { readonly settled: EntryId; readonly call: EntryId } => {
+    const batchViews: TriageView["batch"][number][] = batch.map((id) => ({
+      id,
+      statement: statementOf(id),
+      text: textOf(id),
+      basedOn: premisesOf(parents.get(id) ?? []),
+      priorVerdicts: state.noteVerdicts
+        .filter(({ note }) => note === id)
+        .map(({ mode, verdict, report }) => ({ mode, verdict, report })),
+    }));
+    const triageView: TriageView = { batch: batchViews };
+    const triagePhase: Extract<ModelPhase, { kind: "triage" }> = {
+      kind: "triage",
+      label: triageLabel(trigger),
+      after,
+      view: triageView,
+    };
+    const triaged = findSubmission(records, {
+      label: triagePhase.label,
+      after: triagePhase.after,
+      turn: triageTurn(task, triageView),
+    });
+    if (triaged === undefined) return { pending: triagePhase };
+    state.triages.push({
+      call: triaged.call,
+      settled: triaged.settled,
+      submission: triaged.value,
+    });
+    for (const plan of triaged.value.plans) {
+      plans.set(plan.note, { modes: plan.modes, at: triaged.settled });
+      planRevisions.set(plan.note, (planRevisions.get(plan.note) ?? 0) + 1);
+    }
+    let pipelineCursor = triaged.settled;
+    const planOf = new Map(
+      triaged.value.plans.map((plan) => [plan.note, plan.modes]),
+    );
+    for (const id of batch) {
+      const modes = planOf.get(id);
+      if (modes === undefined)
+        throw new Error(`triage left note ${id} unplanned`);
+      const statement = statementOf(id);
+      const text = textOf(id);
+      const premises = premisesOf(parents.get(id) ?? []);
+      for (const mode of modes) {
+        const outcome = resolveNoteMode(records, task, {
+          note: id,
+          statement,
+          text,
+          premises,
+          mode,
+          version: noteOf(id).at,
+          trigger: triaged.call,
+          after: pipelineCursor,
+        });
+        if ("pending" in outcome) return { pending: outcome.pending };
+        state.noteVerdicts.push(outcome.record);
+        applyVerdict(id, mode, outcome.record.verdict, outcome.record.settled);
+        pipelineCursor = outcome.record.settled;
+        if (outcome.record.verdict === "FAIL") break;
+      }
+    }
+    return { settled: pipelineCursor, call: triaged.call };
+  };
 
   // One explorer or curation submission is consumed per iteration, so the
   // record count bounds the walk.
@@ -1014,11 +1480,15 @@ export function foldCampaign(reader: Reader, task: Task): CampaignFold {
 
   outer: for (;;) {
     guard();
+    if (state.turns.length >= task.maxExplorerTurns) {
+      return finish({ kind: "turn-limit", turns: state.turns.length });
+    }
     const index = liveIndex();
     const indexTokens = estimatedTextTokens(renderIndexBlock(index));
     if (indexTokens > task.maxIndexTokens) {
       return finish({ kind: "index-limit", tokens: indexTokens });
     }
+    const repairContext = failure;
     const view: ExplorerView = {
       first: state.turns.length === 0,
       index,
@@ -1056,6 +1526,14 @@ export function foldCampaign(reader: Reader, task: Task): CampaignFold {
     let curationTrigger = explored.call;
     let curationAfter = explored.settled;
     let defectSegment = false;
+    let curationRepair =
+      repairContext === undefined
+        ? undefined
+        : {
+            goalNote: repairContext.goalNote,
+            reconstruction: repairContext.reconstruction,
+            verdicts: repairContext.verdicts,
+          };
 
     for (;;) {
       guard();
@@ -1071,6 +1549,7 @@ export function foldCampaign(reader: Reader, task: Task): CampaignFold {
       const curatorView: CuratorView = {
         index: curationIndex,
         findings,
+        ...(curationRepair === undefined ? {} : { repair: curationRepair }),
       };
       const curationPhase: Extract<ModelPhase, { kind: "curation" }> = {
         kind: "curation",
@@ -1085,76 +1564,15 @@ export function foldCampaign(reader: Reader, task: Task): CampaignFold {
       });
       if (curated === undefined) return finish(curationPhase);
       const batch = foldCuration(findings, curated);
+      curationRepair = undefined;
       let pipelineCursor = curated.settled;
       let serveTrigger = curated.call;
 
       if (batch.length > 0) {
-        const batchViews: TriageView["batch"][number][] = batch.map((id) => ({
-          id,
-          text: textOf(id),
-          basedOn: premisesOf(parents.get(id) ?? []),
-        }));
-        const triageView: TriageView = { batch: batchViews };
-        const triagePhase: Extract<ModelPhase, { kind: "triage" }> = {
-          kind: "triage",
-          label: triageLabel(curated.call),
-          after: curated.settled,
-          view: triageView,
-        };
-        const triaged = findSubmission(records, {
-          label: triagePhase.label,
-          after: triagePhase.after,
-          turn: triageTurn(task, triageView),
-        });
-        if (triaged === undefined) return finish(triagePhase);
-        state.triages.push({
-          call: triaged.call,
-          settled: triaged.settled,
-          submission: triaged.value,
-        });
-        for (const plan of triaged.value.plans) {
-          plans.set(plan.note, { modes: plan.modes, at: triaged.settled });
-        }
-        pipelineCursor = triaged.settled;
-        serveTrigger = triaged.call;
-
-        const planOf = new Map(
-          triaged.value.plans.map((plan) => [plan.note, plan.modes]),
-        );
-        for (const id of batch) {
-          const modes = planOf.get(id);
-          if (modes === undefined) {
-            throw new Error(`triage left note ${id} unplanned`);
-          }
-          const statement = summaryOf(id);
-          const text = textOf(id);
-          const premises = premisesOf(parents.get(id) ?? []);
-          for (const mode of modes) {
-            const outcome = resolveNoteMode(records, task, {
-              note: id,
-              statement,
-              text,
-              premises,
-              mode,
-              version: noteOf(id).at,
-              trigger: triaged.call,
-              after: pipelineCursor,
-            });
-            if ("pending" in outcome) return finish(outcome.pending);
-            state.noteVerdicts.push(outcome.record);
-            applyVerdict(
-              id,
-              mode,
-              outcome.record.verdict,
-              outcome.record.settled,
-            );
-            pipelineCursor = outcome.record.settled;
-            if (outcome.record.verdict === "FAIL") {
-              if (mode !== "external-premises") refuted.add(id);
-              break;
-            }
-          }
-        }
+        const triage = resolveTriageBatch(batch, curated.call, curated.settled);
+        if ("pending" in triage) return finish(triage.pending);
+        pipelineCursor = triage.settled;
+        serveTrigger = triage.call;
       }
 
       if (defectSegment) {
@@ -1162,13 +1580,26 @@ export function foldCampaign(reader: Reader, task: Task): CampaignFold {
         // a fresh explorer: a serve, and with it any goal declaration, can
         // only follow new exploration.
         cursor = pipelineCursor;
+        expandIds = batch;
         explorerCallLabel = explorerLabel(curated.call);
         continue outer;
       }
 
       const serveView: ServeView = {
-        index: candidateIndex(),
+        index: serveControlIndex(),
+        explorerIndex: liveIndex(),
+        expansions: order.map((id) => ({ id, text: textOf(id) })),
         turns: state.turns.length,
+        history: state.serves.slice(-5).map(({ submission }) => ({
+          expand: submission.expand,
+          ...(submission.objective === undefined
+            ? {}
+            : { objective: submission.objective }),
+          ...(submission.goalNote === undefined
+            ? {}
+            : { goalNote: submission.goalNote }),
+          retriage: submission.retriage,
+        })),
         hints,
       };
       const servePhase: Extract<ModelPhase, { kind: "serve" }> = {
@@ -1188,6 +1619,21 @@ export function foldCampaign(reader: Reader, task: Task): CampaignFold {
         settled: served.settled,
         submission: served.value,
       });
+
+      if (served.value.retriage.length > 0) {
+        const triage = resolveTriageBatch(
+          served.value.retriage,
+          served.call,
+          served.settled,
+        );
+        if ("pending" in triage) return finish(triage.pending);
+        objective =
+          "Use the updated verification standings to advance the proof.";
+        expandIds = served.value.retriage;
+        cursor = triage.settled;
+        explorerCallLabel = explorerLabel(triage.call);
+        continue outer;
+      }
 
       if (served.value.goalNote === undefined) {
         objective = served.value.objective;
@@ -1243,19 +1689,16 @@ export function foldCampaign(reader: Reader, task: Task): CampaignFold {
       }
       const outcome = resolveBoundary(records, task, found, {
         premises: premisesOf(parents.get(goal) ?? []),
+        trustedClosure: premisesOf(
+          ancestors.filter(
+            (ancestor) => !(parents.get(goal) ?? []).includes(ancestor),
+          ),
+        ),
+        reconstruction: noteOf(goal).reconstruction,
+        goalStatement: statementOf(goal),
       });
       if ("pending" in outcome) return finish(outcome.pending);
       state.candidates.push(outcome.candidate);
-      for (const verdict of outcome.candidate.verdicts) {
-        if (verdict.mode === "criteria-match") continue;
-        applyVerdict(goal, verdict.mode, verdict.verdict, verdict.record);
-        if (
-          verdict.mode !== "external-premises" &&
-          verdict.verdict === "FAIL"
-        ) {
-          refuted.add(goal);
-        }
-      }
       if (outcome.solved) {
         return finish({ kind: "solved", candidate: found.id });
       }
@@ -1270,6 +1713,7 @@ export function foldCampaign(reader: Reader, task: Task): CampaignFold {
       failure = {
         goalNote: goal,
         text: goalText,
+        reconstruction: noteOf(goal).reconstruction,
         verdicts: failing.map(({ mode, verdict, report }) => ({
           mode,
           verdict,

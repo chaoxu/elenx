@@ -75,6 +75,7 @@ export function runSettings(overrides: Partial<Settings> = {}): Settings {
     protocol: "exploration-v17",
     maxContextTokens: 200_000,
     maxIndexTokens: 100_000,
+    maxExplorerTurns: 50,
     explorerGuidance: [],
     explorer: selection(explorerModel),
     curator: selection(curatorModel),
@@ -103,6 +104,8 @@ export function cleanupCampaigns(): void {
 }
 
 export interface Reply {
+  readonly forLabelSuffix?: string;
+  readonly forCall?: "reconstruction-certification" | "reconstruction-derive";
   readonly submission?: Json;
   readonly state?: "succeeded" | "failed" | "cancelled";
   readonly error?: string;
@@ -190,7 +193,21 @@ export function dependencies(
     models,
     async run(campaign, options) {
       calls.push(options);
-      const reply = queue.shift();
+      const queued = queue[0];
+      const stage = reconstructionStage(options);
+      const targeted =
+        (queued?.forLabelSuffix !== undefined &&
+          options.label.endsWith(queued.forLabelSuffix)) ||
+        (queued?.forCall !== undefined && queued.forCall === stage)
+          ? queue.shift()
+          : undefined;
+      const reply =
+        targeted ??
+        (stage === "reconstruction-certification"
+          ? verdict("PASS", "reconstruction bundle is nonleaking")
+          : stage === "reconstruction-derive"
+            ? reconstruction("independent reconstruction")
+            : queue.shift());
       if (reply === undefined) throw new Error(`no reply for ${options.label}`);
       expect(options.stopAfterToolResult).toBe(true);
       expect(options.transport).toBe("sse");
@@ -228,12 +245,133 @@ async function respond(
     },
     async ({ tools }) => {
       if (reply.submission !== undefined) {
-        await tools[0]!.execute(reply.submission);
+        await tools[0]!.execute(
+          completeStatementAssessment(options, reply.submission),
+        );
       }
       return body;
     },
   );
   return { call: receipt.call, ...body };
+}
+
+function completeStatementAssessment(
+  options: PiRunOptions,
+  submission: Json,
+): Json {
+  if (
+    submission === null ||
+    typeof submission !== "object" ||
+    Array.isArray(submission) ||
+    !("verdict" in submission)
+  ) {
+    if (
+      submission !== null &&
+      typeof submission === "object" &&
+      !Array.isArray(submission) &&
+      options.label.endsWith("/candidate/reconstruction-derive")
+    ) {
+      return {
+        ...(submission as Record<string, Json>),
+        usedPremises:
+          (submission as Record<string, Json>).usedPremises ??
+          directPremiseIds(options.prompt),
+      };
+    }
+    return submission;
+  }
+  const value = submission as Record<string, Json>;
+  if (options.label.endsWith("/candidate/proof-audit")) {
+    return {
+      ...value,
+      goalStatementMatch: value.goalStatementMatch ?? "MATCH",
+    };
+  }
+  if (reconstructionStage(options) === "reconstruction-certification") {
+    return {
+      ...value,
+      keyIdeas: value.keyIdeas ?? "SAFE",
+      allowedSources: value.allowedSources ?? "SAFE",
+      premises:
+        value.premises ??
+        directPremiseIds(options.prompt).map((note) => ({
+          note,
+          disposition: "RELEVANT_LOGICAL_PREMISE",
+          report: "candidate invokes this direct premise",
+        })),
+      closure:
+        value.closure ??
+        closureIds(options.prompt).map((note) => ({
+          note,
+          disposition: "SAFE",
+          report: "closure statement is noncircular",
+        })),
+    };
+  }
+  if (options.label.endsWith("/candidate/reconstruction")) {
+    return {
+      ...value,
+      targetCoverage: value.targetCoverage ?? "EXACT",
+      undeclaredPremises: value.undeclaredPremises ?? [],
+    };
+  }
+  if (
+    options.label.includes("/verify/") &&
+    options.label.includes("proof-audit")
+  ) {
+    return {
+      ...value,
+      statementForm: value.statementForm ?? "PROPOSITION_ONLY",
+      statementFidelity: value.statementFidelity ?? "MATCH",
+    };
+  }
+  if (options.label.includes("reconstruction")) {
+    return {
+      ...value,
+      statementForm: value.statementForm ?? "PROPOSITION_ONLY",
+    };
+  }
+  return submission;
+}
+
+function directPremiseIds(prompt: string): string[] {
+  const reconstructionInput = prompt.split(
+    "Verified transitive premise closure for audit only",
+  )[0]!;
+  return [
+    ...new Set(
+      [...reconstructionInput.matchAll(/"id": "(n[1-9][0-9]*)"/gu)].map(
+        (match) => match[1]!,
+      ),
+    ),
+  ];
+}
+
+function closureIds(prompt: string): string[] {
+  const closure = prompt.split(
+    "Verified transitive premise closure for audit only",
+  )[1];
+  if (closure === undefined) return [];
+  return [
+    ...new Set(
+      [...closure.matchAll(/"id": "(n[1-9][0-9]*)"/gu)].map(
+        (match) => match[1]!,
+      ),
+    ),
+  ];
+}
+
+function reconstructionStage(
+  options: PiRunOptions,
+): Reply["forCall"] | undefined {
+  const system = options.system ?? "";
+  if (system.startsWith("You are a fresh certifier")) {
+    return "reconstruction-certification";
+  }
+  if (system.startsWith("You are a fresh candidate-blind")) {
+    return "reconstruction-derive";
+  }
+  return undefined;
 }
 
 function replyBody(
@@ -285,10 +423,28 @@ export const curation = (
   filings: readonly {
     finding: number;
     summary?: string;
+    statement?: string;
+    reconstruction?: {
+      readonly keyIdeas: readonly string[];
+      readonly allowedSources: readonly string[];
+    };
     refines?: string;
     duplicateOf?: string;
   }[],
-): Reply => ({ submission: { filings } as unknown as Json });
+): Reply => ({
+  submission: {
+    filings: filings.map((filing) => ({
+      ...filing,
+      reconstruction: filing.reconstruction ?? {
+        keyIdeas: [],
+        allowedSources: [],
+      },
+      ...(filing.summary === undefined || filing.statement !== undefined
+        ? {}
+        : { statement: filing.summary }),
+    })),
+  } as unknown as Json,
+});
 
 export const triage = (
   plans: readonly {
@@ -303,12 +459,33 @@ export const verdict = (
   report: string,
 ): Reply => ({ submission: { verdict: value, report } });
 
+export const reconstruction = (proof: string): Reply => ({
+  submission: { proof } as unknown as Json,
+});
+
+export const boundaryReconstruction = (proof: string): Reply => ({
+  forCall: "reconstruction-derive",
+  submission: { proof } as unknown as Json,
+});
+
+export const bundleVerdict = (
+  value: "PASS" | "FAIL" | "INCONCLUSIVE",
+  report: string,
+): Reply => ({
+  forCall: "reconstruction-certification",
+  submission: { verdict: value, report },
+});
+
 export const serve = (expand: readonly string[], objective: string): Reply => ({
   submission: { expand, objective } as unknown as Json,
 });
 
 export const goalServe = (goalNote: string): Reply => ({
   submission: { goalNote },
+});
+
+export const retriageServe = (notes: readonly string[]): Reply => ({
+  submission: { retriage: notes },
 });
 
 export interface BatteryReports {
@@ -321,9 +498,9 @@ export interface BatteryReports {
 
 const batteryPasses = (reports: BatteryReports): Reply[] => [
   verdict("PASS", reports.proof),
+  { submission: { report: reports.premises, premises: [] } },
   verdict("PASS", reports.reconstruction),
   verdict("PASS", reports.refutation),
-  { submission: { report: reports.premises, premises: [] } },
   verdict("PASS", reports.criteria),
 ];
 
@@ -333,6 +510,10 @@ export interface SolvedSpec {
     readonly summary: string;
     readonly rationale: string;
     readonly verdictReport: string;
+    readonly reconstruction?: {
+      readonly keyIdeas: readonly string[];
+      readonly allowedSources: readonly string[];
+    };
   };
   readonly route?: {
     readonly text: string;
@@ -346,6 +527,10 @@ export interface SolvedSpec {
     readonly summary: string;
     readonly rationale: string;
     readonly verdictReport: string;
+    readonly reconstruction?: {
+      readonly keyIdeas: readonly string[];
+      readonly allowedSources: readonly string[];
+    };
   };
   readonly battery: BatteryReports;
 }
@@ -367,7 +552,13 @@ export function solvedReplies(spec: SolvedSpec): Reply[] {
         : { nextObjective: spec.firstObjective },
     ),
     curation([
-      { finding: 1, summary: spec.lemma.summary },
+      {
+        finding: 1,
+        summary: spec.lemma.summary,
+        ...(spec.lemma.reconstruction === undefined
+          ? {}
+          : { reconstruction: spec.lemma.reconstruction }),
+      },
       ...(spec.route === undefined
         ? []
         : [{ finding: 2, summary: spec.route.summary }]),
@@ -381,7 +572,15 @@ export function solvedReplies(spec: SolvedSpec): Reply[] {
     verdict("PASS", spec.lemma.verdictReport),
     serve(["n1"], spec.serveObjective),
     turn([{ text: spec.goal.text, basedOn: ["n1"] }]),
-    curation([{ finding: 1, summary: spec.goal.summary }]),
+    curation([
+      {
+        finding: 1,
+        summary: spec.goal.summary,
+        ...(spec.goal.reconstruction === undefined
+          ? {}
+          : { reconstruction: spec.goal.reconstruction }),
+      },
+    ]),
     triage([
       { note: goalId, modes: ["proof-audit"], rationale: spec.goal.rationale },
     ]),

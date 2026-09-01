@@ -2,23 +2,30 @@ import type { Report } from "./exploration";
 import { applicationId, protocolName } from "./exploration-protocol";
 
 export const executionContract = {
-  schemaVersion: 2,
+  schemaVersion: 3,
   application: applicationId,
   protocol: protocolName,
   run: {
     command: "run",
     arguments: ["problem", "completionCriteria", "campaign", "settings"],
     report: {
-      schemaVersion: 2,
+      schemaVersion: 3,
       outcomes: [
         "solved",
         "paused",
         "call-failure",
         "interrupted",
+        "context-limit",
         "index-limit",
+        "turn-limit",
       ],
-      terminalOutcomes: ["solved", "index-limit"],
-      terminalPhases: ["index-limit"],
+      terminalOutcomes: [
+        "solved",
+        "context-limit",
+        "index-limit",
+        "turn-limit",
+      ],
+      terminalPhases: ["context-limit", "index-limit", "turn-limit"],
     },
   },
 } as const;
@@ -26,7 +33,7 @@ export const executionContract = {
 export type ExecutionContract = typeof executionContract;
 
 export type ExecutionReport = Report & {
-  readonly schemaVersion: 2;
+  readonly schemaVersion: 3;
   readonly application: typeof applicationId;
   readonly protocol: typeof protocolName;
 };

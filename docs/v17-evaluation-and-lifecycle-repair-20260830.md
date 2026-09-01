@@ -7,13 +7,15 @@ This evaluation found that the V17 mathematical architecture was viable, while i
 - `391bd7e` — give criteria matching the exact stored proof, align serve with summary visibility, and stamp the replay-determining call surface
 - `ef661bb` — make notes immutable, preserve dependency edges, support same-turn dependencies, separate local verification from campaign completion, require truth-establishing verification, and make boundary attempts progress monotonically
 
-An external follow-up audit then found five scoped defects in standing, dependency validation, suppression, and replay protection. The final local repair addresses those defects without changing the exploration workflow. The call surface is now `immutable-notes-scoped-boundary-proof-dependencies`.
+An external follow-up audit then found five scoped defects in standing, dependency validation, suppression, and replay protection. The first local repair addressed those defects under `immutable-notes-scoped-boundary-proof-dependencies`.
 
-The first repaired snapshot passed 73 tests with 951 assertions, strict TypeScript, formatting, package installation, and the CLI contract check. The post-audit repair passes 80 tests with 1,063 assertions and the same non-test gates. Two earlier Luna process smokes solved the same deliberately two-turn induction problem through codex-lb. The second used 18 measured requests, 14,369 tokens, about $0.0058, zero request errors, and exact peak concurrency one. Both predated the final call surface; the post-audit smoke below supplies the final live gate.
+Issues 34–40 and the final live-smoke audit produced the current call surface, `certified-statements-durable-control-budgeted-noncircular-proof-tower-repair`. It retains curator ingest, separate serve, five boundary judgments, and verified ancestor closure while adding proposition-only statement proposals, structured statement certificates, append-only re-triage, durable failure reasons, size-checked expansion, noncircular reconstruction, conservative candidate-trust downgrades, logical-premise-only dependencies, proof-tower recovery for no-premise reconstruction failures, and a turn ceiling.
 
-The post-audit smoke at `runs/smoke-luna-two-turn-v17-post-audit-20260830-1/` solved the same controlled induction task under the final call surface. It used two explorer turns, three verified notes, 19 measured provider requests, 15,119 tokens, an estimated $0.00616, zero request errors, and exact peak concurrency one. The candidate passed proof audit, reconstruction, refutation, external-premises, and criteria matching.
+The first repaired snapshot passed 73 tests with 951 assertions. The final tree passes 92 kernel tests and 94 solver tests with 1,284 solver assertions, strict TypeScript, formatting, package installation, package-content checks, CLI execution, and the execution contract. Earlier Luna process smokes remain historical evidence for multi-turn accumulation. The final prime smoke below supplies the live gate for the current call surface.
 
-The repaired-V17 W[1]-hardness run was paused during verification. The follow-up stamp change intentionally makes that database non-resumable under the current call surface. A future theorem attempt must start from a fresh database.
+The final smoke at `runs/smoke-infinite-primes-v17-logical-dependencies-20260830-1/` solved in one explorer turn. Curator ingest stored the proposition-only statement `There are infinitely many prime numbers.` while the exact note text retained the full Euclidean proof. Local and boundary proof audit returned `PROPOSITION_ONLY` and `MATCH`. Boundary reconstruction received the exact task with an empty premise list and no proof text. All five boundary modes passed. The run used 10 measured provider requests, 10,703 tokens, an estimated $0.0054636, zero request errors, and exact peak concurrency one.
+
+Every call-surface change invalidated only strict solver replay for earlier databases; their append-only journals remain inspectable evidence. Each subsequent smoke and theorem attempt therefore started from a fresh database. The final W[1]-hardness attempt and its audited result are recorded below.
 
 ## Exact target
 
@@ -44,6 +46,15 @@ All campaign artifacts live under ignored `runs/` directories and are absent fro
 | `runs/smoke-luna-two-turn-v17-20260830-2/` | Final stamped Luna process smoke | Solved in exactly two explorer turns with zero errors. |
 | `runs/smoke-luna-two-turn-v17-post-audit-20260830-1/` | Post-audit final-surface Luna smoke | Solved in exactly two explorer turns with 19 requests, 15,119 tokens, and zero errors. |
 | `runs/cyclic-couple-w1-v17-fixed-20260830-1/` | Fresh repaired-V17 theorem run through codex-lb | Paused during verification under the preceding call surface. Do not resume after the stamp change. |
+| `runs/smoke-infinite-primes-v17-control-plane-20260830-1/` | First Issues 34–40 smoke | Solved, but inspection found that curator `statement` contained the full proof and reconstruction received a goal-equivalent ancestor. Rejected as a valid smoke. |
+| `runs/smoke-infinite-primes-v17-noncircular-20260830-1/` | Noncircular reconstruction smoke | Solved with empty boundary premises, but curator still copied the full proof into `statement`. Rejected as a statement-channel failure. |
+| `runs/smoke-infinite-primes-v17-claim-extraction-20260830-1/` | Structured statement-certificate smoke | Reached `turn-limit` after 10 explorer turns because proof audit mistakenly classified the deliberately proof-bearing note text instead of the separate statement field. |
+| `runs/smoke-infinite-primes-v17-statement-scope-20260830-1/` | Field-scoped statement smoke | Solved in one turn, then a frozen-diff review found that boundary task verdicts could mutate standing for a different stored proposition. Preserved but superseded. |
+| `runs/cyclic-couple-w1-v17-statement-scope-20260830-1/` | Sol/max theorem attempt under the superseded standing rule | Interrupted during the initial explorer call when the scope mismatch was found. Never resumed. |
+| `runs/smoke-infinite-primes-v17-candidate-trust-20260830-1/` | Candidate-trust prime smoke | Solved in one turn with proposition-only statement certificates, proof-blind empty-premise reconstruction, 9,012 tokens, and zero errors. |
+| `runs/cyclic-couple-w1-v17-candidate-trust-20260830-1/` | Candidate-trust Sol/max theorem run | Produced two locally accepted standalone proofs, but both attached expanded repair notes as provenance dependencies and were mechanically blocked. Interrupted before spending on a doomed n14 audit. |
+| `runs/smoke-infinite-primes-v17-logical-dependencies-20260830-1/` | Final current-surface prime smoke | Solved in one turn with a dependency-free proof, 10,703 tokens, and zero errors. |
+| `runs/cyclic-couple-w1-v17-logical-dependencies-20260830-1/` | Final current-surface Sol/max theorem run | Result recorded in the final theorem section below. |
 
 ## Provider and transport findings
 
@@ -205,11 +216,11 @@ The stamp relied on developers remembering to update it after a prompt, schema, 
 
 The immutable golden lives at `tests/fixtures/call-surfaces/<callSurface>.json`. The updater creates that file with exclusive-create semantics and refuses to overwrite a golden under the same stamp, so a prompt or schema change requires a call-surface bump. The corpus also calls the production renderers for mechanical gaps, boundary failures, defect reports, premise repairs, and source repairs, then pins their exact outputs rather than relying on substring assertions.
 
-## Deferred workflow and cleanup findings
+## Deferred cleanup findings
 
-The audit also confirmed a missing re-triage path. An immutable note with a poor original verification plan cannot acquire a new plan, so recovery requires minting a replacement note. Adding re-triage would change the V17 workflow and remains deferred for discussion.
+The approved Issues 34–40 repair added one append-only re-triage per stuck conjecture. The current plan and later verdicts supersede the earlier plan in the fold without mutating journal events. Mechanical-gap un-suppression now has a direct regression.
 
-Lower-risk residue also remains outside this repair: the boundary criteria prompt describes the problem statement as if it were a candidate statement, fold state retains unused refutation bookkeeping and a defensive cycle gate, mechanical-gap unsuppression lacks a direct regression, and local premise audits still receive completion criteria through the shared task renderer. These items were recorded rather than folded into the scoped repair.
+Lower-risk cleanup remains outside this repair: a defensive cycle gate is unreachable under the current topological mint rules, and local premise audits still receive task context through shared rendering. These items do not alter the live acceptance path and were left for later cleanup.
 
 ## Agent mock audits
 
@@ -226,6 +237,36 @@ Banach supplied adversarial mocks and found additional soundness and liveness re
 - unchanged boundary and mechanical failures need progress guards
 
 Each item now has a deterministic regression test.
+
+## Issues 34–40 and the control-plane repair
+
+A later tracker review kept curator ingest, the separate serve call, five separate boundary judgments, and verified ancestor closure. Reviewers rejected goal nomination by explorers, merged proof/criteria/source verdicts, and provenance-only dependencies. They accepted a narrower triage prompt that chooses the smallest materially sufficient plan while retaining independent reconstruction for nontrivial reusable lemmas.
+
+Issues 34–40 exposed three shared defects rather than seven unrelated features:
+
+- Notes lacked a certified statement channel. Curator ingest now writes a short navigational summary and a proposition-only statement proposal. Provider-visible schema descriptions reinforce that boundary. Truth-establishing verifier submissions certify `PROPOSITION_ONLY` versus `CONTAINS_SUPPORT`; proof audit also certifies `MATCH` versus `MISMATCH`. The schema rejects a `PASS` with contaminated or mismatched statement fields.
+- Serve lacked durable control state. Its compact view now carries dependencies, plans, exact verdict reasons, closure status, failed-candidate tombstones, note sizes, recent-note markers, and recent serve history. Reports and failed proofs remain expandable repair context. Serve may request one append-only re-triage of a stuck conjecture. A criteria-only boundary mismatch leaves premise trust unchanged. Any non-criteria boundary doubt conservatively returns a locally verified goal note to `conjecture`, so descendants cannot treat a rejected candidate as a verified ancestor without claiming that a possibly different curator proposition is false.
+- Admission could fail after an irreversible decision. Serve now validates the actual rendered explorer context before an expansion becomes a settled submission. A frozen `maxExplorerTurns` ends unproductive search with the replay-stable terminal outcome `turn-limit`.
+
+Every candidate non-`PASS` follows one control path: reject the candidate, preserve its exact reason, suppress unchanged bytes, and require changed proof or evidence. `FAIL` and `INCONCLUSIVE` remain distinct evidence labels, but there is no automatic same-byte retry branch. This deliberately rejects the retry mechanism proposed in issue 38 while retaining its durable-repair-context requirement.
+
+## Final live-smoke corrections
+
+The first post-control-plane prime database reached `solved`, but inspection rejected the result. Curator ingest had copied the entire Euclidean derivation into `statement`, and the goal note depended on an earlier note asserting the same conclusion. Boundary reconstruction could therefore receive the target as a given premise. The fold now removes byte-exact target statements from local and boundary reconstruction, while the verifier ignores semantic restatements, paraphrases, conjunctions, bundled target claims, and conclusions leaked through proof material. The problem and completion criteria are explicit obligations rather than premises.
+
+Prompt wording alone did not keep Luna from copying a proof into `statement`. The curation schema now describes the field as a theorem, lemma, claim, or process status with hypotheses and conclusion but no support. Existing proof-audit and reconstruction calls gained structured statement certificates instead of adding another phase. Proof-audit `PASS` requires `statementForm=PROPOSITION_ONLY` and `statementFidelity=MATCH`; reconstruction `PASS` requires `statementForm=PROPOSITION_ONLY`.
+
+The next live run reached `turn-limit` for the opposite reason. Curator statements were clean, but proof audit classified the exact note text and rejected it for containing the proof that the note text is supposed to contain. The statement-certificate schema and prompt now scope `statementForm` only to the separately labeled statement field. Exact note text is explicitly expected to contain derivation, evidence, reasoning, and justification.
+
+A frozen-diff reviewer then found a trust-subject mismatch. Boundary modes audit the exact campaign target, while a curator's stored proposition can differ if serve declares the wrong note. Applying a task-level `FAIL` as though it refuted the stored proposition was unsound; ignoring it left a boundary-rejected proof eligible as an ancestor. The fold now keeps boundary verdicts candidate-scoped. A criteria-only mismatch affects acceptance and suppression only. Any other boundary non-`PASS` downgrades a locally verified goal note to `conjecture`, which blocks verified-ancestor closure without asserting that its separate stored proposition is false.
+
+The final theorem run exposed one more prompt-level liveness defect. Explorers repeatedly produced standalone replacement proofs but attached every expanded repair note as `basedOn` provenance. The fold correctly interpreted those edges as logical premises and blocked the goal because they led back to a rejected ancestor. The explorer prompt and provider-visible tool schema now define `basedOn` and `basedOnFindings` as logical premises only. Reading, copying, repairing, or independently re-establishing mathematics from an expanded note creates no edge. A standalone proof containing every load-bearing argument uses empty dependency arrays.
+
+The next current-surface theorem run then produced two dependency-free proofs that passed local and boundary proof audit, but proof-blind reconstruction returned the same non-mathematical objection: with no premise statements, it would have to rediscover an entire research reduction from first principles. Rewriting the standalone proof cannot change that input. The existing workflow can address it only through a verified proof tower. Serve and explorer now translate that exact failure into a staged repair: mint independently checkable load-bearing lemmas, verify them, then write a goal note whose logical dependencies are those verified statements and derive the campaign conclusion from them.
+
+The current regressions cover exact target removal locally and at the boundary, the semantic target-exclusion instructions, statement-form and fidelity consistency, proof-bearing note text, task-versus-note scope, criteria-only neutrality, boundary-doubt trust revocation, and a descendant mechanically blocked from using a boundary-rejected ancestor.
+
+Three residual limits remain explicit. Semantic target inclusion beyond byte equality is model-judged: a premise such as `P and Q` remains in the prompt for target `P`, with an instruction to ignore it. Absolute exclusion would require removing useful ancestor premises or adding a formal proposition language, both workflow changes outside this repair. Boundary mathematics intentionally targets the exact campaign problem rather than the curator proposal; a malformed locally rejected proposal can still reach the boundary when its exact proof bytes solve the task, so the accepted proof may coexist with malformed metadata. A non-criteria boundary doubt permanently removes premise trust for that immutable note. Recovery requires changed proof bytes in a new note rather than re-running the same candidate.
 
 ## Deterministic validation
 
@@ -258,7 +299,7 @@ Result before the follow-up audit:
 951 assertions
 ```
 
-Post-audit result:
+First post-audit result:
 
 ```text
 80 tests passed
@@ -267,6 +308,23 @@ Post-audit result:
 ```
 
 Formatting, strict TypeScript, package installation, package contents, CLI help, and execution-contract checks also passed on the post-audit tree.
+
+Issues 34–40 result before live campaigns:
+
+```text
+87 tests passed
+0 tests failed
+1,159 assertions
+```
+
+Final result after the live statement, reconstruction, and candidate-trust audits:
+
+```text
+92 kernel tests passed
+94 solver tests passed
+0 tests failed
+1,284 solver assertions
+```
 
 ## Live weak-model validation
 
@@ -293,18 +351,10 @@ Both fresh runs reached `solved`. The final stamped run `runs/smoke-luna-two-tur
 
 This run established that the preceding V17 call surface could accumulate partial knowledge, preserve its proof graph, integrate the result, and terminate through the boundary with a weak model. The follow-up fixes changed replay-determining schemas, so the result required confirmation under the final stamp.
 
-The post-audit run repeated that process under `immutable-notes-scoped-boundary-proof-dependencies`. Its journal ended at sequence 121 with candidate 86 solved. The Codex-LB requests used the stable tag `elenx-solve/smoke-v17-post-audit/attempt-1`. This is a workflow smoke, not evidence that the separate W[1]-hardness theorem has been proved.
+The post-audit run repeated that process under `immutable-notes-scoped-boundary-proof-dependencies`. Its journal ended at sequence 121 with candidate 86 solved. The Codex-LB requests used the stable tag `elenx-solve/smoke-v17-post-audit/attempt-1`. That run predates the final statement and candidate-trust corrections and remains historical multi-turn evidence.
+
+The final current-surface prime run used tag `elenx-solve/primes-v17-logical-dependencies/attempt-1`. Its journal ended at sequence 69 with candidate 32 solved. The single note stored statement `There are infinitely many prime numbers.` and retained the full self-contained Euclidean derivation in exact text. Local proof audit and boundary proof audit recorded `PROPOSITION_ONLY` and `MATCH`. Reconstruction saw the exact task, `[]` premises, and no proof text. The run recorded 10 measured requests, 10,703 tokens, estimated cost `$0.0054636`, zero errors, and exact peak concurrency one. This is a workflow smoke and an independently reconstructed elementary proof, not evidence for the separate W[1]-hardness theorem.
 
 ## Git and publication state
 
-The local repair series consists of the two earlier commits and the commit containing this record:
-
-```text
-391bd7e Align goal selection with stored proof verification
-ef661bb Make V17 notes immutable and boundary-driven
-this commit — Repair V17 standing, dependencies, suppression, and replay guard
-```
-
-No commit in this series has been pushed. Live run artifacts and the Elenx-specific codex-lb model/CA files remain ignored under `runs/`.
-
-This record closes the local evaluation. Publication remains a separate operator decision.
+The repair series and this record travel together on `main`. Immutable call-surface fixtures bind the current prompts, schemas, labels, transport settings, and fold-authored repair text to the code under test. Live run artifacts and the Elenx-specific codex-lb model and CA files remain ignored under `runs/`.

@@ -2,9 +2,11 @@
 
 `elenx-solve` runs a durable mathematical search over the Elenx append-only journal. The current protocol is `exploration-v17`.
 
-Each turn a fresh explorer reasons over the standing-annotated note index and a curator-served working set, then reports self-contained findings. It has no submit path. Every distinct finding becomes an immutable note; the curator writes only its index summary, while exact byte-and-dependency duplicates are reused mechanically. One verification subsystem holds every verifier: triage plans each new note from a frozen mode menu (proof audit, reconstruction, refutation, external premises), fresh mode calls return verdicts, and standing derives from the verdicts — conditional inside, unconditional authority at the boundary. When the curator points at a goal note whose statement meets the completion criteria, mechanical checks (non-report goal, fully verified, acyclic ancestor closure) and the boundary battery decide the campaign. The verified tower is the result, and the goal-note bytes are the kernel candidate. Assembly into a reader-facing document is external tooling over `export`.
+Each turn a fresh explorer reasons over the standing-annotated note index and a curator-served working set, then reports self-contained findings. It has no submit path. Every distinct finding becomes an immutable note. Curator ingest writes its navigational summary, proposition-only statement proposal, and reconstruction guide, while the explorer's complete proof remains stored byte for byte. Exact duplicates are reused mechanically. Truth-establishing verdicts certify statement form, and proof audit also certifies fidelity to the text. Triage chooses a materially sufficient verification plan, fresh mode calls return verdicts with reasons, one append-only re-triage may supersede a stuck plan, and standing derives from mathematical evidence. Curator serve controls context within the token budget and declares a goal candidate. Mechanical closure checks and the boundary battery decide the campaign.
 
-The campaign journal remains the single source of truth. The note store is an in-memory projection rebuilt from the journal on every derivation and holds no independent authority.
+Boundary reconstruction follows a certified three-call cadence. A fresh certifier sees the candidate and every proposed reconstruction input. A candidate-blind reconstructor then receives the target, high-level guide, allowed sources, and only the goal's direct logical premise statements. It produces an independent proof rather than a verdict. A fresh comparator maps that proof back to the exact candidate and owns the reconstruction verdict. The transitive ancestor closure is checked for trust and circularity but never enters the blind reconstruction prompt. Mathematical boundary failures revoke premise trust, while criteria matching affects candidate acceptance only. The verified tower is the result, and the goal-note bytes are the kernel candidate. Assembly into a reader-facing document is external tooling over `export`.
+
+The campaign journal remains the single source of truth. The note store is an in-memory projection rebuilt from the journal on every derivation and holds no independent authority. Dependency edges mean logical premise use, not provenance or drafting context; a standalone proof that re-establishes all needed mathematics has no parents.
 
 ## Run
 
@@ -21,7 +23,7 @@ The settings file freezes the Pi role profiles and one isolated source-checker c
 - mode verifier
 - isolated source-checker model and reasoning
 
-`maxContextTokens` bounds every model request. `maxIndexTokens` bounds the assembled live index: each exploration status line reports the estimate, and exceeding the ceiling ends the campaign with the terminal report `index-limit`. The explorer has no retrieval tool: recall is the index itself.
+`maxContextTokens` bounds every model request and serve rejects an oversized working set before it becomes a settled selection. Any other oversized phase ends with the replay-stable `context-limit` outcome before dispatch. `maxIndexTokens` bounds the assembled live index, and `maxExplorerTurns` bounds campaign exploration. Those ceilings end with `index-limit` or `turn-limit`. The explorer has no retrieval tool: recall is the index itself.
 
 Every Pi call uses SSE, one required terminal tool, serial tool submission, eight output-length continuations, and one provider recovery. Provider-retryable phase failures restart from journal state with capped backoff.
 

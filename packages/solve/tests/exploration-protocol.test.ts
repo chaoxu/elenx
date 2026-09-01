@@ -1,13 +1,18 @@
 import { describe, expect, test } from "bun:test";
+import { z } from "zod";
 
 import {
   assessment,
+  assessmentFor,
   callSurface,
   callActivity,
   boundaryModes,
+  bundleCertificationFor,
   curationSubmissionFor,
   explorerSubmissionFor,
   parseCampaign,
+  reconstructionArtifactFor,
+  reconstructionComparison,
   serveSubmissionFor,
   settingsSchema,
   taskSchema,
@@ -34,6 +39,7 @@ describe("v17 settings", () => {
     const parsed = settingsSchema.parse(settings);
     expect(parsed.maxContextTokens).toBe(200_000);
     expect(parsed.maxIndexTokens).toBe(100_000);
+    expect(parsed.maxExplorerTurns).toBe(50);
     expect(parsed.explorerGuidance).toEqual([]);
   });
 
@@ -89,6 +95,13 @@ describe("v17 explorer submissions", () => {
     expect(parsed.findings[1]?.basedOn).toEqual(["n2"]);
     expect(parsed.findings[1]?.basedOnFindings).toEqual([1]);
     expect(parsed.expand).toEqual(["n1"]);
+  });
+
+  test("provider-visible dependency fields mean logical premises only", () => {
+    const json = JSON.stringify(z.toJSONSchema(explorerSubmission));
+    expect(json).toContain("Logical premises only");
+    expect(json).toContain("Never cite provenance");
+    expect(json).toContain("never provenance or shared drafting context");
   });
 
   test("finding-local dependencies must point backward", () => {
@@ -168,27 +181,39 @@ describe("v17 curation submissions", () => {
     expect(
       schema.safeParse({
         filings: [
-          { finding: 1, summary: "first" },
-          { finding: 2, summary: "second" },
+          {
+            finding: 1,
+            summary: "first",
+            statement: "First claim",
+            reconstruction: { keyIdeas: [], allowedSources: [] },
+          },
+          {
+            finding: 2,
+            summary: "second",
+            statement: "Second claim",
+            reconstruction: { keyIdeas: [], allowedSources: [] },
+          },
         ],
       }).success,
     ).toBe(true);
     expect(
-      schema.safeParse({ filings: [{ finding: 1, summary: "only" }] }).success,
+      schema.safeParse({
+        filings: [{ finding: 1, summary: "only", statement: "Only claim" }],
+      }).success,
     ).toBe(false);
     expect(
       schema.safeParse({
         filings: [
-          { finding: 1, summary: "first" },
-          { finding: 1, summary: "again" },
+          { finding: 1, summary: "first", statement: "First claim" },
+          { finding: 1, summary: "again", statement: "Again claim" },
         ],
       }).success,
     ).toBe(false);
     expect(
       schema.safeParse({
         filings: [
-          { finding: 1, summary: "first" },
-          { finding: 3, summary: "beyond" },
+          { finding: 1, summary: "first", statement: "First claim" },
+          { finding: 3, summary: "beyond", statement: "Beyond claim" },
         ],
       }).success,
     ).toBe(false);
@@ -197,14 +222,68 @@ describe("v17 curation submissions", () => {
   test("every finding requires a summary", () => {
     expect(
       schema.safeParse({
-        filings: [{ finding: 1 }, { finding: 2, summary: "second" }],
+        filings: [
+          { finding: 1 },
+          { finding: 2, summary: "second", statement: "Second claim" },
+        ],
       }).success,
     ).toBe(false);
     expect(
       schema.safeParse({
         filings: [
+          {
+            finding: 1,
+            summary: "first",
+            statement: "First claim",
+            reconstruction: { keyIdeas: [], allowedSources: [] },
+          },
+          {
+            finding: 2,
+            summary: "second",
+            statement: "Second claim",
+            reconstruction: { keyIdeas: [], allowedSources: [] },
+          },
+        ],
+      }).success,
+    ).toBe(true);
+  });
+
+  test("every finding requires a complete statement distinct from navigation", () => {
+    expect(
+      schema.safeParse({
+        filings: [
           { finding: 1, summary: "first" },
-          { finding: 2, summary: "second" },
+          { finding: 2, summary: "second", statement: "Second claim" },
+        ],
+      }).success,
+    ).toBe(false);
+  });
+
+  test("the provider-visible schema defines statement as proposition-only", () => {
+    const json = JSON.stringify(z.toJSONSchema(schema));
+    expect(json).toContain("The theorem, lemma, claim, or process status only");
+    expect(json).toContain("no proof steps");
+  });
+
+  test("every filing carries a reconstruction interface", () => {
+    const filing = {
+      finding: 1,
+      summary: "claim",
+      statement: "Claim P.",
+    };
+    expect(
+      curationSubmissionFor(1).safeParse({ filings: [filing] }).success,
+    ).toBe(false);
+    expect(
+      curationSubmissionFor(1).safeParse({
+        filings: [
+          {
+            ...filing,
+            reconstruction: {
+              keyIdeas: ["orient around invariant I"],
+              allowedSources: [],
+            },
+          },
         ],
       }).success,
     ).toBe(true);
@@ -307,7 +386,11 @@ describe("v17 triage submissions", () => {
 });
 
 describe("v17 serve submissions", () => {
-  const schema = serveSubmissionFor(["n1", "n2"]);
+  const schema = serveSubmissionFor({
+    expandableNoteIds: ["n1", "n2", "n3"],
+    goalNoteIds: ["n1", "n2"],
+    retriableNoteIds: ["n2"],
+  });
 
   test("a plain serve carries a working set and an objective", () => {
     const parsed = schema.parse({
@@ -320,6 +403,7 @@ describe("v17 serve submissions", () => {
 
   test("an empty serve parses with defaults", () => {
     expect(schema.parse({}).expand).toEqual([]);
+    expect(schema.parse({}).retriage).toEqual([]);
   });
 
   test("expansions must reference live notes", () => {
@@ -335,6 +419,14 @@ describe("v17 serve submissions", () => {
       schema.safeParse({ goalNote: "n1", objective: "keep going" }).success,
     ).toBe(false);
     expect(schema.safeParse({ goalNote: "n9" }).success).toBe(false);
+  });
+
+  test("re-triage is exclusive and restricted to eligible notes", () => {
+    expect(schema.safeParse({ retriage: ["n2"] }).success).toBe(true);
+    expect(schema.safeParse({ retriage: ["n1"] }).success).toBe(false);
+    expect(
+      schema.safeParse({ retriage: ["n2"], objective: "keep going" }).success,
+    ).toBe(false);
   });
 });
 
@@ -353,6 +445,155 @@ describe("v17 verification vocabulary", () => {
     ).toBe(false);
   });
 
+  test("truth-establishing PASS certifies statement form and fidelity", () => {
+    const proofAudit = assessmentFor("proof-audit");
+    expect(
+      proofAudit.safeParse({
+        verdict: "PASS",
+        report: "valid",
+        statementForm: "PROPOSITION_ONLY",
+        statementFidelity: "MATCH",
+      }).success,
+    ).toBe(true);
+    expect(
+      proofAudit.safeParse({
+        verdict: "PASS",
+        report: "copied proof",
+        statementForm: "CONTAINS_SUPPORT",
+        statementFidelity: "MATCH",
+      }).success,
+    ).toBe(false);
+
+    expect(
+      assessmentFor("proof-audit", "boundary").safeParse({
+        verdict: "PASS",
+        report: "the candidate proves the campaign target",
+        goalStatementMatch: "MATCH",
+      }).success,
+    ).toBe(true);
+    expect(
+      assessmentFor("proof-audit", "boundary").safeParse({
+        verdict: "PASS",
+        report: "stored statement is stronger than the target",
+        goalStatementMatch: "MISMATCH",
+      }).success,
+    ).toBe(false);
+    expect(
+      proofAudit.safeParse({
+        verdict: "PASS",
+        report: "overclaim",
+        statementForm: "PROPOSITION_ONLY",
+        statementFidelity: "MISMATCH",
+      }).success,
+    ).toBe(false);
+
+    const reconstruction = assessmentFor("reconstruction");
+    expect(
+      reconstruction.safeParse({
+        verdict: "PASS",
+        report: "independent proof",
+        statementForm: "PROPOSITION_ONLY",
+      }).success,
+    ).toBe(true);
+    expect(
+      reconstruction.safeParse({
+        verdict: "PASS",
+        report: "proof leaked through the target",
+        statementForm: "CONTAINS_SUPPORT",
+      }).success,
+    ).toBe(false);
+  });
+
+  test("reconstruction stages bind direct premises and the derivation call", () => {
+    const certification = bundleCertificationFor(["n2"]);
+    const safe = {
+      verdict: "PASS",
+      report: "safe",
+      keyIdeas: "SAFE",
+      allowedSources: "SAFE",
+      premises: [
+        {
+          note: "n2",
+          disposition: "RELEVANT_LOGICAL_PREMISE",
+          report: "used by the candidate",
+        },
+      ],
+      closure: [],
+    };
+    expect(certification.safeParse(safe).success).toBe(true);
+    expect(certification.safeParse({ ...safe, premises: [] }).success).toBe(
+      false,
+    );
+    expect(
+      certification.safeParse({
+        ...safe,
+        premises: [
+          {
+            note: "n2",
+            disposition: "IRRELEVANT_OR_PROVED_INLINE",
+            report: "unused",
+          },
+        ],
+      }).success,
+    ).toBe(false);
+
+    const towerCertification = bundleCertificationFor(["n2"], ["n1"]);
+    expect(
+      towerCertification.safeParse({
+        ...safe,
+        closure: [
+          {
+            note: "n1",
+            disposition: "TARGET_OR_PROOF_LEAK",
+            report: "deep ancestor restates the target",
+          },
+        ],
+      }).success,
+    ).toBe(false);
+    expect(
+      towerCertification.safeParse({
+        ...safe,
+        closure: [
+          {
+            note: "n1",
+            disposition: "SAFE",
+            report: "deep ancestor is noncircular",
+          },
+        ],
+      }).success,
+    ).toBe(true);
+
+    const artifact = reconstructionArtifactFor(["n2"]);
+    expect(
+      artifact.safeParse({ proof: "proof", usedPremises: ["n2"] }).success,
+    ).toBe(true);
+    expect(
+      artifact.safeParse({ proof: "proof", usedPremises: ["n1"] }).success,
+    ).toBe(false);
+    expect(
+      artifact.safeParse({ proof: "proof", usedPremises: ["n2", "n2"] })
+        .success,
+    ).toBe(false);
+
+    const comparison = reconstructionComparison;
+    expect(
+      comparison.safeParse({
+        verdict: "PASS",
+        report: "exact",
+        targetCoverage: "EXACT",
+        undeclaredPremises: [],
+      }).success,
+    ).toBe(true);
+    expect(
+      comparison.safeParse({
+        verdict: "PASS",
+        report: "undeclared dependency",
+        targetCoverage: "EXACT",
+        undeclaredPremises: ["External theorem X"],
+      }).success,
+    ).toBe(false);
+  });
+
   test("the mode menu and boundary battery are frozen", () => {
     expect(verificationModes).toEqual([
       "proof-audit",
@@ -362,9 +603,9 @@ describe("v17 verification vocabulary", () => {
     ]);
     expect(boundaryModes).toEqual([
       "proof-audit",
+      "external-premises",
       "reconstruction",
       "refutation",
-      "external-premises",
       "criteria-match",
     ]);
   });
@@ -411,6 +652,7 @@ describe("v17 campaign parsing", () => {
       completionCriteria: "Give a proof of P.",
       maxContextTokens: 200_000,
       maxIndexTokens: 100_000,
+      maxExplorerTurns: 50,
       guidance: [],
       explorer: runtimeProfile,
       curator: runtimeProfile,

@@ -3,12 +3,21 @@ import { afterEach, expect, test } from "bun:test";
 import { openReader } from "elenx";
 
 import { resume, start } from "../exploration";
+import { callSurface, protocolName, type Task } from "../exploration-protocol";
+import {
+  reconstructionBundleContainsCandidate,
+  serveTurn,
+  type ServeView,
+} from "../turns";
 import {
   campaignPath,
+  bundleVerdict,
+  boundaryReconstruction,
   cleanupCampaigns,
   curation,
   dependencies,
   goalServe,
+  retriageServe,
   runSettings,
   serve,
   solvedReplies,
@@ -48,6 +57,10 @@ function happyReplies(): Reply[] {
       summary: "goal: the sum of two even integers is even",
       rationale: "goal derivation",
       verdictReport: "goal derivation holds",
+      reconstruction: {
+        keyIdeas: ["write both even integers as multiples of two and factor"],
+        allowedSources: [],
+      },
     },
     battery: {
       proof: "boundary proof audit holds",
@@ -59,7 +72,7 @@ function happyReplies(): Reply[] {
   });
 }
 
-const happyTotal = 15;
+const happyTotal = 17;
 
 test("a full cycle mints, triages, verifies, serves, and solves at the boundary", async () => {
   const statuses: string[] = [];
@@ -82,18 +95,37 @@ test("a full cycle mints, triages, verifies, serves, and solves at the boundary"
   expect(labels[5]).toMatch(new RegExp(`^${p}/explorer/`));
   expect(labels.slice(10)).toEqual([
     `${p}/candidate/proof-audit`,
+    `${p}/candidate/external-premises`,
+    `${p}/candidate/reconstruction`,
+    `${p}/candidate/reconstruction-derive`,
     `${p}/candidate/reconstruction`,
     `${p}/candidate/refutation`,
-    `${p}/candidate/external-premises`,
     `${p}/candidate/criteria-match`,
   ]);
+  expect(drive.calls[0]!.system).toContain(
+    "A basedOn edge means that later verifiers may assume the cited note's statement as a logical premise",
+  );
+  expect(drive.calls[0]!.system).toContain(
+    "Never use basedOn or basedOnFindings for provenance, inspiration, copied material, expanded repair context, strategy",
+  );
+  expect(drive.calls[0]!.system).toContain(
+    "A standalone proof that contains every load-bearing argument uses empty dependency arrays",
+  );
+  expect(drive.calls[0]!.system).toContain(
+    "address the recorded bundle, reconstruction, or comparison gap directly",
+  );
 
   // Serve selects a possible conclusion from index metadata. Proof-content
   // requirements belong to the boundary call over the exact stored text.
   expect(drive.calls[4]!.system).toContain(
     "Do not require the summary to restate definitions, derivations, citations, or other proof-content criteria",
   );
-  expect(drive.calls[4]!.system).toContain("Do not wait for verified standing");
+  expect(drive.calls[4]!.system).toContain(
+    "Do not wait for favorable local standing",
+  );
+  expect(drive.calls[4]!.system).toContain(
+    "Do not turn a standalone proof into an artificial proof tower",
+  );
 
   // Local note verification judges the note's own mathematical claim, not
   // whether a lemma or repair already completes the campaign.
@@ -113,18 +145,27 @@ test("a full cycle mints, triages, verifies, serves, and solves at the boundary"
   // Boundary proof and criteria verification see the exact goal text;
   // reconstruction alone stays proof-blind.
   expect(drive.calls[10]!.prompt).toContain(goalText);
-  expect(drive.calls[11]!.prompt).not.toContain(goalText);
-  expect(drive.calls[11]!.prompt).toContain(
+  expect(drive.calls[12]!.prompt).toContain(goalText);
+  expect(drive.calls[12]!.prompt).toContain(
+    "write both even integers as multiples of two and factor",
+  );
+  expect(drive.calls[13]!.prompt).not.toContain(goalText);
+  expect(drive.calls[13]!.prompt).toContain(
+    "write both even integers as multiples of two and factor",
+  );
+  expect(drive.calls[13]!.prompt).toContain('"id": "n1"');
+  expect(drive.calls[13]!.prompt).toContain(
     "Prove that the sum of two even integers is even.",
   );
-  expect(drive.calls[11]!.system).toContain(
-    "The absence of given premises is not grounds for INCONCLUSIVE",
+  expect(drive.calls[13]!.system).toContain(
+    "You never receive the candidate proof, ancestor proof texts, transitive ancestor statements",
   );
   expect(drive.calls[14]!.prompt).toContain(goalText);
+  expect(drive.calls[16]!.prompt).toContain(goalText);
 
   // the goal note's basedOn premises reach the boundary premise auditor as
   // established givens, and the system prompt carries the guard sentence
-  const premiseAudit = drive.calls[13]!;
+  const premiseAudit = drive.calls[11]!;
   expect(premiseAudit.prompt).toContain(
     "Given premises, already established for this audit; do not inventory them:",
   );
@@ -140,14 +181,15 @@ test("a full cycle mints, triages, verifies, serves, and solves at the boundary"
   expect(statuses).toContain("verify n1 (proof-audit)");
   expect(statuses).toContain("boundary verify n3 (criteria-match)");
 
-  // triage rationales and note verdict reports are consumed by the fold and
-  // never projected into any prompt
+  // Triage rationales remain fold-only. Exact verdict reasons reach serve's
+  // control view so later strategy and re-triage do not have to guess.
   for (const call of drive.calls) {
     expect(call.prompt).not.toContain("own derivation");
     expect(call.prompt).not.toContain("process note");
-    expect(call.prompt).not.toContain("goal derivation");
-    expect(call.prompt).not.toContain("derivation holds");
+    expect(call.prompt).not.toContain('"rationale"');
   }
+  expect(drive.calls[4]!.prompt).toContain("derivation holds");
+  expect(drive.calls[5]!.prompt).not.toContain("derivation holds");
 
   // the accepted candidate holds the goal note's exact bytes
   const reader = openReader(path);
@@ -177,7 +219,7 @@ test("the curator cannot overwrite an existing note", async () => {
 });
 
 test("same-turn findings form a verified definition-lemma-goal chain", async () => {
-  const { path, report } = await startCampaign([
+  const { path, drive, report } = await startCampaign([
     turn([
       { text: "Definition: an even integer has the form 2k." },
       {
@@ -201,9 +243,9 @@ test("same-turn findings form a verified definition-lemma-goal chain", async () 
     verdict("PASS", "goal proof holds"),
     goalServe("n3"),
     verdict("PASS", "boundary proof holds"),
+    { submission: { report: "no external premises", premises: [] } },
     verdict("PASS", "independent proof holds"),
     verdict("PASS", "no refutation"),
-    { submission: { report: "no external premises", premises: [] } },
     verdict("PASS", "criteria match"),
   ]);
 
@@ -222,6 +264,275 @@ test("same-turn findings form a verified definition-lemma-goal chain", async () 
       parents: ["n2"],
     }),
   ]);
+  const reconstruction = drive.calls.find((call) =>
+    call.label.endsWith("/candidate/reconstruction-derive"),
+  );
+  expect(reconstruction?.prompt).toContain("even inputs have 2r and 2s forms");
+  expect(reconstruction?.prompt).not.toContain("definition of evenness");
+  expect(reconstruction?.prompt).not.toContain(
+    "Definition: an even integer has the form 2k.",
+  );
+  const certification = drive.calls.find((call) =>
+    call.system?.startsWith("You are a fresh certifier"),
+  );
+  expect(certification?.prompt).toContain("definition of evenness");
+  expect(certification?.prompt).toContain("even inputs have 2r and 2s forms");
+});
+
+test("proof audit binds the curator statement to the exact finding text", async () => {
+  const { drive, report } = await startCampaign([
+    turn([{ text: "Every even integer is divisible by two." }]),
+    curation([
+      {
+        finding: 1,
+        summary: "even integers are divisible by two",
+        statement: "Every integer is divisible by two.",
+      },
+    ]),
+    triage([{ note: "n1", modes: ["proof-audit"], rationale: "audit" }]),
+    verdict("FAIL", "the statement overclaims what the text establishes"),
+    serve([], "repair the statement-text mismatch"),
+  ]);
+
+  expect(report.outcome).toBe("paused");
+  expect(drive.calls[1]!.system).toContain("complete precise statement");
+  expect(drive.calls[1]!.system).toContain(
+    "the theorem, lemma, or claim that the finding asks a reader to believe",
+  );
+  expect(drive.calls[1]!.system).toContain(
+    "unverified proposal until a truth-establishing verifier certifies its form",
+  );
+  expect(drive.calls[3]!.system).toContain(
+    "First classify statementForm as PROPOSITION_ONLY or CONTAINS_SUPPORT",
+  );
+  expect(drive.calls[3]!.system).toContain(
+    "exact note text is expected to contain the proof, evidence, reasoning, and justification",
+  );
+  expect(drive.calls[3]!.system).toContain(
+    "The presence of proof in exact note text is required evidence, not contamination",
+  );
+  expect(drive.calls[3]!.prompt).toContain("Every integer is divisible by two");
+  expect(drive.calls[3]!.prompt).toContain(
+    "Every even integer is divisible by two",
+  );
+});
+
+test("boundary reconstruction rejects a goal-restating ancestor as a proof", async () => {
+  const targetRestatement =
+    "For every pair of even integers a and b, their sum a+b is even.";
+  const { drive, report } = await startCampaign([
+    turn([{ text: targetRestatement }]),
+    curation([
+      {
+        finding: 1,
+        summary: "the sum of two even integers is even",
+        statement: targetRestatement,
+      },
+    ]),
+    triage([{ note: "n1", modes: ["proof-audit"], rationale: "audit" }]),
+    verdict("PASS", "the target restatement was accepted as a prior note"),
+    serve(["n1"], "supply an actual derivation"),
+    turn([{ text: goalText, basedOn: ["n1"] }]),
+    curation([
+      {
+        finding: 1,
+        summary: "the sum of two even integers is even",
+        statement: targetRestatement,
+      },
+    ]),
+    triage([{ note: "n2", modes: ["proof-audit"], rationale: "audit" }]),
+    verdict("PASS", "the derivation is valid"),
+    goalServe("n2"),
+    verdict("PASS", "the boundary proof audit passes"),
+    { submission: { report: "no external premises", premises: [] } },
+    bundleVerdict(
+      "FAIL",
+      "the target-restating direct premise makes reconstruction circular",
+    ),
+  ]);
+
+  expect(report.outcome).toBe("paused");
+  const certification = drive.calls.find((call) =>
+    call.system?.startsWith("You are a fresh certifier"),
+  );
+  expect(certification?.prompt).toContain(targetRestatement);
+  expect(certification?.system).toContain(
+    "Mark a direct or transitive premise TARGET_OR_PROOF_LEAK",
+  );
+  expect(
+    drive.calls.some((call) =>
+      call.label.endsWith("/candidate/reconstruction-derive"),
+    ),
+  ).toBe(false);
+});
+
+test("mechanical blindness rejects an exact candidate copied into key ideas", async () => {
+  const { path, drive, report } = await startCampaign([
+    turn([{ text: goalText }]),
+    curation([
+      {
+        finding: 1,
+        summary: "the sum of two even integers is even",
+        reconstruction: { keyIdeas: [goalText], allowedSources: [] },
+      },
+    ]),
+    triage([{ note: "n1", modes: ["proof-audit"], rationale: "audit" }]),
+    verdict("PASS", "the proof is valid"),
+    goalServe("n1"),
+    verdict("PASS", "the boundary proof audit passes"),
+    { submission: { report: "no external premises", premises: [] } },
+    bundleVerdict("PASS", "the model overlooked the exact copied proof"),
+  ]);
+
+  expect(report.outcome).toBe("paused");
+  expect(
+    drive.calls.some((call) =>
+      call.label.endsWith("/candidate/reconstruction-derive"),
+    ),
+  ).toBe(false);
+  const inspection = (await import("../inspect")).inspectCampaign(path, {
+    includeInputs: true,
+  });
+  expect(inspection.candidates[0]!.verdicts.at(-1)).toMatchObject({
+    mode: "reconstruction-certification",
+    verdict: "FAIL",
+  });
+});
+
+test("mechanical blindness detects decoded multiline and split guide copies", () => {
+  const candidate = 'line one\n"quoted \\ path"\nline three';
+  const base = {
+    note: "n1",
+    target: "Target P",
+    allowedSources: [] as string[],
+    premises: [] as { id: string; statement: string }[],
+  };
+  expect(
+    reconstructionBundleContainsCandidate(
+      { ...base, keyIdeas: [candidate] },
+      candidate,
+    ),
+  ).toBe(true);
+  expect(
+    reconstructionBundleContainsCandidate(
+      {
+        ...base,
+        keyIdeas: ["line one", '"quoted \\ path"', "line three"],
+      },
+      candidate,
+    ),
+  ).toBe(true);
+  expect(
+    reconstructionBundleContainsCandidate(
+      { ...base, keyIdeas: ["line one", "different argument"] },
+      candidate,
+    ),
+  ).toBe(false);
+});
+
+test("local reconstruction removes an exact target-restating premise", async () => {
+  const target = "For every pair of even integers a and b, a+b is even.";
+  const { drive, report } = await startCampaign([
+    turn([{ text: goalText }, { text: target, basedOnFindings: [1] }]),
+    curation([
+      { finding: 1, summary: "proved parity claim", statement: target },
+      { finding: 2, summary: "repeated parity claim", statement: target },
+    ]),
+    triage([
+      { note: "n1", modes: ["proof-audit"], rationale: "audit" },
+      { note: "n2", modes: ["reconstruction"], rationale: "reconstruct" },
+    ]),
+    verdict("PASS", "the first derivation is valid"),
+    verdict("INCONCLUSIVE", "the repeated target supplies no derivation"),
+  ]);
+
+  expect(report.outcome).toBe("paused");
+  const reconstruction = drive.calls.find((call) =>
+    call.label.includes("/verify/n2/reconstruction/"),
+  );
+  expect(reconstruction?.prompt).toContain(
+    "Given premises (exact statements of the note's basedOn notes):\n[]",
+  );
+});
+
+test("serve-selected re-triage can verify a previously inconclusive note", async () => {
+  const { path, drive, report } = await startCampaign([
+    turn([{ text: lemmaText }]),
+    curation([{ finding: 1, summary: "even integers have a 2k form" }]),
+    triage([{ note: "n1", modes: ["proof-audit"], rationale: "audit" }]),
+    verdict("INCONCLUSIVE", "the quantifier needs a fresh audit"),
+    retriageServe(["n1"]),
+    triage([{ note: "n1", modes: ["proof-audit"], rationale: "fresh audit" }]),
+    verdict("PASS", "the quantified statement follows from the definition"),
+  ]);
+
+  expect(report.outcome).toBe("paused");
+  expect(drive.calls[4]!.prompt).toContain(
+    "the quantifier needs a fresh audit",
+  );
+  expect(drive.calls[5]!.prompt).toContain("priorVerdicts");
+  const inspection = (await import("../inspect")).inspectCampaign(path);
+  expect(inspection.notes).toEqual([
+    expect.objectContaining({ id: "n1", standing: "verified" }),
+  ]);
+});
+
+test("serve rejects an expansion whose rendered explorer call exceeds context", () => {
+  const profile = {
+    provider: "fixture",
+    model: "fixture",
+    reasoning: "low" as const,
+    api: "openai-responses",
+    baseUrl: "https://invalid.test/v1",
+  };
+  const task: Task = {
+    protocol: protocolName,
+    callSurface,
+    problem: "Prove P.",
+    completionCriteria: "Give a proof.",
+    maxContextTokens: 1_000,
+    maxIndexTokens: 500,
+    maxExplorerTurns: 10,
+    guidance: [],
+    explorer: profile,
+    curator: profile,
+    triage: profile,
+    verifier: profile,
+    sourceChecker: { model: "fixture", reasoning: "low" },
+  };
+  const index = [
+    { id: "n1", summary: "large note", standing: "verified" as const },
+  ];
+  const view: ServeView = {
+    index: [
+      {
+        ...index[0]!,
+        statement: "Large supporting lemma.",
+        parents: [],
+        textTokens: 5_000,
+        recent: true,
+        plan: ["proof-audit"],
+        verdicts: [{ mode: "proof-audit", verdict: "PASS", report: "checked" }],
+        closureVerified: true,
+        boundaryAttempts: [],
+        goalEligible: true,
+        retriable: false,
+      },
+    ],
+    explorerIndex: index,
+    expansions: [{ id: "n1", text: "large proof ".repeat(5_000) }],
+    turns: 1,
+    history: [],
+    hints: { expand: [] },
+  };
+  const schema = serveTurn(task, view).schema;
+  expect(
+    schema.safeParse({ expand: ["n1"], objective: "use the large note" })
+      .success,
+  ).toBe(false);
+  expect(schema.safeParse({ objective: "use summaries only" }).success).toBe(
+    true,
+  );
 });
 
 test("refutation-only PASS does not establish a trusted premise", async () => {
@@ -240,20 +551,24 @@ test("refutation-only PASS does not establish a trusted premise", async () => {
 });
 
 test("a local FAIL cannot veto a goal before the boundary battery", async () => {
-  const { report } = await startCampaign([
+  const { path, report } = await startCampaign([
     turn([{ text: goalText }]),
     curation([{ finding: 1, summary: "the sum of two even integers is even" }]),
     triage([{ note: "n1", modes: ["proof-audit"], rationale: "local audit" }]),
     verdict("FAIL", "mistaken local rejection"),
     goalServe("n1"),
     verdict("PASS", "fresh boundary proof audit"),
+    { submission: { report: "no external premises", premises: [] } },
     verdict("PASS", "fresh independent proof"),
     verdict("PASS", "fresh refutation search"),
-    { submission: { report: "no external premises", premises: [] } },
     verdict("PASS", "exact criteria match"),
   ]);
 
   expect(report.outcome).toBe("solved");
+  const inspection = (await import("../inspect")).inspectCampaign(path);
+  expect(inspection.notes).toEqual([
+    expect.objectContaining({ id: "n1", standing: "verified" }),
+  ]);
 });
 
 test("criteria mismatch rejects completion without refuting mathematical standing", async () => {
@@ -264,9 +579,9 @@ test("criteria mismatch rejects completion without refuting mathematical standin
     verdict("PASS", "the stored proof is mathematically valid"),
     goalServe("n1"),
     verdict("PASS", "boundary proof holds"),
+    { submission: { report: "no external premises", premises: [] } },
     verdict("PASS", "independent proof holds"),
     verdict("PASS", "no refutation"),
-    { submission: { report: "no external premises", premises: [] } },
     verdict("FAIL", "the proof omits one requested presentation detail"),
   ]);
 
@@ -286,28 +601,151 @@ test("criteria mismatch rejects completion without refuting mathematical standin
   });
 });
 
-test("an unchanged failed goal cannot be redeclared without new evidence", async () => {
-  await expect(
-    startCampaign([
-      turn([{ text: goalText }]),
-      curation([
-        { finding: 1, summary: "the sum of two even integers is even" },
-      ]),
-      triage([
-        { note: "n1", modes: ["proof-audit"], rationale: "local audit" },
-      ]),
-      verdict("PASS", "local audit holds"),
-      goalServe("n1"),
-      verdict("INCONCLUSIVE", "boundary obligation remains"),
-      curation([{ finding: 1, summary: "boundary attempt remains open" }]),
-      triage([{ note: "n2", modes: [], rationale: "process report" }]),
-      turn([{ text: goalText }]),
-      curation([
-        { finding: 1, summary: "the sum of two even integers is even" },
-      ]),
-      goalServe("n1"),
+test("statement and guide drift cannot reopen a criteria-failed proof", async () => {
+  const { path, drive, report } = await startCampaign([
+    turn([{ text: goalText }]),
+    curation([
+      {
+        finding: 1,
+        summary: "first goal statement",
+        statement: "The sum of two even integers is even.",
+        reconstruction: { keyIdeas: ["factor two"], allowedSources: [] },
+      },
     ]),
-  ).rejects.toThrow("unknown note id");
+    triage([{ note: "n1", modes: ["proof-audit"], rationale: "audit" }]),
+    verdict("PASS", "local proof passes"),
+    goalServe("n1"),
+    verdict("PASS", "boundary proof passes"),
+    { submission: { report: "no external premises", premises: [] } },
+    verdict("PASS", "independent reconstruction passes"),
+    verdict("PASS", "no refutation"),
+    verdict("FAIL", "one required definition is absent"),
+    curation([{ finding: 1, summary: "criteria failure on n1" }]),
+    triage([{ note: "n2", modes: [], rationale: "defect record" }]),
+    turn([{ text: goalText }]),
+    curation([
+      {
+        finding: 1,
+        summary: "renamed identical goal proof",
+        statement: "Every sum of two even integers is even.",
+        reconstruction: {
+          keyIdeas: ["rewrite both inputs as twice an integer"],
+          allowedSources: [],
+        },
+      },
+    ]),
+    triage([{ note: "n3", modes: ["proof-audit"], rationale: "audit" }]),
+    verdict("PASS", "same proof still passes locally"),
+    serve([], "change the proof text before retrying"),
+    turn([{ text: "Repair the missing definition." }]),
+  ]);
+
+  expect(report.outcome).toBe("paused");
+  const inspection = (await import("../inspect")).inspectCampaign(path);
+  expect(inspection.candidates).toHaveLength(1);
+  const finalServe = drive.calls.findLast((call) =>
+    call.label.includes("/serve/"),
+  )!;
+  expect(finalServe.prompt).toMatch(/"id": "n3"[\s\S]*?"goalEligible": false/u);
+});
+
+test("a criteria-only mismatch preserves a separately verified lemma", async () => {
+  const lemmaStatement = "Every even integer is divisible by two.";
+  const { path, drive, report } = await startCampaign([
+    turn([
+      { text: "If x is even, then x=2m for an integer m, so 2 divides x." },
+    ]),
+    curation([
+      {
+        finding: 1,
+        summary: "even integers are divisible by two",
+        statement: lemmaStatement,
+      },
+    ]),
+    triage([{ note: "n1", modes: ["proof-audit"], rationale: "lemma audit" }]),
+    verdict("PASS", "the lemma proof is valid"),
+    goalServe("n1"),
+    verdict("PASS", "the stored lemma proof is valid"),
+    { submission: { report: "no external premises", premises: [] } },
+    verdict("PASS", "the stored lemma reconstructs"),
+    verdict("PASS", "the stored lemma survives attack"),
+    verdict("FAIL", "the lemma does not complete the campaign problem"),
+  ]);
+
+  expect(report.outcome).toBe("paused");
+  expect(drive.calls[5]!.label).toEndWith("/candidate/proof-audit");
+  expect(drive.calls[5]!.prompt).toContain(
+    "Exact campaign target:\nProve that the sum of two even integers is even.",
+  );
+  expect(drive.calls[5]!.prompt).toContain(
+    `Stored goal-note proposition:\n${lemmaStatement}`,
+  );
+  expect(drive.calls[8]!.prompt).toContain(
+    "Prove that the sum of two even integers is even.",
+  );
+  expect(drive.calls[11]!.label).toEndWith("/candidate/criteria-match");
+  expect(drive.calls[11]!.prompt).toContain(
+    "Prove that the sum of two even integers is even.",
+  );
+
+  const inspection = (await import("../inspect")).inspectCampaign(path);
+  expect(inspection.notes).toEqual([
+    expect.objectContaining({ id: "n1", standing: "verified" }),
+  ]);
+  expect(inspection.candidates[0]!.verified).toBe(false);
+});
+
+test("a boundary mathematical failure removes the goal from premise trust", async () => {
+  const { path, drive, report } = await startCampaign([
+    turn([{ text: goalText }]),
+    curation([{ finding: 1, summary: "the sum of two even integers is even" }]),
+    triage([{ note: "n1", modes: ["proof-audit"], rationale: "local audit" }]),
+    verdict("PASS", "the local audit missed a defect"),
+    goalServe("n1"),
+    verdict("FAIL", "a concrete boundary proof defect"),
+    curation([{ finding: 1, summary: "boundary proof defect" }]),
+    triage([{ note: "n2", modes: [], rationale: "process report" }]),
+    turn([{ text: "A descendant conclusion.", basedOn: ["n1"] }]),
+    curation([{ finding: 1, summary: "descendant of the rejected candidate" }]),
+    triage([{ note: "n3", modes: ["proof-audit"], rationale: "audit" }]),
+    verdict("PASS", "the descendant holds conditionally"),
+    goalServe("n3"),
+    curation([{ finding: 1, summary: "descendant blocked on n1" }]),
+  ]);
+
+  expect(report.outcome).toBe("paused");
+  const inspection = (await import("../inspect")).inspectCampaign(path);
+  expect(inspection.notes).toEqual([
+    expect.objectContaining({ id: "n1", standing: "conjecture" }),
+    expect.objectContaining({ id: "n2", standing: "report" }),
+    expect.objectContaining({ id: "n3", standing: "verified" }),
+    expect.objectContaining({ id: "n4", standing: "conjecture" }),
+  ]);
+  expect(
+    drive.calls.filter((call) => call.label.includes("/candidate/")),
+  ).toHaveLength(1);
+  const gapCuration = drive.calls.at(-1)!;
+  expect(gapCuration.prompt).toContain("unverified ancestors");
+  expect(gapCuration.prompt).toContain('"n1"');
+  expect(gapCuration.prompt).toContain("conjecture");
+});
+
+test("an unchanged non-PASS goal cannot be redeclared", async () => {
+  const { drive, report } = await startCampaign([
+    turn([{ text: goalText }]),
+    curation([{ finding: 1, summary: "the sum of two even integers is even" }]),
+    triage([{ note: "n1", modes: ["proof-audit"], rationale: "local audit" }]),
+    verdict("PASS", "local audit holds"),
+    goalServe("n1"),
+    verdict("INCONCLUSIVE", "boundary obligation remains"),
+    curation([{ finding: 1, summary: "boundary attempt remains open" }]),
+    triage([{ note: "n2", modes: [], rationale: "process report" }]),
+    turn([{ text: goalText }]),
+    curation([{ finding: 1, summary: "the sum of two even integers is even" }]),
+    serve([], "change the proof before another boundary attempt"),
+  ]);
+  expect(report.outcome).toBe("paused");
+  expect(drive.calls.at(-1)!.prompt).toContain('"goalEligible": false');
 });
 
 test("failed candidate material bytes stay suppressed across note ids", async () => {
@@ -320,7 +758,13 @@ test("failed candidate material bytes stay suppressed across note ids", async ()
 
   const { drive, report } = await startCampaign([
     turn([{ text: loneSurrogateProof }]),
-    curation([{ finding: 1, summary: "first summary of the goal proof" }]),
+    curation([
+      {
+        finding: 1,
+        summary: "first summary of the goal proof",
+        reconstruction: { keyIdeas: ["first guide"], allowedSources: [] },
+      },
+    ]),
     triage([{ note: "n1", modes: ["proof-audit"], rationale: "local audit" }]),
     verdict("PASS", "local audit holds"),
     goalServe("n1"),
@@ -328,16 +772,102 @@ test("failed candidate material bytes stay suppressed across note ids", async ()
     curation([{ finding: 1, summary: "boundary failure on n1" }]),
     triage([{ note: "n2", modes: [], rationale: "defect record" }]),
     turn([{ text: replacementCharacterProof }]),
-    curation([{ finding: 1, summary: "drifted summary of the same proof" }]),
+    curation([
+      {
+        finding: 1,
+        summary: "drifted summary of the same proof",
+        reconstruction: { keyIdeas: ["changed guide"], allowedSources: [] },
+      },
+    ]),
     triage([{ note: "n3", modes: ["proof-audit"], rationale: "local audit" }]),
     verdict("PASS", "local audit still holds"),
-    serve([], "find new proof bytes"),
+    serve(["n1"], "repair the failed proof bytes"),
+    turn([
+      { text: "Repair the boundary gap while preserving the valid steps." },
+    ]),
   ]);
 
   expect(report.outcome).toBe("paused");
-  const finalServe = drive.calls.at(-1)!;
+  const finalServe = drive.calls.findLast((call) =>
+    call.label.includes("/serve/"),
+  )!;
   expect(finalServe.label).toContain("/serve/");
-  expect(finalServe.prompt).not.toContain("drifted summary of the same proof");
+  expect(finalServe.prompt).toContain('"goalEligible": false');
+  expect(finalServe.prompt).toContain("drifted summary of the same proof");
+  expect(drive.calls.at(-1)!.prompt).toContain(goalText);
+  expect(drive.calls.at(-1)!.prompt).toContain("\\ud800");
+});
+
+test("a repaired reconstruction bundle can retry unchanged proof bytes", async () => {
+  const { path, drive, report } = await startCampaign([
+    turn([{ text: goalText }]),
+    curation([
+      {
+        finding: 1,
+        summary: "the sum of two even integers is even",
+        reconstruction: { keyIdeas: ["inspect parity"], allowedSources: [] },
+      },
+    ]),
+    triage([{ note: "n1", modes: ["proof-audit"], rationale: "local audit" }]),
+    verdict("PASS", "local proof is valid"),
+    goalServe("n1"),
+    verdict("PASS", "boundary proof is valid"),
+    { submission: { report: "no external premises", premises: [] } },
+    bundleVerdict("FAIL", "key idea is too close to the proof"),
+    curation([{ finding: 1, summary: "bundle failure on n1" }]),
+    triage([{ note: "n2", modes: [], rationale: "defect record" }]),
+    turn([
+      { text: goalText },
+      {
+        text: "Process: resubmit the audited proof only to repair its reconstruction guide.",
+      },
+    ]),
+    curation([
+      {
+        finding: 1,
+        summary: "the sum of two even integers is even",
+        reconstruction: {
+          keyIdeas: ["represent each input as twice an integer"],
+          allowedSources: [],
+        },
+      },
+      { finding: 2, summary: "repair reconstruction guide metadata" },
+    ]),
+    triage([
+      { note: "n3", modes: ["proof-audit"], rationale: "local audit" },
+      { note: "n4", modes: [], rationale: "process record" },
+    ]),
+    verdict("PASS", "unchanged proof remains valid"),
+    goalServe("n3"),
+    verdict("PASS", "boundary proof remains valid"),
+    { submission: { report: "no external premises", premises: [] } },
+    bundleVerdict("PASS", "revised bundle is safe"),
+    verdict("INCONCLUSIVE", "independent proof still has one open step"),
+  ]);
+
+  expect(report.outcome).toBe("paused");
+  const inspection = (await import("../inspect")).inspectCampaign(path);
+  expect(inspection.candidates).toHaveLength(2);
+  expect(inspection.notes[0]).toMatchObject({
+    id: "n1",
+    standing: "verified",
+  });
+  expect(
+    drive.calls.filter((call) =>
+      call.label.endsWith("/candidate/reconstruction-derive"),
+    ),
+  ).toHaveLength(1);
+  const repairCuration = drive.calls.find(
+    (call) =>
+      call.label.includes("/curation/") &&
+      call.prompt.includes(
+        "Repair context from the preceding failed candidate",
+      ),
+  );
+  expect(repairCuration?.prompt).toContain("inspect parity");
+  expect(repairCuration?.prompt).toContain(
+    "key idea is too close to the proof",
+  );
 });
 
 test("an unchanged mechanically blocked goal cannot loop", async () => {
@@ -363,7 +893,7 @@ test("an unchanged mechanically blocked goal cannot loop", async () => {
       ]),
       goalServe("n2"),
     ]),
-  ).rejects.toThrow("unknown note id");
+  ).rejects.toThrow("note is not goal-eligible");
 });
 
 test("a refutation FAIL hides the note and skips its remaining modes", async () => {
@@ -463,6 +993,39 @@ test("a goal on an unverified ancestor is rejected mechanically, without battery
   expect(gapCuration).toContain("conjecture");
 });
 
+test("a mechanical-gap goal becomes eligible after its ancestor is re-triaged", async () => {
+  const { drive, report } = await startCampaign([
+    turn([{ text: lemmaText }]),
+    curation([{ finding: 1, summary: "even integers have a 2k form" }]),
+    triage([{ note: "n1", modes: ["proof-audit"], rationale: "audit" }]),
+    verdict("INCONCLUSIVE", "the quantified form remains open"),
+    serve(["n1"], "build the goal conditionally"),
+    turn([{ text: goalText, basedOn: ["n1"] }]),
+    curation([{ finding: 1, summary: "sum of two evens is even" }]),
+    triage([{ note: "n2", modes: ["proof-audit"], rationale: "goal audit" }]),
+    verdict("PASS", "the conditional derivation holds"),
+    goalServe("n2"),
+    curation([{ finding: 1, summary: "goal blocked on n1" }]),
+    triage([{ note: "n3", modes: [], rationale: "gap report" }]),
+    turn([{ text: "Plan: re-audit the quantified form in n1." }]),
+    curation([{ finding: 1, summary: "re-audit n1" }]),
+    triage([{ note: "n4", modes: [], rationale: "process plan" }]),
+    retriageServe(["n1"]),
+    triage([{ note: "n1", modes: ["proof-audit"], rationale: "fresh audit" }]),
+    verdict("PASS", "the definition supplies the quantified form"),
+    turn([{ text: "Plan: declare the now-unblocked goal." }]),
+    curation([{ finding: 1, summary: "declare the unblocked goal" }]),
+    triage([{ note: "n5", modes: [], rationale: "process plan" }]),
+    serve([], "declare n2 next"),
+  ]);
+
+  expect(report.outcome).toBe("paused");
+  const finalServe = drive.calls.findLast((call) =>
+    call.label.includes("/serve/"),
+  )!;
+  expect(finalServe.prompt).toMatch(/"id": "n2"[\s\S]*?"goalEligible": true/u);
+});
+
 test("every resume cut replays byte-exactly and completes without re-issued work", async () => {
   const oneShot = await startCampaign(happyReplies());
   expect(oneShot.report.outcome).toBe("solved");
@@ -481,7 +1044,7 @@ test("every resume cut replays byte-exactly and completes without re-issued work
     expect(first.drive.calls.length + second.calls.length).toBe(happyTotal);
 
     const resumed = second.calls[0]!;
-    const reference = oneShot.drive.calls[cut]!;
+    const reference = oneShot.drive.calls[first.drive.calls.length]!;
     expect(resumed.label).toBe(reference.label);
     expect(resumed.system).toBe(reference.system);
     expect(resumed.prompt).toBe(reference.prompt);
@@ -528,6 +1091,84 @@ test("a cancelled call reports the session as interrupted", async () => {
   expect(report.phase).toBe("explorer");
 });
 
+test("an oversized reconstruction certification is replay-stable context-limit", async () => {
+  const replies: Reply[] = [
+    turn([{ text: goalText }]),
+    curation([
+      {
+        finding: 1,
+        summary: "the sum of two even integers is even",
+        reconstruction: {
+          keyIdeas: ["large orientation ".repeat(8_000)],
+          allowedSources: [],
+        },
+      },
+    ]),
+    triage([{ note: "n1", modes: ["proof-audit"], rationale: "audit" }]),
+    verdict("PASS", "local proof passes"),
+    goalServe("n1"),
+    verdict("PASS", "boundary proof passes"),
+    { submission: { report: "no external premises", premises: [] } },
+    bundleVerdict("PASS", "would pass if dispatched"),
+  ];
+  const settings = runSettings({
+    maxContextTokens: 4_000,
+    maxIndexTokens: 3_000,
+  });
+  const first = await startCampaign(replies, { settings });
+  expect(first.report).toMatchObject({
+    outcome: "context-limit",
+    phase: "context-limit",
+  });
+  expect(first.report.reason).toContain("verify-reconstruction-certification");
+
+  const resumed = dependencies([
+    bundleVerdict("PASS", "would pass if dispatched"),
+  ]);
+  const second = await resume({ campaignPath: first.path, settings }, resumed);
+  expect(second.outcome).toBe("context-limit");
+  expect(resumed.calls).toHaveLength(0);
+});
+
+test("an oversized reconstruction comparison is replay-stable context-limit", async () => {
+  const replies: Reply[] = [
+    turn([{ text: goalText }]),
+    curation([
+      {
+        finding: 1,
+        summary: "the sum of two even integers is even",
+        reconstruction: {
+          keyIdeas: ["represent both inputs as multiples of two"],
+          allowedSources: [],
+        },
+      },
+    ]),
+    triage([{ note: "n1", modes: ["proof-audit"], rationale: "audit" }]),
+    verdict("PASS", "local proof passes"),
+    goalServe("n1"),
+    verdict("PASS", "boundary proof passes"),
+    { submission: { report: "no external premises", premises: [] } },
+    bundleVerdict("PASS", "bundle is safe"),
+    boundaryReconstruction("long reconstruction ".repeat(8_000)),
+    verdict("PASS", "would compare if dispatched"),
+  ];
+  const settings = runSettings({
+    maxContextTokens: 4_000,
+    maxIndexTokens: 3_000,
+  });
+  const first = await startCampaign(replies, { settings });
+  expect(first.report).toMatchObject({
+    outcome: "context-limit",
+    phase: "context-limit",
+  });
+  expect(first.report.reason).toContain("verify-reconstruction-comparison");
+
+  const resumed = dependencies([verdict("PASS", "would compare")]);
+  const second = await resume({ campaignPath: first.path, settings }, resumed);
+  expect(second.outcome).toBe("context-limit");
+  expect(resumed.calls).toHaveLength(0);
+});
+
 test("a tiny maxIndexTokens ends the campaign as index-limit and resumes without dispatch", async () => {
   const { path, drive, report } = await startCampaign([], {
     settings: { maxIndexTokens: 1 },
@@ -545,6 +1186,31 @@ test("a tiny maxIndexTokens ends the campaign as index-limit and resumes without
     again,
   );
   expect(resumed.outcome).toBe("index-limit");
+  expect(again.calls).toHaveLength(0);
+});
+
+test("maxExplorerTurns ends and resumes as a terminal turn-limit", async () => {
+  const { path, drive, report } = await startCampaign(
+    [
+      turn([{ text: "Plan: inspect the parity cases." }]),
+      curation([{ finding: 1, summary: "inspect parity cases" }]),
+      triage([{ note: "n1", modes: [], rationale: "process plan" }]),
+      serve([], "continue the search"),
+    ],
+    { settings: { maxExplorerTurns: 1 } },
+  );
+  expect(report).toMatchObject({ outcome: "turn-limit", phase: "turn-limit" });
+  expect(drive.calls).toHaveLength(4);
+
+  const again = dependencies([]);
+  const resumed = await resume(
+    {
+      campaignPath: path,
+      settings: runSettings({ maxExplorerTurns: 1 }),
+    },
+    again,
+  );
+  expect(resumed.outcome).toBe("turn-limit");
   expect(again.calls).toHaveLength(0);
 });
 
@@ -653,7 +1319,7 @@ test("a visible process report cannot be cited as a proof premise", async () => 
     turn([{ text: "Plan: try induction." }]),
     curation([{ finding: 1, summary: "process plan: try induction" }]),
     triage([{ note: "n1", modes: [], rationale: "process report" }]),
-    serve([], "carry out the plan"),
+    serve(["n1"], "carry out the plan"),
     turn([{ text: goalText, basedOn: ["n1"] }]),
   ]);
 
@@ -672,6 +1338,7 @@ test("a visible process report cannot be cited as a proof premise", async () => 
 
   const nextExplorer = drive.calls[4]!;
   expect(nextExplorer.prompt).toContain("process plan: try induction");
+  expect(nextExplorer.prompt).toContain("Plan: try induction.");
   expect(nextExplorer.prompt).toContain('"standing": "report"');
   expect(nextExplorer.system).toContain(
     "basedOn only non-report note ids that appear in the current Note index",
@@ -714,19 +1381,31 @@ test("an exact repeated finding is mechanically reused without re-verification",
 test("the curator statement participates in immutable note identity", async () => {
   const { path, report } = await startCampaign([
     turn([{ text: "Shared exact bytes." }]),
-    curation([{ finding: 1, summary: "a weak intermediate statement" }]),
+    curation([
+      {
+        finding: 1,
+        summary: "shared claim",
+        statement: "A weak intermediate statement.",
+      },
+    ]),
     triage([{ note: "n1", modes: [], rationale: "process report" }]),
     serve([], "state the mathematical claim"),
     turn([{ text: "Shared exact bytes." }]),
-    curation([{ finding: 1, summary: "the goal statement" }]),
+    curation([
+      {
+        finding: 1,
+        summary: "shared claim",
+        statement: "The complete goal statement.",
+      },
+    ]),
   ]);
 
   expect(report.outcome).toBe("paused");
   const inspection = (await import("../inspect")).inspectCampaign(path);
   expect(inspection.notes).toHaveLength(2);
-  expect(inspection.notes.map(({ summary }) => summary)).toEqual([
-    "a weak intermediate statement",
-    "the goal statement",
+  expect(inspection.notes.map(({ statement }) => statement)).toEqual([
+    "A weak intermediate statement.",
+    "The complete goal statement.",
   ]);
 });
 
@@ -819,7 +1498,7 @@ test("external-premises alone does not establish mathematical standing", async (
   expect(drive.calls[5]!.prompt).toContain('"standing": "conjecture"');
 });
 
-test("boundary external-premises failure rejects the candidate without refuting the note", async () => {
+test("boundary external-premises failure rejects premise trust without refuting the claim", async () => {
   const { path, report } = await startCampaign([
     turn([{ text: goalText }]),
     curation([{ finding: 1, summary: "the sum of two even integers is even" }]),
@@ -827,8 +1506,6 @@ test("boundary external-premises failure rejects the candidate without refuting 
     verdict("PASS", "the stored derivation is mathematically valid"),
     goalServe("n1"),
     verdict("PASS", "boundary proof audit passes"),
-    verdict("PASS", "independent reconstruction passes"),
-    verdict("PASS", "no mathematical refutation found"),
     {
       submission: {
         report: "The external-premise application is defective.",
@@ -888,7 +1565,7 @@ test("a boundary premise resolves through the isolated source check and solves",
     applicationCheck: "Closure applies directly to r+s.",
   } as const;
   const replies = happyReplies();
-  replies[13] = {
+  replies[11] = {
     submission: {
       report: "One external premise needs sourcing.",
       premises: [premise],

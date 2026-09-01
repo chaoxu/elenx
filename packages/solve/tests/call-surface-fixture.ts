@@ -12,6 +12,7 @@ import {
 import { callSurface, protocolName, type Task } from "../exploration-protocol";
 import {
   boundaryLabel,
+  blindReconstructionTurn,
   callParameters,
   candidateVerifierLabels,
   curationLabel,
@@ -20,6 +21,10 @@ import {
   explorerLabel,
   explorerTurn,
   premiseTurn,
+  reconstructionCertificationLabel,
+  reconstructionCertificationTurn,
+  reconstructionComparisonTurn,
+  reconstructionDerivationLabel,
   serveLabel,
   serveTurn,
   structuredCallReplayIdentity,
@@ -49,6 +54,7 @@ const task: Task = {
     "Define P, prove the base and inductive cases, and state the conclusion.",
   maxContextTokens: 200_000,
   maxIndexTokens: 100_000,
+  maxExplorerTurns: 50,
   guidance: [
     { origin: "default", text: "Use a durable proof graph." },
     { origin: "user", text: "Try induction and attack edge cases." },
@@ -70,13 +76,75 @@ const explorerIndex = [
   { id: "n4", summary: "Try induction next", standing: "report" as const },
 ];
 const serveIndex = [
-  ...explorerIndex,
-  { id: "n3", summary: "A failed parity route", standing: "refuted" as const },
+  {
+    id: "n1",
+    summary: "P holds at one",
+    statement: "P holds at one",
+    standing: "verified" as const,
+    parents: [],
+    textTokens: 8,
+    recent: false,
+    plan: ["proof-audit"],
+    verdicts: [
+      {
+        mode: "proof-audit",
+        verdict: "PASS" as const,
+        report: "Base proof is sound.",
+      },
+    ],
+    closureVerified: true,
+    boundaryAttempts: [],
+    goalEligible: true,
+    retriable: false,
+  },
+  {
+    id: "n2",
+    summary: "P(m) implies P(m+1)",
+    statement: "For m >= 1, P(m) implies P(m+1)",
+    standing: "conjecture" as const,
+    parents: ["n1"],
+    textTokens: 18,
+    recent: true,
+    plan: ["proof-audit", "reconstruction"],
+    verdicts: [
+      {
+        mode: "reconstruction",
+        verdict: "INCONCLUSIVE" as const,
+        report: "The inductive hypothesis is underspecified.",
+      },
+    ],
+    closureVerified: true,
+    boundaryAttempts: [],
+    goalEligible: true,
+    retriable: true,
+  },
+  {
+    id: "n4",
+    summary: "Try induction next",
+    statement: "Process plan: try induction next",
+    standing: "report" as const,
+    parents: [],
+    textTokens: 5,
+    recent: false,
+    plan: [],
+    verdicts: [],
+    closureVerified: true,
+    boundaryAttempts: [],
+    goalEligible: false,
+    retriable: false,
+  },
 ];
 const premises = [
   { id: "n1", statement: "P holds at one" },
   { id: "n2", statement: "P(m) implies P(m+1)" },
 ];
+const reconstructionBundle = {
+  note: "n5",
+  target: task.problem,
+  keyIdeas: ["Use induction on m and preserve invariant P."],
+  allowedSources: ["The induction principle on positive integers."],
+  premises: [premises[1]!],
+};
 
 function verifyView(
   scope: VerifyView["scope"],
@@ -87,6 +155,9 @@ function verifyView(
     note: "n5",
     statement: "P holds for every integer m >= 1",
     text: "Base case. Inductive step. Therefore P holds for every m >= 1.",
+    ...(scope === "boundary"
+      ? { storedStatement: "P holds for every integer m >= 1" }
+      : {}),
     premises,
     mode,
   };
@@ -112,6 +183,10 @@ function fixtureTurns() {
       failure: {
         goalNote: "n5",
         text: "Candidate proof bytes.",
+        reconstruction: {
+          keyIdeas: ["Use induction."],
+          allowedSources: [],
+        },
         verdicts: [
           {
             mode: "proof-audit",
@@ -132,15 +207,64 @@ function fixtureTurns() {
         },
       ],
     }),
+    curationRepair: curationTurn(task, {
+      index: explorerIndex,
+      findings: [
+        {
+          text: "Candidate proof bytes.",
+          basedOn: ["n1"],
+          basedOnFindings: [],
+        },
+      ],
+      repair: {
+        goalNote: "n5",
+        reconstruction: {
+          keyIdeas: ["Leaky stepwise guide."],
+          allowedSources: [],
+        },
+        verdicts: [
+          {
+            mode: "reconstruction-certification",
+            verdict: "FAIL",
+            report: "The key ideas copy the proof.",
+          },
+        ],
+      },
+    }),
     triage: triageTurn(task, {
       batch: [
-        { id: "n5", text: "Base-case proof.", basedOn: [] },
-        { id: "n6", text: "Induction-step proof.", basedOn: premises },
+        {
+          id: "n5",
+          statement: "P holds at one",
+          text: "Base-case proof.",
+          basedOn: [],
+          priorVerdicts: [],
+        },
+        {
+          id: "n6",
+          statement: "P(m) implies P(m+1)",
+          text: "Induction-step proof.",
+          basedOn: premises,
+          priorVerdicts: [],
+        },
       ],
     }),
     serve: serveTurn(task, {
       index: serveIndex,
+      explorerIndex,
+      expansions: [
+        { id: "n1", text: "Base-case proof." },
+        { id: "n2", text: "Induction-step proof." },
+        { id: "n4", text: "Try induction next." },
+      ],
       turns: 3,
+      history: [
+        {
+          expand: ["n1"],
+          objective: "Develop the induction step.",
+          retriage: [],
+        },
+      ],
       hints: { expand: ["n1", "n2"], objective: "Finish induction." },
     }),
     noteProofAudit: verdictTurn(task, verifyView("note", "proof-audit")),
@@ -149,10 +273,23 @@ function fixtureTurns() {
       verifyView("boundary", "proof-audit"),
     ),
     noteReconstruction: verdictTurn(task, verifyView("note", "reconstruction")),
-    boundaryReconstruction: verdictTurn(
-      task,
-      verifyView("boundary", "reconstruction"),
-    ),
+    reconstructionCertification: reconstructionCertificationTurn(task, {
+      candidate: "Base case. Inductive step. Therefore P holds.",
+      bundle: reconstructionBundle,
+      trustedClosure: [premises[0]!],
+    }),
+    blindReconstruction: blindReconstructionTurn(task, reconstructionBundle),
+    reconstructionComparison: reconstructionComparisonTurn(task, {
+      candidate: "Base case. Inductive step. Therefore P holds.",
+      bundle: reconstructionBundle,
+      reconstruction: {
+        call: 41,
+        artifact: {
+          proof: "An independent induction proves P for every m.",
+          usedPremises: ["n2"],
+        },
+      },
+    }),
     noteRefutation: verdictTurn(task, verifyView("note", "refutation")),
     boundaryRefutation: verdictTurn(task, verifyView("boundary", "refutation")),
     boundaryCriteria: verdictTurn(
@@ -211,8 +348,21 @@ export function callSurfaceCorpus(): Record<string, unknown> {
   };
   const validCuration = {
     filings: [
-      { finding: 1, summary: "base" },
-      { finding: 2, summary: "step" },
+      {
+        finding: 1,
+        summary: "base",
+        statement: "P holds at one",
+        reconstruction: { keyIdeas: ["check m=1"], allowedSources: [] },
+      },
+      {
+        finding: 2,
+        summary: "step",
+        statement: "P(m) implies P(m+1)",
+        reconstruction: {
+          keyIdeas: ["apply the inductive transition"],
+          allowedSources: [],
+        },
+      },
     ],
   };
   const validTriage = {
@@ -306,6 +456,7 @@ export function callSurfaceCorpus(): Record<string, unknown> {
       turns.explorerFailure,
     ),
     "turn.curation": structuredCallReplayIdentity(turns.curation),
+    "turn.curation.repair": structuredCallReplayIdentity(turns.curationRepair),
     "turn.triage": structuredCallReplayIdentity(turns.triage),
     "turn.serve": structuredCallReplayIdentity(turns.serve),
     "turn.verify.note.proof-audit": structuredCallReplayIdentity(
@@ -317,9 +468,13 @@ export function callSurfaceCorpus(): Record<string, unknown> {
     "turn.verify.note.reconstruction": structuredCallReplayIdentity(
       turns.noteReconstruction,
     ),
-    "turn.verify.boundary.reconstruction": structuredCallReplayIdentity(
-      turns.boundaryReconstruction,
+    "turn.verify.boundary.reconstruction-certification":
+      structuredCallReplayIdentity(turns.reconstructionCertification),
+    "turn.verify.boundary.reconstruction-derive": structuredCallReplayIdentity(
+      turns.blindReconstruction,
     ),
+    "turn.verify.boundary.reconstruction-comparison":
+      structuredCallReplayIdentity(turns.reconstructionComparison),
     "turn.verify.note.refutation": structuredCallReplayIdentity(
       turns.noteRefutation,
     ),
@@ -385,10 +540,43 @@ export function callSurfaceCorpus(): Record<string, unknown> {
       verdict: turns.noteProofAudit.schema.parse({
         verdict: "PASS",
         report: "checked",
+        statementForm: "PROPOSITION_ONLY",
+        statementFidelity: "MATCH",
       }),
       premise: turns.premise.schema.parse({
         report: "no open premises",
         premises: [],
+      }),
+      reconstructionCertification:
+        turns.reconstructionCertification.schema.parse({
+          verdict: "PASS",
+          report: "bundle is safe",
+          keyIdeas: "SAFE",
+          allowedSources: "SAFE",
+          premises: [
+            {
+              note: "n2",
+              disposition: "RELEVANT_LOGICAL_PREMISE",
+              report: "the candidate invokes the induction step",
+            },
+          ],
+          closure: [
+            {
+              note: "n1",
+              disposition: "SAFE",
+              report: "the base statement is noncircular",
+            },
+          ],
+        }),
+      blindReconstruction: turns.blindReconstruction.schema.parse({
+        proof: "independent induction",
+        usedPremises: ["n2"],
+      }),
+      reconstructionComparison: turns.reconstructionComparison.schema.parse({
+        verdict: "PASS",
+        report: "exact target reached",
+        targetCoverage: "EXACT",
+        undeclaredPremises: [],
       }),
     },
     "schema.acceptance": {
@@ -413,7 +601,9 @@ export function callSurfaceCorpus(): Record<string, unknown> {
         findings: [{ text: "claim", basedOnFindings: [1] }],
       }).success,
       incompleteCuration: turns.curation.schema.safeParse({
-        filings: [{ finding: 1, summary: "only one" }],
+        filings: [
+          { finding: 1, summary: "only one", statement: "Only one claim" },
+        ],
       }).success,
       duplicateTriageMode: turns.triage.schema.safeParse({
         plans: [
@@ -424,6 +614,17 @@ export function callSurfaceCorpus(): Record<string, unknown> {
           },
           { note: "n6", modes: [], rationale: "report" },
         ],
+      }).success,
+      proofAuditPassWithSupport: turns.noteProofAudit.schema.safeParse({
+        verdict: "PASS",
+        report: "proof leaked into statement",
+        statementForm: "CONTAINS_SUPPORT",
+        statementFidelity: "MATCH",
+      }).success,
+      reconstructionPassWithSupport: turns.noteReconstruction.schema.safeParse({
+        verdict: "PASS",
+        report: "proof leaked into target",
+        statementForm: "CONTAINS_SUPPORT",
       }).success,
       goalWithObjective: turns.serve.schema.safeParse({
         goalNote: "n1",
@@ -452,6 +653,8 @@ export function callSurfaceCorpus(): Record<string, unknown> {
       serve: serveLabel(19),
       verify: verifyLabel("n5", "proof-audit", 23),
       boundary: boundaryLabel("criteria-match"),
+      reconstructionCertification: reconstructionCertificationLabel(),
+      reconstructionDerivation: reconstructionDerivationLabel(),
       candidateVerifiers: candidateVerifierLabels(),
       candidateBinding: {
         label: boundaryLabel("proof-audit"),

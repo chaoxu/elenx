@@ -41,16 +41,20 @@ import {
 import {
   callParameters,
   candidateVerifierLabels,
+  blindReconstructionTurn,
   curationTurn,
   ensureContextFits,
   estimatedTextTokens,
   explorerTurn,
   initialView,
   premiseTurn,
+  reconstructionCertificationTurn,
+  reconstructionComparisonTurn,
   serveTurn,
   triageTurn,
   verdictTurn,
   type StructuredCall,
+  ContextLimitError,
 } from "./turns";
 import {
   runCodexSourceCheck,
@@ -63,7 +67,13 @@ export type { Settings } from "./exploration-protocol";
 
 export interface Report {
   readonly outcome:
-    "solved" | "paused" | "call-failure" | "interrupted" | "index-limit";
+    | "solved"
+    | "paused"
+    | "call-failure"
+    | "interrupted"
+    | "context-limit"
+    | "index-limit"
+    | "turn-limit";
   readonly phase: string;
   readonly candidate?: EntryId;
   readonly call?: EntryId;
@@ -114,6 +124,7 @@ function freezeTask(
     completionCriteria: request.completionCriteria,
     maxContextTokens: value.maxContextTokens,
     maxIndexTokens: value.maxIndexTokens,
+    maxExplorerTurns: value.maxExplorerTurns,
     guidance: resolveGuidance(value.explorerGuidance),
     explorer: resolveProfile(models, value.explorer),
     curator: resolveProfile(models, value.curator),
@@ -229,7 +240,7 @@ function ensureSourceContextFits(
     JSON.stringify(request.outputSchema),
   ].reduce((total, text) => total + estimatedTextTokens(text), 0);
   if (tokens > task.maxContextTokens) {
-    throw new Error(
+    throw new ContextLimitError(
       `source-check context estimate ${tokens} exceeds maxContextTokens ${task.maxContextTokens}`,
     );
   }
@@ -252,6 +263,12 @@ function turnForPhase(
       return phase.view.mode === "external-premises"
         ? premiseTurn(task, phase.view.text, phase.view.premises)
         : verdictTurn(task, phase.view);
+    case "reconstruction-certification":
+      return reconstructionCertificationTurn(task, phase.view);
+    case "reconstruction-derive":
+      return blindReconstructionTurn(task, phase.bundle);
+    case "reconstruction-compare":
+      return reconstructionComparisonTurn(task, phase.view);
   }
 }
 
@@ -315,7 +332,7 @@ async function executePhase(
       ...prepared,
       label: phase.label,
       role: phaseRole(phase),
-      ...(phase.kind === "verify" && phase.candidate !== undefined
+      ...("candidate" in phase && phase.candidate !== undefined
         ? { candidate: phase.candidate }
         : {}),
       cacheKey: turn.cacheKey,
@@ -383,6 +400,13 @@ async function runCampaign(
           reason: `index estimate ${phase.tokens} exceeds maxIndexTokens ${task.maxIndexTokens}`,
         };
       }
+      if (phase.kind === "turn-limit") {
+        return {
+          outcome: "turn-limit",
+          phase: "turn-limit",
+          reason: `explorer turns ${phase.turns} reached maxExplorerTurns ${task.maxExplorerTurns}`,
+        };
+      }
       if (phase.kind === "create-candidate") {
         campaign.submitCandidate(
           new TextEncoder().encode(phase.answer),
@@ -439,6 +463,13 @@ async function runCampaign(
         reason: error.message,
       };
     }
+    if (error instanceof ContextLimitError) {
+      return {
+        outcome: "context-limit",
+        phase: "context-limit",
+        reason: error.message,
+      };
+    }
     if (dependencies.signal?.aborted) {
       return {
         outcome: "interrupted",
@@ -462,6 +493,15 @@ function phaseStatus(phase: ModelPhase): string {
     return phase.candidate === undefined
       ? `verify ${phase.view.note} (${phase.view.mode})`
       : `boundary verify ${phase.view.note} (${phase.view.mode})`;
+  }
+  if (phase.kind === "reconstruction-certification") {
+    return `boundary certify reconstruction bundle for ${phase.view.bundle.note}`;
+  }
+  if (phase.kind === "reconstruction-derive") {
+    return `boundary reconstruct ${phase.bundle.note}`;
+  }
+  if (phase.kind === "reconstruction-compare") {
+    return `boundary compare reconstruction for ${phase.view.bundle.note}`;
   }
   if (phase.kind === "note-source-check") {
     return phase.candidate === undefined

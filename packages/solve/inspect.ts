@@ -202,19 +202,32 @@ export function inspectCampaign(path: string, options: InspectionOptions = {}) {
     const serves = semantic.serves.map(({ call, settled, submission }) => ({
       call,
       settled,
-      ...(submission.goalNote === undefined
-        ? {
-            expand: submission.expand,
-            ...(submission.objective === undefined
-              ? {}
-              : { objective: submission.objective }),
-          }
-        : { goalNote: submission.goalNote }),
+      ...(submission.retriage.length > 0
+        ? { retriage: submission.retriage }
+        : submission.goalNote === undefined
+          ? {
+              expand: submission.expand,
+              ...(submission.objective === undefined
+                ? {}
+                : { objective: submission.objective }),
+            }
+          : { goalNote: submission.goalNote }),
     }));
     const notes = semantic.notes.map(
-      ({ id, summary, standing, at, parents, text }) => ({
+      ({
         id,
         summary,
+        statement,
+        reconstruction,
+        standing,
+        at,
+        parents,
+        text,
+      }) => ({
+        id,
+        summary,
+        statement,
+        reconstruction,
         standing,
         at,
         ...(parents.length === 0 ? {} : { parents }),
@@ -262,6 +275,7 @@ export function inspectCampaign(path: string, options: InspectionOptions = {}) {
       completionCriteria: task.completionCriteria,
       maxContextTokens: task.maxContextTokens,
       maxIndexTokens: task.maxIndexTokens,
+      maxExplorerTurns: task.maxExplorerTurns,
       guidance: task.guidance,
       profiles: {
         explorer: publicProfile(task.explorer),
@@ -328,12 +342,19 @@ export function exportAnswer(path: string): Uint8Array {
     const closure = closureInDependencyOrder(accepted.goalNote, notes);
     const sections = [
       `[${goal.id}] ${goal.summary}`,
+      `Statement: ${goal.statement}`,
       "",
       goal.text,
       ...closure.flatMap((id) => {
         const note = notes.get(id);
         if (note === undefined) throw new Error(`closure lost note ${id}`);
-        return ["", `--- [${note.id}] ${note.summary}`, "", note.text];
+        return [
+          "",
+          `--- [${note.id}] ${note.summary}`,
+          `Statement: ${note.statement}`,
+          "",
+          note.text,
+        ];
       }),
       "",
     ];

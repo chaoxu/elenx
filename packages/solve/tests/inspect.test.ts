@@ -48,6 +48,7 @@ test("inspection exposes the v17 policy on a fresh campaign", async () => {
     callSurface,
     phase: "explorer",
     maxIndexTokens: 100_000,
+    maxExplorerTurns: 50,
     explorations: [],
     curations: [],
     triages: [],
@@ -116,6 +117,7 @@ test("inspection reports the verified tower and export unfolds it", async () => 
   expect(inspection.notes[0]).toMatchObject({
     id: "n1",
     summary: "LEMMA_SUMMARY",
+    reconstruction: { keyIdeas: [], allowedSources: [] },
     standing: "verified",
   });
   expect(inspection.notes[1]).toMatchObject({
@@ -138,9 +140,9 @@ test("inspection reports the verified tower and export unfolds it", async () => 
     ]),
   ).toEqual([
     ["proof-audit", "PASS"],
+    ["external-premises", "PASS"],
     ["reconstruction", "PASS"],
     ["refutation", "PASS"],
-    ["external-premises", "PASS"],
     ["criteria-match", "PASS"],
   ]);
   expect(inspection.solution).toBe(inspection.candidates[0]!.id);
@@ -153,10 +155,12 @@ test("inspection reports the verified tower and export unfolds it", async () => 
   expect(new TextDecoder().decode(exportAnswer(path))).toBe(
     [
       "[n2] GOAL_SUMMARY",
+      "Statement: GOAL_SUMMARY",
       "",
       "GOAL_TEXT",
       "",
       "--- [n1] LEMMA_SUMMARY",
+      "Statement: LEMMA_SUMMARY",
       "",
       "LEMMA_TEXT",
       "",

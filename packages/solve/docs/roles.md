@@ -12,13 +12,13 @@ Every explorer starts from a fresh root. It receives no web, filesystem, shell, 
 
 ## Curator
 
-The curator is one role with two call sites. Ingest writes one summary for every reported finding; immutable note identity and exact deduplication are mechanical. Serve composes what the next explorer sees, or points at the goal note. The curator cannot replace, merge, drop, grade, or invalidate findings. It controls observation — the working set and the goal declaration — while standing and acceptance remain separate.
+The curator is one role with two call sites. Ingest writes one short summary, one proposition-only statement proposal, and one reconstruction guide for every reported finding. Proof and support remain in the exact finding text. The guide contains high-level ideas and external results used by that finding, not the proof or copied ancestor statements. Truth-establishing verifiers certify statement form, proof audit certifies fidelity, and a fresh bundle certifier checks every reconstruction input before the blind call. Immutable note identity and exact deduplication are mechanical. Serve receives durable control metadata, composes a context-budgeted working set, may request one re-triage, or points at the goal note. The curator cannot replace, merge, drop, grade, or invalidate findings. It controls observation and planning while standing and acceptance remain separate.
 
 ## Verification subsystem
 
 The verification invariant in [`protocol.md`](protocol.md) governs both call sites.
 
-Triage plans; mode verifiers judge. Verifiers alone touch standing: every standing transition derives from their journaled plans and verdicts, and nothing else in the system can refute, verify, or resurrect a note. At the boundary the battery — every mode plus `criteria-match` — is the sole acceptance authority. Guidance cannot reach any of it: it is advisory text for explorers only.
+Triage plans; mode verifiers judge. One serve-selected re-triage may append a superseding plan for a stuck conjecture. Local verdicts derive mathematical standing. A non-criteria boundary doubt conservatively removes verified-premise trust without refuting a possibly different stored proposition; criteria matching affects only boundary acceptance and redeclaration suppression. Boundary reconstruction separates certification, blind proof production, and comparison inside one mode. Certification may reject the mode early, while the comparator owns its successful verdict. Guidance cannot reach any boundary call: it is advisory text for explorers only.
 
 ## Source checker
 
@@ -35,6 +35,9 @@ Tool access is strict: the harness constructs every call's tool list, each call 
 | curator serve                                  | `submit_serving`                    |
 | triage                                         | `submit_triage`                     |
 | mode verifier                                  | `submit_verdict`                    |
+| reconstruction bundle certifier                | `submit_bundle_certification`       |
+| blind reconstructor                            | `submit_reconstruction`             |
+| reconstruction comparator                      | `submit_reconstruction_comparison`  |
 | premise inventory (inside `external-premises`) | `submit_premises`                   |
 | source checker                                 | isolated Codex CLI, no journal tool |
 
