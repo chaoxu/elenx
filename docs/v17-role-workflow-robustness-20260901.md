@@ -60,6 +60,8 @@ The verifier received the exact cyclic-couples task and completion criteria, `ca
 
 The call used 28,169 tokens, including 20,927 reasoning tokens, and `$0.68057`. Its stable usage tag is `release-gate/cyclic-couples-keyed-v4/attempt-1`. It recorded zero request errors and zero unmeasured requests.
 
+The read-only codex-lb projection on Jupiter contained exactly one successful row for that tag, with the same model, token split, and cost.
+
 The first post-run checker expected the audit collection to be an array, while the keyed schema stores an object. That checker failed after the model call had settled. The durable journal showed all three audits passing, so the corrected finalizer produced the release evidence without another model request.
 
 ## Frozen production pilot
@@ -77,3 +79,5 @@ Two deployment costs surfaced before that failure. Jupiter's cold Nix store spen
 The frozen pilot can resume without changing its inputs, image, or template after an authorized operator installs and reads back the exact `elenx-pool` OpenBao JWT role and policy under the controlled root-token ceremony. The role must bind audience `openbao.nomad.fleet`, namespace `default`, job ID `elenx-pool-*`, and task `worker`, with only the `nomad-elenx-run` policy. Resume must first confirm that generation 1 has no active allocation.
 
 After the six runs finish, the operator should rebuild catalog schema V2 through a compatible Observer, adjudicate each terminal candidate by exact bytes, and report procedural outcome, external verdict, usage, and provenance separately.
+
+During diagnosis of the JWT failure, a secret-bearing OpenBao configuration was mistakenly rendered into the tool transcript. This document does not reproduce the value. An authorized operator should rotate the exposed credential through the controlled OpenBao ceremony.
