@@ -82,7 +82,7 @@ The external semantic review evidence is in `../elenx-lab/runs/role-pilot-semant
 
 The six semantic calls used six measured provider requests, 8,147 total tokens, and an estimated `$0.132135`, with zero request errors. Each semantic journal contains one candidate-bound verifier call and one derived verdict. The original pilot journals and the semantic journals are separate artifacts.
 
-The final catalog on Jupiter is `/srv/elenx-lab/runs/catalog.sqlite`. Its six v9 rows have `result_class = pass`, `report_outcome = accepted`, `external_verdict = pass`, `adjudication_method = independent-review`, and no projection error. The catalog stores the semantic review separately from the procedural Elenx result.
+The six v9 run directories on Jupiter contain the procedural reports and the candidate-bound `independent-review` records. The former `/srv/elenx-lab/runs/catalog.sqlite` file is a historical projection and is no longer part of the Lab runner or a source of authority. Run files and campaign databases remain authoritative.
 
 The semantic review calls are accounted for under the tags `independent-semantic/known-answer-role-pilot-v9/<run>/sol-max-1`. Their fresh journals and immutable records are the evidence for independent mathematical checking. The regex checker is retained only to document the false-negative incident.
 
