@@ -26,6 +26,7 @@
     "typecheck": "tsc --noEmit",
     "test": "bun test",
     "e2e:roles": "bun test tests/role-cli-e2e.test.ts",
+    "debug:trial": "bun scripts/debug-trial.ts",
     "call-surface:update": "bun scripts/update-call-surface.ts",
     "pack:check": "bun scripts/check-package.ts",
     "check": "bun run format:check && bun run typecheck && bun run test && bun run pack:check && bun solve.ts --help"

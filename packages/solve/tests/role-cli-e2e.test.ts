@@ -247,6 +247,28 @@ test("database type and existing-trial errors happen before credential setup", a
   expect(trial.stderr).toContain("trial requires a new campaign database");
 });
 
+test("input errors happen before model or credential setup", async () => {
+  const directory = await testDirectory();
+  const settings = await writeJson(directory, "missing-provider.json", {
+    explorer: { provider: "missing", model: "missing", reasoning: "low" },
+    coordinator: { provider: "missing", model: "missing", reasoning: "low" },
+    verifier: { provider: "missing", model: "missing", reasoning: "low" },
+  });
+  const campaign = join(directory, "never-created.db");
+
+  const result = await cli(
+    directory,
+    "explorer",
+    join(directory, "missing-input.json"),
+    campaign,
+    settings,
+  );
+  expect(result.code).toBe(1);
+  expect(result.stderr).toContain("ENOENT");
+  expect(result.stderr).not.toContain("credential");
+  expect(await Bun.file(campaign).exists()).toBe(false);
+});
+
 function requestedTool(body: Record<string, unknown>): string {
   const tools = body["tools"];
   if (!Array.isArray(tools)) throw new Error("request omitted tools");

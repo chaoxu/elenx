@@ -50,3 +50,17 @@ bun run check:all
 ```
 
 The check runs formatting, strict TypeScript, consumer compilation, both test suites, package checks, and the solver CLI smoke.
+
+Run the hermetic role boundary from the repository root:
+
+```sh
+bun run e2e:roles
+```
+
+Run a fleet-backed development trial with durable local artifacts:
+
+```sh
+bun run debug:trial -- TRIAL.json runs/debug-name SETTINGS.json debug/name--r01/attempt-1
+```
+
+[`packages/solve/docs/role-runner.md`](packages/solve/docs/role-runner.md) defines the live-debug artifacts and the boundary with Elenx Lab.

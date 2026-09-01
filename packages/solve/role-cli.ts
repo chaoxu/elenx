@@ -19,7 +19,13 @@ import {
   verifierResultFromSubmission,
   type PiRoleSettings,
 } from "./pi-roles";
-import { runTrial } from "./roles";
+import {
+  coordinatorInput,
+  explorerInput,
+  runTrial,
+  trialInput,
+  verifierInput,
+} from "./roles";
 import { withSerialToolCalls } from "./serial-tools";
 
 const application = "elenx-solve-roles";
@@ -238,6 +244,8 @@ export async function runRoleCommand(
   }
   validateExistingRoleCampaign(campaignPath);
   const settings = await readSettings(settingsPath);
+  const input = await readJson(inputPath);
+  validateRoleInput(command, input);
   const { ModelRuntime } = await import("@earendil-works/pi-coding-agent");
   const runtime = await ModelRuntime.create({
     modelsPath: modelsPath(process.env),
@@ -261,7 +269,6 @@ export async function runRoleCommand(
   try {
     const dependencies = { models, signal: controller.signal };
     const roles = createPiRoles(campaign, settings, dependencies);
-    const input = await readJson(inputPath);
     if (command === "explorer") {
       return toJson(await roles.explorer(input));
     }
@@ -277,6 +284,13 @@ export async function runRoleCommand(
     process.off("SIGINT", stop);
     process.off("SIGTERM", stop);
   }
+}
+
+function validateRoleInput(command: RoleCommand, input: unknown): void {
+  if (command === "explorer") explorerInput.parse(input);
+  else if (command === "coordinator") coordinatorInput.parse(input);
+  else if (command === "verifier") verifierInput.parse(input);
+  else trialInput.parse(input);
 }
 
 function toJson(value: unknown): Json {

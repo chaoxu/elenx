@@ -50,6 +50,18 @@ The trial files every explorer finding as an immutable note. The coordinator the
 
 Trial notes and its cursor live in memory. Every role call is durable. An interrupted trial must restart with a new database because the trial cursor is not reconstructed. Standalone role commands remain suitable for externally orchestrated workflows.
 
+## Live debug trial
+
+Saturn's development launcher supplies the fleet codex-lb model registry, CA certificate, OpenBao credential, and required usage tag around the ordinary trial command:
+
+```sh
+bun run debug:trial -- TRIAL.json runs/debug-name SETTINGS.json debug/name--r01/attempt-1
+```
+
+The run directory must be new. The launcher copies the exact trial and settings files and records the usage tag and Git revision state in `debug-run.json`. A successful run writes `campaign.db`, `result.json`, and `inspect.json`. A failed solver process preserves `campaign.db` when one was created and writes stdout and stderr logs. The launcher is development tooling rather than a new solver mode.
+
+Throwaway debugging remains local. A run that becomes evidence can later enter Elenx Lab as a development run through its planned registration or adoption path. Matched evaluation and holdout runs enter Lab before launch so their inputs and provenance are frozen.
+
 The settings file selects one model profile per role:
 
 ```json

@@ -1,6 +1,6 @@
 # Role-runner end-to-end test
 
-Run the role runner's production-boundary test from `packages/solve`:
+Run the role runner's production-boundary test from the repository root:
 
 ```sh
 bun run e2e:roles
@@ -16,4 +16,4 @@ The suite covers:
 - a provider failure that exits nonzero and never becomes a mathematical result
 - wrong-database and existing-trial failures before settings or credential setup
 
-Give delegated test agents only `bun run e2e:roles`, with `packages/solve` as their working directory. They need no setup, arguments, environment variables, or credentials.
+Give delegated test agents only `bun run e2e:roles`, with the repository root as their working directory. They need no setup, arguments, environment variables, or credentials.
