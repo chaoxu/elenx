@@ -21,7 +21,7 @@
         <div>
           <p class="eyebrow">ELENX / EXPLORATION-V17 / AUGUST 2026</p>
           <h1>
-            V17 now preserves a proof.<br />The hard theorem is still
+            V17 now preserves a proof.<br />Its hard campaign remains
             unresolved.
           </h1>
           <p class="lead">
@@ -43,9 +43,9 @@
           <span>final-surface smoke solved</span>
         </div>
         <div>
-          <span class="status-label">Hard theorem</span>
-          <strong class="status-open">OPEN</strong>
-          <span>zero accepted candidates</span>
+          <span class="status-label">V17 campaign</span>
+          <strong class="status-open">UNRESOLVED</strong>
+          <span>no accepted V17 candidate</span>
         </div>
         <div>
           <span class="status-label">Protocol</span>
@@ -99,13 +99,13 @@
           <article class="flow-node flow-curator">
             <span class="node-kicker">name</span>
             <h3>Curator</h3>
-            <p>Writes one short statement for each finding.</p>
+            <p>Writes a short summary and a proposition-only proposal.</p>
           </article>
           <button
             class="flow-edge flow-store-edge"
             type="button"
             data-title="Curator → Note store"
-            data-copy="The note identity binds the curator statement, the explorer's exact bytes, and resolved dependency IDs."
+            data-copy="The note identity binds the curator summary and statement proposal, the explorer's exact bytes, and resolved dependency IDs."
             data-result="Expected result: a repair becomes a new note. Existing proof bytes never change."
             aria-pressed="false"
           >
@@ -115,14 +115,16 @@
           <article class="flow-node flow-node-store flow-store">
             <span class="node-kicker">remember</span>
             <h3>Note store</h3>
-            <p>Keeps exact text, statement, dependencies, and standing.</p>
+            <p>
+              Keeps exact text, statement proposal, dependencies, and standing.
+            </p>
           </article>
           <button
             class="flow-edge flow-verify-edge"
             type="button"
             data-title="Note store → Local verification"
-            data-copy="Triage selects proof audit, reconstruction, refutation, or external-premise checking for the note's own claim."
-            data-result="Expected result: lemmas can become trusted premises without pretending to solve the whole campaign."
+            data-copy="Triage selects proof audit, reconstruction, refutation, or external-premise checking. Truth-establishing PASS submissions certify statement form; proof audit also certifies fidelity to exact text."
+            data-result="Expected result: only a clean proposition backed by its exact finding can become a trusted premise."
             aria-pressed="false"
           >
             <span aria-hidden="true">→</span>
@@ -154,7 +156,7 @@
             type="button"
             data-title="Serve → Boundary"
             data-copy="The kernel binds the goal note's exact bytes to a candidate. Five independent checks run against that frozen candidate."
-            data-result="Expected result: only the boundary can return solved, and a failed presentation criterion cannot rewrite mathematical standing."
+            data-result="Expected result: only the boundary can return solved. Criteria-only failure preserves premise trust; any mathematical boundary doubt revokes verified-ancestor use without declaring a different curator proposition false."
             aria-pressed="false"
           >
             <span aria-hidden="true">→</span>
@@ -163,7 +165,10 @@
           <article class="flow-node flow-node-boundary flow-boundary">
             <span class="node-kicker">decide</span>
             <h3>Boundary</h3>
-            <p>Audits proof, reconstruction, attack, sources, and criteria.</p>
+            <p>
+              Audits proof, certifies the reconstruction bundle, reconstructs
+              blindly, compares, attacks, checks sources, and matches criteria.
+            </p>
           </article>
         </div>
 
@@ -201,6 +206,70 @@
               governed by mathematical checks.
             </p>
           </article>
+        </div>
+
+        <div class="repair-table-wrap">
+          <table class="repair-table">
+            <thead>
+              <tr>
+                <th scope="col">Code enforces</th>
+                <th scope="col">Prompts decide</th>
+                <th scope="col">Why the split matters</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>
+                  Append-only identity, candidate bytes, and verdict-call
+                  binding.
+                </td>
+                <td>Whether a proof step or mathematical statement is true.</td>
+                <td>
+                  Models judge mathematics. Code prevents the judgment from
+                  drifting to different bytes.
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  Visible dependency IDs, topological edges, and
+                  verified-ancestor closure.
+                </td>
+                <td>Which earlier propositions a finding genuinely uses.</td>
+                <td>
+                  Code blocks missing or rejected premises without trying to
+                  infer mathematical dependence.
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  Proposition-certificate fields required for truth-establishing
+                  <code>PASS</code>.
+                </td>
+                <td>
+                  Whether the statement field contains only a proposition and
+                  matches the exact text.
+                </td>
+                <td>
+                  The schema forces an explicit judgment but does not pretend
+                  syntax can recognize every theorem statement.
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  Exact target-premise removal, context ceilings, turn ceilings,
+                  replay matching, and suppression.
+                </td>
+                <td>
+                  Semantic paraphrase detection, triage choice, goal
+                  recognition, and source meaning.
+                </td>
+                <td>
+                  Mechanical cases fail closed. Semantic cases stay visible
+                  model judgments with exact reasons.
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </section>
 
@@ -447,6 +516,75 @@
                   Changed prompts or schemas require an explicit new stamp.
                 </td>
               </tr>
+              <tr>
+                <td>Curator copied proof text into the statement channel.</td>
+                <td>
+                  The provider-visible field is proposition-only, and a
+                  truth-establishing <code>PASS</code> carries an enforceable
+                  statement-form certificate.
+                </td>
+                <td>
+                  Proof remains in exact note text and cannot enter blind
+                  reconstruction through metadata.
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  A goal-equivalent ancestor could prove the target by
+                  restatement.
+                </td>
+                <td>
+                  Exact target premises are removed mechanically; the verifier
+                  ignores paraphrases, conjunctions, bundles, and leaked target
+                  conclusions.
+                </td>
+                <td>
+                  Reconstruction derives the campaign target rather than
+                  assuming it.
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  A standalone replacement cited expanded repair notes as
+                  provenance.
+                </td>
+                <td>
+                  <code>basedOn</code> now means logical premise only in both
+                  the explorer prompt and provider-visible tool schema.
+                </td>
+                <td>
+                  Copied or re-established mathematics creates no ancestor edge,
+                  so provenance cannot poison closure.
+                </td>
+              </tr>
+              <tr>
+                <td>A boundary-rejected proof remained a verified ancestor.</td>
+                <td>
+                  Non-criteria boundary doubt downgrades premise trust to
+                  <code>conjecture</code>; criteria-only mismatch stays
+                  candidate-scoped.
+                </td>
+                <td>
+                  Descendants cannot close over rejected proof bytes, and true
+                  but incomplete mathematics is not called false.
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  Empty-premise reconstruction was asked to rediscover an entire
+                  research reduction.
+                </td>
+                <td>
+                  A bundle certifier checks the high-level guide, allowed
+                  sources, direct verified premises, and transitive closure. A
+                  blind reconstructor receives only the certified direct
+                  interface, and a fresh comparator owns the verdict.
+                </td>
+                <td>
+                  Reconstruction can use the theorem's declared proof tower
+                  without seeing the candidate proof or every ancestor.
+                </td>
+              </tr>
             </tbody>
           </table>
         </div>
@@ -455,26 +593,30 @@
           <details open>
             <summary>Curator authority</summary>
             <p>
-              The curator writes a short self-contained statement for every
-              finding. It cannot replace, merge, drop, semantically deduplicate,
-              verify, or refute the finding.
+              The curator proposes a short navigational summary and a
+              proposition-only statement for every finding. It cannot replace,
+              merge, drop, semantically deduplicate, verify, or refute the
+              finding. Truth-establishing verifiers certify the proposal.
             </p>
           </details>
           <details>
             <summary>Verifier inputs</summary>
             <p>
-              Proof audit sees exact note text. Reconstruction stays
-              proof-blind. Criteria matching sees the exact stored candidate.
-              Given parent statements are explicit and their ancestor closure
-              must already be verified.
+              Proof audit sees the statement proposal and exact note text.
+              Reconstruction sees the exact campaign target and admissible
+              ancestor propositions but no proof text. Completion criteria are
+              obligations, never premises. Criteria matching sees the exact
+              stored candidate.
             </p>
           </details>
           <details>
             <summary>Failure semantics</summary>
             <p>
-              Mathematical failures can refute a note. A source or citation
-              failure leaves it conjectural. A criteria failure rejects the
-              candidate while preserving mathematical standing.
+              Local mathematical failures can refute a note. A source or
+              citation failure leaves it conjectural. Boundary verdicts audit
+              the campaign target: a criteria-only failure rejects the
+              candidate, while another boundary doubt revokes premise trust
+              without calling a different stored proposition false.
             </p>
           </details>
           <details>
@@ -575,56 +717,54 @@
         <div class="section-heading">
           <p class="section-number">05</p>
           <div>
-            <h2>The final smoke exercises the repaired lifecycle</h2>
+            <h2>The final prime smoke exercises the repaired boundary</h2>
             <p>
-              A weak model was forced to build partial knowledge first, then
-              integrate it. This tests storage, dependencies, local standing,
-              serve behavior, and boundary completion in one small campaign.
+              Luna-low wrote a complete Euclidean proof in one turn. The run
+              tests whether curator metadata stays proposition-only, proof audit
+              certifies that separation, reconstruction stays blind, and serve
+              declares the finished goal immediately.
             </p>
           </div>
         </div>
 
         <div class="dag-layout">
-          <div
-            class="proof-dag"
-            aria-label="Final smoke proof dependency graph"
-          >
+          <div class="proof-dag" aria-label="Final prime smoke evidence flow">
             <button
               class="proof-node"
               type="button"
-              data-title="n1 · base case"
-              data-copy="The first odd positive integer is 1, so the identity holds at n = 1."
+              data-title="n1 · statement proposal"
+              data-copy="Curator ingest stored only: There are infinitely many primes."
             >
               <span>n1</span>
-              <strong>base case</strong>
-              <em>verified</em>
+              <strong>proposition only</strong>
+              <em>PROPOSITION_ONLY</em>
             </button>
             <div class="dag-arrow" aria-hidden="true">↘</div>
             <button
               class="proof-node"
               type="button"
-              data-title="n2 · induction step"
-              data-copy="Assuming the first k odd numbers sum to k², adding 2k+1 gives (k+1)². n2 depends on n1."
+              data-title="n1 · exact text"
+              data-copy="The immutable note text contains the complete product-plus-one proof and its least-divisor argument."
             >
-              <span>n2</span>
-              <strong>induction step</strong>
-              <em>verified · based on n1</em>
+              <span>text</span>
+              <strong>full Euclid proof</strong>
+              <em>statement fidelity · MATCH</em>
             </button>
-            <div class="dag-merge" aria-hidden="true">n1 + n2 ↓</div>
+            <div class="dag-merge" aria-hidden="true">frozen candidate ↓</div>
             <button
               class="proof-node proof-node-goal"
               type="button"
-              data-title="n3 · integrated proof"
-              data-copy="The second explorer turn wrote one self-contained induction proof and cited both verified notes."
+              data-title="candidate 32 · independent reconstruction"
+              data-copy="Reconstruction received the exact prime task, no proof text, and an empty premise list. It derived Euclid’s contradiction independently."
             >
-              <span>n3</span>
-              <strong>complete proof</strong>
-              <em>verified · based on n1, n2</em>
+              <span>32</span>
+              <strong>accepted proof</strong>
+              <em>five boundary PASS verdicts</em>
             </button>
           </div>
 
           <div class="boundary-result">
-            <p class="detail-label">BOUNDARY FOR CANDIDATE 86</p>
+            <p class="detail-label">BOUNDARY FOR CANDIDATE 32</p>
             <h3>Every required check passed</h3>
             <ul>
               <li><span>PASS</span> proof audit</li>
@@ -640,12 +780,12 @@
         </div>
 
         <div class="metrics" aria-label="Final smoke metrics">
-          <div><strong>2</strong><span>explorer turns</span></div>
-          <div><strong>3</strong><span>verified notes</span></div>
-          <div><strong>19</strong><span>provider requests</span></div>
-          <div><strong>15,119</strong><span>tokens</span></div>
+          <div><strong>1</strong><span>explorer turn</span></div>
+          <div><strong>1</strong><span>verified note</span></div>
+          <div><strong>10</strong><span>provider requests</span></div>
+          <div><strong>10,703</strong><span>tokens</span></div>
           <div><strong>0</strong><span>request errors</span></div>
-          <div><strong>$0.00616</strong><span>estimated cost</span></div>
+          <div><strong>$0.00546</strong><span>estimated cost</span></div>
         </div>
 
         <div class="test-evidence">
@@ -654,11 +794,11 @@
             <span>kernel tests passed</span>
           </article>
           <article>
-            <strong>80</strong>
+            <strong>94</strong>
             <span>solver tests passed</span>
           </article>
           <article>
-            <strong>1,063</strong>
+            <strong>1,284</strong>
             <span>solver assertions</span>
           </article>
           <article>
@@ -672,32 +812,36 @@
         <div class="section-heading">
           <p class="section-number">06</p>
           <div>
-            <h2>The workflow passed. The theorem did not.</h2>
+            <h2>The workflow passed. The V17 campaign did not finish.</h2>
             <p>
               Process evidence and mathematical resolution are different facts.
-              V17 can now preserve and verify a proof tower, while the requested
-              W[1]-hardness reduction still lacks an accepted candidate.
+              V17 can now preserve and verify a proof tower, but its hard run
+              has not yet exercised the repaired tower-aware reconstruction. A
+              separate role-runner campaign later produced an accepted and
+              independently audited proof of the theorem.
             </p>
           </div>
         </div>
 
         <div class="open-items">
           <article>
-            <p class="item-status">MATHEMATICS · OPEN</p>
-            <h3>Cyclic-couple W[1]-hardness</h3>
+            <p class="item-status">V17 CAMPAIGN · UNRESOLVED</p>
+            <h3>Cyclic-couple proof tower</h3>
             <p>
-              The repaired hard run ended at journal sequence 269 with zero
-              candidates. <code>n14</code> passed proof audit and refutation,
-              while reconstruction remained inconclusive.
+              Two dependency-free candidates passed local and boundary proof
+              audit, while blind reconstruction objected that it had no premises
+              from which to rebuild the research reduction. The current repair
+              calls for independently verified load-bearing lemmas and a goal
+              note that cites only those direct premises.
             </p>
           </article>
           <article>
-            <p class="item-status">WORKFLOW · DEFERRED</p>
-            <h3>Re-triage</h3>
+            <p class="item-status">WORKFLOW · IMPLEMENTED</p>
+            <h3>Append-only re-triage</h3>
             <p>
-              An immutable note with a poor initial verification plan cannot be
-              planned again. Recovery currently mints a replacement note. A
-              re-triage path changes the workflow and needs separate design.
+              Serve may request one revised plan for a stuck conjecture. The new
+              plan and verdicts append to the journal and supersede the old
+              projection without mutating the note or its history.
             </p>
           </article>
           <article>
@@ -709,16 +853,28 @@
               the 272,000-token context before Pi reduces the allowance.
             </p>
           </article>
+          <article>
+            <p class="item-status">SEMANTICS · MODEL-JUDGED</p>
+            <h3>Paraphrased target premises</h3>
+            <p>
+              Exact target restatements are removed by code. A premise such as
+              <code>P and Q</code> for target <code>P</code> remains visible,
+              and the reconstruction verifier is instructed to ignore it.
+              Absolute exclusion needs a formal proposition language or no
+              ancestor premises, either of which changes the workflow.
+            </p>
+          </article>
         </div>
 
         <div class="bottom-line">
           <p class="detail-label">BOTTOM LINE</p>
           <p>
             V17's architecture was not disproved. The implementation let
-            bookkeeping overrule mathematics. Immutable notes, scoped
-            verification, immediate boundary declaration, exact-byte
-            suppression, and stamped replay now align the implementation with
-            the original idea.
+            bookkeeping overrule mathematics. Immutable notes, certified
+            statement proposals, noncircular reconstruction, scoped
+            verification, candidate-trust downgrades, immediate boundary
+            declaration, exact-byte suppression, and stamped replay now align
+            the implementation with the original idea.
           </p>
         </div>
       </section>
@@ -727,7 +883,7 @@
     <footer class="site-footer">
       <div>
         <strong>Elenx V17 evaluation</strong>
-        <span>Final local repair commit <code>56d6f56</code></span>
+        <span>Current direct-update architecture</span>
       </div>
       <div class="footer-links">
         <a href="session-record.md">Full session record</a>
