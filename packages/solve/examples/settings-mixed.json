@@ -1,0 +1,18 @@
+{
+  "maxExplorerTurns": 10,
+  "explorer": {
+    "provider": "codex-lb",
+    "model": "gpt-5.6-sol",
+    "reasoning": "max"
+  },
+  "coordinator": {
+    "provider": "codex-lb",
+    "model": "gpt-5.6-luna",
+    "reasoning": "low"
+  },
+  "verifier": {
+    "provider": "codex-lb",
+    "model": "gpt-5.6-sol",
+    "reasoning": "max"
+  }
+}

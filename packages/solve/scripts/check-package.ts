@@ -82,7 +82,7 @@ try {
     [
       process.execPath,
       "-e",
-      'import * as roles from "elenx-solve/roles"; if (typeof roles.allVerifiers !== "function" || typeof roles.runTrial !== "function" || "verifierResult" in roles || "piVerifierSubmission" in roles) process.exit(1);',
+      'import * as roles from "elenx-solve/roles"; if (typeof roles.allVerifiers !== "function" || "verifierResult" in roles) process.exit(1);',
     ],
     consumer,
   );

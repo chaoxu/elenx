@@ -1,6 +1,6 @@
 # Role-runner end-to-end test
 
-Run the role runner's production-boundary test from the repository root:
+Run the role runner's production-path test from the repository root:
 
 ```sh
 bun run e2e:roles
@@ -8,13 +8,6 @@ bun run e2e:roles
 
 The command is hermetic. A Bun preload intercepts requests to the reserved `e2e.invalid` provider, so the test needs no network access, credentials, or listening sockets. Each case uses a temporary model registry, Pi state directory, and journal.
 
-The suite covers:
-
-- standalone explorer and coordinator model calls plus the verifier's public call and private auditors through the unified CLI, model runtime, Pi adapter, journal, and inspection
-- a rejected proposal followed by explorer repair and verifier acceptance
-- a verified counterexample that terminates the trial as `refuted`
-- an unresolved trial that terminates at its explorer-turn limit without an accepted candidate
-- a provider failure that exits nonzero and never becomes a mathematical result
-- wrong-database and existing-trial failures before settings or credential setup
+The suite covers full `run`, zero-call resume, inspection, export, resumable `trial`, rejection repair, auditor aggregation, and provider failure without a mathematical verdict.
 
 Give delegated test agents only `bun run e2e:roles`, with the repository root as their working directory. They need no setup, arguments, environment variables, or credentials.

@@ -5,30 +5,27 @@ import { readFile } from "node:fs/promises";
 import { isAbsolute } from "node:path";
 import { parseArgs } from "node:util";
 
-import { resume, settings, start, type Settings } from "./exploration";
 import { executionContract, executionReport } from "./execution-contract";
 import {
-  exportAnswer,
-  inspectCampaign,
-  type CampaignInspection,
-} from "./inspect";
-import {
+  exportRoleAnswer,
   inspectRoleCampaign,
-  isRoleCampaign,
   isRoleCommand,
+  readRoleSettings,
   runRoleCommand,
 } from "./role-cli";
+import {
+  resume,
+  settings,
+  start,
+  type RunDependencies,
+  type Settings,
+} from "./runner";
 import { withSerialToolCalls } from "./serial-tools";
 
-export type { SolveDependencies, SolveModels } from "./runtime";
-export { resume, settings, start } from "./exploration";
-export type { Report, Settings } from "./exploration";
-export { executionContract } from "./execution-contract";
-export type {
-  ExecutionContract,
-  ExecutionReport,
-  TrialExecutionReport,
-} from "./execution-contract";
+export type { SolveModels } from "./runtime";
+export { executionContract, resume, settings, start };
+export type { ExecutionContract, ExecutionReport } from "./execution-contract";
+export type { RunDependencies, Settings } from "./runner";
 
 const usage = `Usage:
   elenx-solve contract
@@ -42,22 +39,37 @@ const usage = `Usage:
   elenx-solve inspect [--include-inputs] CAMPAIGN.db
   elenx-solve export CAMPAIGN.db
 
-Run a serial exploration-v17 campaign. Fresh explorers report findings; a
-curator files every finding and serves each turn's working set; one
-verification subsystem audits notes as they enter and decides completion at a
-declared goal note. Pause and resume are safe. Inspect prints state and
-accounting. Export writes the verified goal note and its ancestor closure.
+Explorer, coordinator, and verifier are exact journaled input-output calls.
+The coordinator files findings and chooses exploration or verification. The
+verifier runs private auditors and exposes only ACCEPT or REJECT. Run, resume,
+and trial use the same durable workflow.`;
 
-run starts the campaign, or resumes it when CAMPAIGN.db already exists, so a
-killed process restarts with the identical invocation. The campaign runner retries
-transient call failures in place with capped exponential backoff; a run report
-with outcome call-failure means that retry budget was exhausted by consecutive
-failures.
+export function modelRuntimeOptions(environment: NodeJS.ProcessEnv): {
+  readonly modelsPath: string | null;
+} {
+  const modelsPath = environment["ELENX_MODELS_PATH"];
+  if (modelsPath === undefined) return { modelsPath: null };
+  if (!isAbsolute(modelsPath)) {
+    throw new Error("ELENX_MODELS_PATH must be absolute");
+  }
+  return { modelsPath };
+}
 
-explorer and coordinator each run one journaled model session. verifier runs
-separate internal auditors behind one journaled public call. trial connects the
-same public roles into an in-memory experimental workflow. Individual calls are
-journaled, but an interrupted trial does not reconstruct its workflow state.`;
+async function requireCredentials(
+  runtime: { readonly checkAuth: (provider: string) => Promise<unknown> },
+  providers: readonly string[],
+): Promise<void> {
+  const missing = (
+    await Promise.all(
+      [...new Set(providers)].map(async (provider) =>
+        (await runtime.checkAuth(provider)) === undefined ? [provider] : [],
+      ),
+    )
+  ).flat();
+  if (missing.length > 0) {
+    throw new Error(`No credential for provider(s): ${missing.join(", ")}`);
+  }
+}
 
 async function main(args: readonly string[]): Promise<void> {
   const parsed = parseArgs({
@@ -88,14 +100,10 @@ async function main(args: readonly string[]): Promise<void> {
   }
   if (command === "inspect") {
     if (positionals.length !== 1) throw new Error(usage);
-    const path = positionals[0]!;
-    const options = {
-      includeInputs: parsed.values["include-inputs"] === true,
-    };
     writeJson(
-      isRoleCampaign(path)
-        ? inspectRoleCampaign(path, options)
-        : inspectCampaign(path, options),
+      inspectRoleCampaign(positionals[0]!, {
+        includeInputs: parsed.values["include-inputs"] === true,
+      }),
     );
     return;
   }
@@ -103,7 +111,7 @@ async function main(args: readonly string[]): Promise<void> {
     if (positionals.length !== 1 || parsed.values["include-inputs"] === true) {
       throw new Error(usage);
     }
-    process.stdout.write(exportAnswer(positionals[0]!));
+    process.stdout.write(exportRoleAnswer(positionals[0]!));
     return;
   }
   if (
@@ -113,55 +121,40 @@ async function main(args: readonly string[]): Promise<void> {
   ) {
     throw new Error(usage);
   }
-  const settings = await readSettingsFile(positionals.at(-1)!);
+  const roleSettings = await readRoleSettings(positionals.at(-1)!);
   const { ModelRuntime } = await import("@earendil-works/pi-coding-agent");
   const runtime = await ModelRuntime.create(modelRuntimeOptions(process.env));
-  await requireCredentials(runtime, providers(settings));
-  const models = withSerialToolCalls(runtime);
+  await requireCredentials(runtime, [
+    roleSettings.explorer.provider,
+    roleSettings.coordinator.provider,
+    roleSettings.verifier.provider,
+  ]);
   const controller = new AbortController();
   let pauseRequested = false;
   const stop = () => {
     if (!pauseRequested) {
       pauseRequested = true;
-      console.error("Pausing after the active turn settles...");
-      return;
-    }
-    if (!controller.signal.aborted) {
-      console.error("Aborting the active provider operation...");
+      console.error("Pausing after the active role call settles...");
+    } else {
       controller.abort();
-      return;
     }
-    process.exit(130);
   };
   process.on("SIGINT", stop);
   process.on("SIGTERM", stop);
   try {
-    const dependencies = {
-      models,
+    const dependencies: RunDependencies = {
+      models: withSerialToolCalls(runtime),
       signal: controller.signal,
       pauseRequested: () => pauseRequested,
-      status: (message: string) => console.error(message),
+      status: (phase) => console.error(phase),
     };
-    const startOnce = async () =>
-      start(
-        {
-          problem: await readFile(positionals[0]!, "utf8"),
-          completionCriteria: await readFile(positionals[1]!, "utf8"),
-          campaignPath: positionals[2]!,
-          settings,
-        },
-        dependencies,
-      );
-    const resumeOnce = (campaignPath: string) =>
-      resume({ campaignPath, settings }, dependencies);
     const report =
-      command === "run"
-        ? existsSync(positionals[2]!)
-          ? await resumeExisting(positionals, settings, dependencies)
-          : await startOnce()
-        : command === "start"
-          ? await startOnce()
-          : await resumeOnce(positionals[0]!);
+      command === "resume"
+        ? await resume(
+            { campaignPath: positionals[0]!, settings: roleSettings },
+            dependencies,
+          )
+        : await startOrResume(command, positionals, roleSettings, dependencies);
     writeJson(executionReport(report));
     if (report.outcome === "interrupted") process.exitCode = 130;
     if (report.outcome === "call-failure") process.exitCode = 1;
@@ -171,75 +164,39 @@ async function main(args: readonly string[]): Promise<void> {
   }
 }
 
-export function modelRuntimeOptions(environment: NodeJS.ProcessEnv): {
-  readonly modelsPath: string | null;
-} {
-  const modelsPath = environment["ELENX_MODELS_PATH"];
-  if (modelsPath === undefined) return { modelsPath: null };
-  if (!isAbsolute(modelsPath)) {
-    throw new Error("ELENX_MODELS_PATH must be absolute");
-  }
-  return { modelsPath };
-}
-
-// run resumes with the same file arguments it started with; a problem or
-// criteria file that no longer matches the frozen campaign inputs must
-// fail-stop, exactly as disagreeing settings do, instead of silently
-// continuing with the frozen text.
-async function resumeExisting(
+async function startOrResume(
+  command: "run" | "start",
   positionals: readonly string[],
-  settings: Settings,
-  dependencies: Parameters<typeof resume>[1],
+  roleSettings: Settings,
+  dependencies: RunDependencies,
 ) {
-  const campaignPath = positionals[2]!;
-  let frozen: CampaignInspection;
-  try {
-    frozen = inspectCampaign(campaignPath);
-  } catch (error) {
-    const reason = error instanceof Error ? error.message : String(error);
-    throw new Error(`existing campaign cannot be resumed: ${reason}`);
-  }
-  const problem = await readFile(positionals[0]!, "utf8");
-  const completionCriteria = await readFile(positionals[1]!, "utf8");
-  if (
-    problem !== frozen.problem ||
-    completionCriteria !== frozen.completionCriteria
-  ) {
-    throw new Error(
-      "problem or criteria file disagrees with the frozen campaign inputs",
-    );
-  }
-  return resume({ campaignPath, settings }, dependencies);
-}
-
-async function readSettingsFile(path: string): Promise<Settings> {
-  const value: unknown = JSON.parse(await readFile(path, "utf8"));
-  return settings.parse(value);
-}
-
-function providers(settings: Settings): readonly string[] {
-  return [
-    settings.explorer.provider,
-    settings.curator.provider,
-    settings.triage.provider,
-    settings.verifier.provider,
+  const [problemPath, criteriaPath, campaignPath] = positionals as readonly [
+    string,
+    string,
+    string,
+    string,
   ];
-}
-
-async function requireCredentials(
-  runtime: { readonly checkAuth: (provider: string) => Promise<unknown> },
-  providers: readonly string[],
-): Promise<void> {
-  const missing = (
-    await Promise.all(
-      [...new Set(providers)].map(async (provider) =>
-        (await runtime.checkAuth(provider)) === undefined ? [provider] : [],
-      ),
-    )
-  ).flat();
-  if (missing.length > 0) {
-    throw new Error(`No credential for provider(s): ${missing.join(", ")}`);
+  const [problem, completionCriteria] = await Promise.all([
+    readFile(problemPath, "utf8"),
+    readFile(criteriaPath, "utf8"),
+  ]);
+  if (command === "run" && existsSync(campaignPath)) {
+    const inspection = inspectRoleCampaign(campaignPath) as {
+      readonly problem?: unknown;
+      readonly completionCriteria?: unknown;
+    };
+    if (
+      inspection.problem !== problem ||
+      inspection.completionCriteria !== completionCriteria
+    ) {
+      throw new Error("problem or criteria disagree with the workflow journal");
+    }
+    return resume({ campaignPath, settings: roleSettings }, dependencies);
   }
+  return start(
+    { problem, completionCriteria, campaignPath, settings: roleSettings },
+    dependencies,
+  );
 }
 
 function writeJson(value: unknown): void {

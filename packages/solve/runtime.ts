@@ -2,40 +2,12 @@ import { Database, SQLiteError } from "bun:sqlite";
 import { realpathSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 
-import { builtinPi, type PiRunOptions } from "elenx/pi";
-
-import type { SourceCheck } from "./verifiers/source-check";
+import { builtinPi } from "elenx/pi";
 
 export type SolveModels = Pick<
   ReturnType<typeof builtinPi>,
   "getModel" | "streamSimple"
 >;
-
-export interface SolveDependencies {
-  readonly models?: SolveModels;
-  readonly run?: typeof import("elenx/pi").runPi;
-  readonly sourceCheck?: SourceCheck;
-  readonly signal?: AbortSignal;
-  readonly pauseRequested?: () => boolean;
-  readonly status?: (message: string) => void;
-  readonly callFailureRetry?: CallFailureRetry;
-}
-
-export interface CallFailureRetry {
-  readonly attempts: number;
-  readonly baseDelayMs: number;
-  readonly maxDelayMs: number;
-}
-
-// Transient provider failures are absorbed inside the campaign loop: a
-// failed call stays in the journal, the phase is re-derived, and a fresh
-// call runs after capped exponential backoff. Only this many consecutive
-// failures end the session with a call-failure report.
-export const DEFAULT_CALL_FAILURE_RETRY: CallFailureRetry = {
-  attempts: 12,
-  baseDelayMs: 60_000,
-  maxDelayMs: 600_000,
-};
 
 function runnerLockPath(campaignPath: string): string {
   let canonicalPath: string;
@@ -84,26 +56,4 @@ export function selectModel(
     );
   }
   return model;
-}
-
-export type PreparedPiOptions = Pick<PiRunOptions, "models" | "model"> &
-  Partial<Pick<PiRunOptions, "reasoning" | "signal">>;
-
-export class CallFailure extends Error {
-  readonly call: number;
-  readonly state: "failed" | "cancelled";
-  readonly providerRetryable: boolean;
-
-  constructor(
-    call: number,
-    state: "failed" | "cancelled",
-    message: string,
-    providerRetryable = false,
-  ) {
-    super(message);
-    this.name = "CallFailure";
-    this.call = call;
-    this.state = state;
-    this.providerRetryable = providerRetryable;
-  }
 }

@@ -1,11 +1,10 @@
-import type { Report } from "./exploration";
-import { applicationId, protocolName } from "./exploration-protocol";
 import { roleApplication, roleProtocol, type TrialResult } from "./roles";
+import type { RunReport } from "./workflow";
 
 export const executionContract = {
   schemaVersion: 4,
-  application: applicationId,
-  protocol: protocolName,
+  application: roleApplication,
+  protocol: roleProtocol,
   run: {
     command: "run",
     arguments: ["problem", "completionCriteria", "campaign", "settings"],
@@ -16,17 +15,10 @@ export const executionContract = {
         "paused",
         "call-failure",
         "interrupted",
-        "context-limit",
-        "index-limit",
         "turn-limit",
       ],
-      terminalOutcomes: [
-        "solved",
-        "context-limit",
-        "index-limit",
-        "turn-limit",
-      ],
-      terminalPhases: ["context-limit", "index-limit", "turn-limit"],
+      terminalOutcomes: ["solved", "turn-limit"],
+      terminalPhases: ["turn-limit"],
     },
   },
   trial: {
@@ -46,11 +38,10 @@ export const executionContract = {
 } as const;
 
 export type ExecutionContract = typeof executionContract;
-
-export type ExecutionReport = Report & {
+export type ExecutionReport = RunReport & {
   readonly schemaVersion: 3;
-  readonly application: typeof applicationId;
-  readonly protocol: typeof protocolName;
+  readonly application: typeof roleApplication;
+  readonly protocol: typeof roleProtocol;
 };
 
 type TrialExecutionReportBase = {
@@ -77,11 +68,11 @@ export type TrialExecutionReport =
         readonly phase: "turn-limit";
       });
 
-export function executionReport(report: Report): ExecutionReport {
+export function executionReport(report: RunReport): ExecutionReport {
   return {
     schemaVersion: executionContract.run.report.schemaVersion,
-    application: executionContract.application,
-    protocol: executionContract.protocol,
+    application: roleApplication,
+    protocol: roleProtocol,
     ...report,
   };
 }
@@ -97,7 +88,7 @@ export function trialExecutionReport(
   } as const;
   if (report.outcome === "turn-limit") {
     if (candidate !== undefined) {
-      throw new Error("unresolved role trial cannot name a candidate");
+      throw new Error("unresolved trial cannot name a candidate");
     }
     return { ...base, ...report, phase: "turn-limit" };
   }
@@ -106,10 +97,10 @@ export function trialExecutionReport(
     !Number.isSafeInteger(candidate) ||
     candidate <= 0
   ) {
-    throw new Error("terminal role trial has no durable candidate");
+    throw new Error("terminal trial has no durable candidate");
   }
   if (report.verifier.verdict !== "ACCEPT") {
-    throw new Error("terminal role trial has no accepting verifier result");
+    throw new Error("terminal trial has no accepting verifier result");
   }
   return report.outcome === "accepted"
     ? {

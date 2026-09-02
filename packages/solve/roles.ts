@@ -33,6 +33,10 @@ export const verifierResult = z.strictObject({
 });
 export type VerifierResult = z.output<typeof verifierResult>;
 
+export function roleCallOutput<S extends z.ZodType>(value: S) {
+  return z.strictObject({ state: z.literal("succeeded"), value });
+}
+
 export const explorerInput = z
   .strictObject({
     task: task,
@@ -76,6 +80,9 @@ const freshRef = z.strictObject({
 });
 export const noteRef = z.discriminatedUnion("kind", [existingRef, freshRef]);
 export type NoteRef = z.output<typeof noteRef>;
+function refKey(ref: NoteRef): string {
+  return ref.kind === "note" ? `note:${ref.id}` : `finding:${ref.finding}`;
+}
 export const candidateKind = z.enum(["solution", "refutation"]);
 export type CandidateKind = z.output<typeof candidateKind>;
 
@@ -190,7 +197,7 @@ export const verifierInput = z
   });
 export type VerifierInput = z.output<typeof verifierInput>;
 
-function verifierInputHash(value: VerifierInput): string {
+export function verifierInputHash(value: VerifierInput): string {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex");
 }
 
@@ -224,13 +231,6 @@ export function allVerifiers(...verifiers: readonly Verifier[]): Verifier {
   };
 }
 
-export const trialInput = z.strictObject({
-  task: task,
-  objective: nonblank,
-  maxExplorerTurns: positiveInteger.default(10),
-});
-export type TrialInput = z.output<typeof trialInput>;
-
 export type TrialResult =
   | {
       readonly outcome: "accepted";
@@ -252,125 +252,3 @@ export type TrialResult =
       readonly notes: readonly Note[];
       readonly lastVerifierResult?: VerifierResult;
     };
-
-function refKey(ref: NoteRef): string {
-  return ref.kind === "note" ? `note:${ref.id}` : `finding:${ref.finding}`;
-}
-
-export async function runTrial(
-  inputValue: unknown,
-  roles: Roles,
-): Promise<TrialResult> {
-  const spec = trialInput.parse(inputValue);
-  const notes: Note[] = [];
-  let objective = spec.objective;
-  let context: Note[] = [];
-  let previousVerifierResult: VerifierResult | undefined;
-  const attemptedProposals = new Set<string>();
-
-  for (let turn = 1; turn <= spec.maxExplorerTurns; turn += 1) {
-    const explored = explorerResult.parse(
-      await roles.explorer({
-        task: spec.task,
-        index: notes.map(({ id, summary }) => ({ id, summary })),
-        context,
-        objective,
-        ...(previousVerifierResult === undefined
-          ? {}
-          : { previousVerifierResult }),
-      }),
-    );
-    const coordinated = coordinatorResultFor(
-      notes.map(({ id }) => id),
-      explored.findings.length,
-    ).parse(
-      await roles.coordinator({
-        task: spec.task,
-        notes,
-        findings: explored.findings,
-        ...(previousVerifierResult === undefined
-          ? {}
-          : { previousVerifierResult }),
-      }),
-    );
-
-    const fresh = new Map<number, Note>();
-    for (const filing of [...coordinated.filings].sort(
-      (left, right) => left.finding - right.finding,
-    )) {
-      const finding = explored.findings[filing.finding - 1]!;
-      const note = {
-        id: `n${notes.length + 1}`,
-        summary: filing.summary,
-        text: finding.text,
-      };
-      notes.push(note);
-      fresh.set(filing.finding, note);
-    }
-    const byId = new Map(notes.map((note) => [note.id, note]));
-    const resolve = (ref: NoteRef): Note => {
-      const note =
-        ref.kind === "note" ? byId.get(ref.id) : fresh.get(ref.finding);
-      if (note === undefined) throw new Error(`unresolved ${refKey(ref)}`);
-      return note;
-    };
-
-    if (coordinated.action.kind === "explore") {
-      objective = coordinated.action.objective;
-      context = coordinated.action.context.map(resolve);
-      continue;
-    }
-
-    const answer = resolve(coordinated.action.answer);
-    const support = coordinated.action.support.map(resolve);
-    const proposal = verifierInput.parse({
-      task: spec.task,
-      candidateKind: coordinated.action.candidateKind,
-      answer,
-      support,
-    });
-    const proposalHash = verifierInputHash(proposal);
-    if (attemptedProposals.has(proposalHash)) {
-      previousVerifierResult = {
-        verdict: "REJECT",
-        report:
-          "The coordinator renominated an unchanged rejected answer proposal. Change the answer or its support before verification.",
-      };
-      objective = `Repair the verifier rejection:\n${previousVerifierResult.report}`;
-      context = [answer, ...support];
-      continue;
-    }
-    attemptedProposals.add(proposalHash);
-    const verified = verifierResult.parse(await roles.verifier(proposal));
-    if (verified.verdict === "ACCEPT") {
-      if (proposal.candidateKind === "refutation") {
-        return {
-          outcome: "refuted",
-          turns: turn,
-          refutation: answer,
-          verifier: verified,
-          notes,
-        };
-      }
-      return {
-        outcome: "accepted",
-        turns: turn,
-        answer,
-        verifier: verified,
-        notes,
-      };
-    }
-    previousVerifierResult = verified;
-    objective = `Repair the verifier rejection:\n${verified.report}`;
-    context = [answer, ...support];
-  }
-
-  return {
-    outcome: "turn-limit",
-    turns: spec.maxExplorerTurns,
-    notes,
-    ...(previousVerifierResult === undefined
-      ? {}
-      : { lastVerifierResult: previousVerifierResult }),
-  };
-}

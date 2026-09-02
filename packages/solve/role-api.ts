@@ -1,4 +1,4 @@
-export { allVerifiers, runTrial } from "./roles";
+export { allVerifiers } from "./roles";
 export type {
   CandidateKind,
   CoordinatorInput,
@@ -9,7 +9,6 @@ export type {
   NoteRef,
   Roles,
   Task,
-  TrialInput,
   TrialResult,
   Verifier,
   VerifierInput,

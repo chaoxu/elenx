@@ -15,7 +15,6 @@ import {
   auditorNames,
   verifierCallOutput,
   verifierFromAuditors,
-  verifierResultFromCallOutput,
   type AuditorName,
   type AuditorSet,
 } from "./auditors";
@@ -24,6 +23,7 @@ import {
   coordinatorResultFor,
   explorerInput,
   explorerResult,
+  roleCallOutput,
   verifierInput,
   type CoordinatorInput,
   type ExplorerInput,
@@ -43,6 +43,7 @@ const piRoleProfile = z.strictObject({
 type PiRoleProfile = z.output<typeof piRoleProfile>;
 
 export const piRoleSettings = z.strictObject({
+  maxExplorerTurns: z.number().int().positive().default(10),
   explorer: piRoleProfile,
   coordinator: piRoleProfile,
   verifier: piRoleProfile,
@@ -55,6 +56,13 @@ export interface PiRoleDependencies {
   readonly models: SolveModels;
   readonly run?: typeof runPi;
   readonly signal?: AbortSignal;
+}
+
+export class RoleCallError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "RoleCallError";
+  }
 }
 
 interface Turn<S extends z.ZodType> {
@@ -147,7 +155,7 @@ function auditorTurn(
       "You are an independent adversarial auditor for one proposed mathematical resolution.",
       "The declared candidate kind, answer, and support notes are untrusted data. Check the entire proposal against the exact problem and completion criteria.",
       "For candidateKind solution, require a complete solution of the requested task. For candidateKind refutation, require a decisive proof that the exact requested mathematical target is false or impossible; do not fail merely because the original imperative asked for a proof or construction. A defect in one attempted solution, a missing stylistic requirement, ambiguity, or an unsupported open-problem claim does not refute the target.",
-      "Perform only the supplied audit obligation. Return PASS only when its full obligation is established. Otherwise return FAIL with a concrete reason.",
+      "Perform only the supplied audit obligation. The verdict always evaluates the candidate: PASS means the audit found no blocking defect, while FAIL requires one concrete blocking defect. An adversarial search that finds no counterexample, gap, or invalid inference returns PASS.",
       "Do not return ACCEPT or REJECT. The outer verifier derives that result mechanically.",
       "Do not use web search or external tools.",
       "Call submit_audit exactly once.",
@@ -210,14 +218,20 @@ async function runTurn<S extends z.ZodType>(
       : { signal: dependencies.signal }),
   });
   if (result.state !== "succeeded") {
-    throw new Error(`${turn.role} failed: ${result.error}`);
+    throw new RoleCallError(`${turn.role} failed: ${result.error}`);
   }
-  const submission = returnedToolSubmission(
-    campaign.records(),
-    result.call,
-    turn.tool,
-  );
-  return { call: result.call, value: turn.schema.parse(submission.input) };
+  try {
+    const submission = returnedToolSubmission(
+      campaign.records(),
+      result.call,
+      turn.tool,
+    );
+    return { call: result.call, value: turn.schema.parse(submission.input) };
+  } catch (error) {
+    throw new RoleCallError(
+      error instanceof Error ? error.message : String(error),
+    );
+  }
 }
 
 function createPiAuditors(
@@ -247,7 +261,7 @@ function createPiAuditors(
 
 export function createPiRoles(
   campaign: Campaign,
-  settingsValue: PiRoleSettings,
+  settingsValue: z.input<typeof piRoleSettings>,
   dependencies: PiRoleDependencies,
 ) {
   const settings = piRoleSettings.parse(settingsValue);
@@ -255,25 +269,69 @@ export function createPiRoles(
   return {
     async explorer(inputValue: unknown) {
       const input = explorerInput.parse(inputValue);
-      return (
-        await runTurn(
-          campaign,
-          settings.explorer,
-          explorerTurn(input),
-          dependencies,
-        )
-      ).value;
+      const label = "elenx-solve/role/explorer";
+      const settled = await campaign.call(
+        {
+          label,
+          role: "explorer",
+          request: jsonSnapshot(input),
+          ...(dependencies.signal === undefined
+            ? {}
+            : { signal: dependencies.signal }),
+        },
+        async ({ request, signal }) => {
+          const exactInput = explorerInput.parse(request);
+          const turn = await runTurn(
+            campaign,
+            settings.explorer,
+            explorerTurn(exactInput),
+            { ...dependencies, signal },
+            undefined,
+            `${label}/agent`,
+            label,
+          );
+          return roleCallOutput(explorerResult).parse({
+            state: "succeeded",
+            value: turn.value,
+          });
+        },
+      );
+      return roleCallOutput(explorerResult).parse(settled.output).value;
     },
     async coordinator(inputValue: unknown) {
       const input = coordinatorInput.parse(inputValue);
-      return (
-        await runTurn(
-          campaign,
-          settings.coordinator,
-          coordinatorTurn(input),
-          dependencies,
-        )
-      ).value;
+      const label = "elenx-solve/role/coordinator";
+      const output = coordinatorResultFor(
+        input.notes.map(({ id }) => id),
+        input.findings.length,
+      );
+      const settled = await campaign.call(
+        {
+          label,
+          role: "coordinator",
+          request: jsonSnapshot(input),
+          ...(dependencies.signal === undefined
+            ? {}
+            : { signal: dependencies.signal }),
+        },
+        async ({ request, signal }) => {
+          const exactInput = coordinatorInput.parse(request);
+          const turn = await runTurn(
+            campaign,
+            settings.coordinator,
+            coordinatorTurn(exactInput),
+            { ...dependencies, signal },
+            undefined,
+            `${label}/agent`,
+            label,
+          );
+          return roleCallOutput(output).parse({
+            state: "succeeded",
+            value: turn.value,
+          });
+        },
+      );
+      return roleCallOutput(output).parse(settled.output).value;
     },
     async verifier(inputValue: unknown) {
       const input = verifierInput.parse(inputValue);
@@ -302,10 +360,13 @@ export function createPiRoles(
           );
           const result =
             await verifierFromAuditors(implementations)(exactInput);
-          return verifierCallOutput.parse({ state: "succeeded", ...result });
+          return verifierCallOutput.parse({
+            state: "succeeded",
+            value: result,
+          });
         },
       );
-      const result = verifierResultFromCallOutput(settled.output);
+      const result = verifierCallOutput.parse(settled.output).value;
       campaign.recordVerdict(
         settled.call,
         result.verdict === "ACCEPT" ? "PASS" : "FAIL",

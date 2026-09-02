@@ -4,89 +4,29 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { Campaign, Json } from "elenx";
-import { type PiResult, type PiRunOptions, type PiTelemetry } from "elenx/pi";
+import type { PiResult, PiRunOptions } from "elenx/pi";
 
-import { start, type Settings } from "../exploration";
-import type { SolveDependencies, SolveModels } from "../solve";
-import type {
-  SourceCheckRequest,
-  SourceResolution,
-  SourceCheckResult,
-} from "../verifiers/source-check";
+import type { PiRoleSettings } from "../pi-roles";
+import type { SolveModels } from "../runtime";
 import { fakePiRequest, fakePiTelemetry } from "./fake-pi";
 
-const baseModel: PiRunOptions["model"] = {
-  id: "base-v1",
-  name: "Base",
-  api: "openai-responses",
-  provider: "base",
+const model = {
+  id: "model-v1",
+  name: "Model",
+  api: "openai-responses" as const,
+  provider: "test",
   baseUrl: "https://invalid.test/v1",
   reasoning: true,
-  input: ["text"],
+  input: ["text" as const],
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   contextWindow: 200_000,
   maxTokens: 20_000,
 };
 
-const explorerModel = {
-  ...baseModel,
-  id: "explorer-v1",
-  provider: "explorer",
-};
-const curatorModel = {
-  ...baseModel,
-  id: "curator-v1",
-  provider: "curator",
-};
-const triageModel = {
-  ...baseModel,
-  id: "triage-v1",
-  provider: "triage",
-};
-const sourceModel = {
-  ...baseModel,
-  id: "source-v1",
-  provider: "openai-codex",
-  api: "openai-codex-responses",
-};
-const verifierModel = {
-  ...baseModel,
-  id: "verifier-v1",
-  provider: "verifier",
-};
-const modelsList = [
-  explorerModel,
-  curatorModel,
-  triageModel,
-  sourceModel,
-  verifierModel,
-] as const;
-
-const problem = "Prove that the sum of two even integers is even.";
-const criteria = "Give one standalone proof for arbitrary even integers.";
-
-export function runSettings(overrides: Partial<Settings> = {}): Settings {
-  const selection = (model: PiRunOptions["model"]) => ({
-    provider: model.provider,
-    model: model.id,
-    reasoning: "high" as const,
-  });
-  return {
-    protocol: "exploration-v17",
-    maxContextTokens: 200_000,
-    maxIndexTokens: 100_000,
-    maxExplorerTurns: 50,
-    explorerGuidance: [],
-    explorer: selection(explorerModel),
-    curator: selection(curatorModel),
-    triage: selection(triageModel),
-    verifier: selection(verifierModel),
-    sourceChecker: {
-      model: sourceModel.id,
-      reasoning: "high",
-    },
-    ...overrides,
-  };
+export interface Reply {
+  readonly submission?: Json;
+  readonly state?: "succeeded" | "failed" | "cancelled";
+  readonly error?: string;
 }
 
 const directories: string[] = [];
@@ -103,87 +43,26 @@ export function cleanupCampaigns(): void {
   }
 }
 
-export interface Reply {
-  readonly forLabelSuffix?: string;
-  readonly forCall?: "reconstruction-certification" | "reconstruction-derive";
-  readonly submission?: Json;
-  readonly state?: "succeeded" | "failed" | "cancelled";
-  readonly error?: string;
-  readonly providerRetryable?: boolean;
-}
-
-export function sourceResult(
-  resolutions: readonly SourceResolution[],
-): Extract<SourceCheckResult, { readonly state: "succeeded" }> {
-  // Transport shape: every field present, null unless the variant carries it.
-  // The spread overrides cleanly because every SourceResolution variant is a
-  // strict object with all of its fields required — none arrives undefined.
-  const transport = resolutions.map((resolution) => ({
-    citation: null,
-    url: null,
-    locator: null,
-    exactQuote: null,
-    sourceMatch: null,
-    candidateCitationMatch: null,
-    candidateCitationCheck: null,
-    refutationAttempt: null,
-    application: null,
-    applicationCheck: null,
-    refutation: null,
-    defect: null,
-    gap: null,
-    ...resolution,
-  }));
-  const usage = {
-    input_tokens: 100,
-    cached_input_tokens: 40,
-    cache_write_input_tokens: 0,
-    output_tokens: 20,
-    reasoning_output_tokens: 5,
+export function roleSettings(): PiRoleSettings {
+  const profile = {
+    provider: model.provider,
+    model: model.id,
+    reasoning: "high" as const,
   };
-  const events = [
-    { type: "thread.started", thread_id: "thread" },
-    { type: "turn.started" },
-    {
-      type: "item.completed",
-      item: { type: "web_search", query: "authoritative theorem" },
-    },
-    {
-      type: "item.completed",
-      item: {
-        type: "agent_message",
-        text: JSON.stringify({
-          report: "Source verification completed.",
-          resolutions: transport,
-        }),
-      },
-    },
-    { type: "turn.completed", usage },
-  ];
   return {
-    state: "succeeded",
-    codexVersion: "codex-cli test",
-    stdout: `${events.map((event) => JSON.stringify(event)).join("\n")}\n`,
-    stderr: "",
+    maxExplorerTurns: 4,
+    explorer: profile,
+    coordinator: profile,
+    verifier: profile,
   };
 }
 
-export function dependencies(
-  replies: readonly Reply[],
-  sourceReplies: readonly SourceCheckResult[] = [],
-): SolveDependencies & {
-  readonly calls: PiRunOptions[];
-  readonly sourceCalls: SourceCheckRequest[];
-} {
+export function dependencies(replies: readonly Reply[]) {
   const queue = [...replies];
-  const sourceQueue = [...sourceReplies];
   const calls: PiRunOptions[] = [];
-  const sourceCalls: SourceCheckRequest[] = [];
   const models: SolveModels = {
     getModel(provider, id) {
-      return modelsList.find(
-        (model) => model.provider === provider && model.id === id,
-      );
+      return provider === model.provider && id === model.id ? model : undefined;
     },
     streamSimple() {
       throw new Error("fake runner owns execution");
@@ -191,37 +70,15 @@ export function dependencies(
   };
   return {
     models,
-    async run(campaign, options) {
+    calls,
+    async run(campaign: Campaign, options: PiRunOptions): Promise<PiResult> {
       calls.push(options);
-      const queued = queue[0];
-      const stage = reconstructionStage(options);
-      const targeted =
-        (queued?.forLabelSuffix !== undefined &&
-          options.label.endsWith(queued.forLabelSuffix)) ||
-        (queued?.forCall !== undefined && queued.forCall === stage)
-          ? queue.shift()
-          : undefined;
-      const reply =
-        targeted ??
-        (stage === "reconstruction-certification"
-          ? verdict("PASS", "reconstruction bundle is nonleaking")
-          : stage === "reconstruction-derive"
-            ? reconstruction("independent reconstruction")
-            : queue.shift());
+      const reply = queue.shift();
       if (reply === undefined) throw new Error(`no reply for ${options.label}`);
       expect(options.stopAfterToolResult).toBe(true);
       expect(options.transport).toBe("sse");
       return respond(campaign, options, reply);
     },
-    async sourceCheck(request) {
-      sourceCalls.push(request);
-      const reply = sourceQueue.shift();
-      if (reply === undefined) throw new Error("no source reply");
-      return reply;
-    },
-    calls,
-    sourceCalls,
-    pauseRequested: () => queue.length === 0 && sourceQueue.length === 0,
   };
 }
 
@@ -232,7 +89,26 @@ async function respond(
 ): Promise<PiResult> {
   const state = reply.state ?? "succeeded";
   const telemetry = fakePiTelemetry(options, state);
-  const body = replyBody(state, reply, telemetry);
+  const body =
+    state === "succeeded"
+      ? ({ state, transcript: [], text: "", telemetry } as const)
+      : state === "failed"
+        ? ({
+            state,
+            error: reply.error ?? "failed",
+            providerRetryable: false,
+            truncated: false,
+            transcript: [],
+            text: "",
+            telemetry,
+          } as const)
+        : ({
+            state,
+            error: reply.error ?? "cancelled",
+            transcript: [],
+            text: "",
+            telemetry,
+          } as const);
   const receipt = await campaign.call(
     {
       label: options.label,
@@ -245,375 +121,10 @@ async function respond(
     },
     async ({ tools }) => {
       if (reply.submission !== undefined) {
-        await tools[0]!.execute(
-          completeStatementAssessment(options, reply.submission),
-        );
+        await tools[0]!.execute(reply.submission);
       }
       return body;
     },
   );
   return { call: receipt.call, ...body };
-}
-
-function completeStatementAssessment(
-  options: PiRunOptions,
-  submission: Json,
-): Json {
-  if (
-    submission === null ||
-    typeof submission !== "object" ||
-    Array.isArray(submission) ||
-    !("verdict" in submission)
-  ) {
-    if (
-      submission !== null &&
-      typeof submission === "object" &&
-      !Array.isArray(submission) &&
-      options.label.endsWith("/candidate/reconstruction-derive")
-    ) {
-      return {
-        ...(submission as Record<string, Json>),
-        usedPremises:
-          (submission as Record<string, Json>).usedPremises ??
-          directPremiseIds(options.prompt),
-      };
-    }
-    return submission;
-  }
-  const value = submission as Record<string, Json>;
-  if (options.label.endsWith("/candidate/proof-audit")) {
-    return {
-      ...value,
-      goalStatementMatch: value.goalStatementMatch ?? "MATCH",
-    };
-  }
-  if (reconstructionStage(options) === "reconstruction-certification") {
-    return {
-      ...value,
-      keyIdeas: value.keyIdeas ?? "SAFE",
-      allowedSources: value.allowedSources ?? "SAFE",
-      premises:
-        value.premises ??
-        directPremiseIds(options.prompt).map((note) => ({
-          note,
-          disposition: "RELEVANT_LOGICAL_PREMISE",
-          report: "candidate invokes this direct premise",
-        })),
-      closure:
-        value.closure ??
-        closureIds(options.prompt).map((note) => ({
-          note,
-          disposition: "SAFE",
-          report: "closure statement is noncircular",
-        })),
-    };
-  }
-  if (options.label.endsWith("/candidate/reconstruction")) {
-    return {
-      ...value,
-      targetCoverage: value.targetCoverage ?? "EXACT",
-      undeclaredPremises: value.undeclaredPremises ?? [],
-    };
-  }
-  if (
-    options.label.includes("/verify/") &&
-    options.label.includes("proof-audit")
-  ) {
-    return {
-      ...value,
-      statementForm: value.statementForm ?? "PROPOSITION_ONLY",
-      statementFidelity: value.statementFidelity ?? "MATCH",
-    };
-  }
-  if (options.label.includes("reconstruction")) {
-    return {
-      ...value,
-      statementForm: value.statementForm ?? "PROPOSITION_ONLY",
-    };
-  }
-  return submission;
-}
-
-function directPremiseIds(prompt: string): string[] {
-  const reconstructionInput = prompt.split(
-    "Verified transitive premise closure for audit only",
-  )[0]!;
-  return [
-    ...new Set(
-      [...reconstructionInput.matchAll(/"id": "(n[1-9][0-9]*)"/gu)].map(
-        (match) => match[1]!,
-      ),
-    ),
-  ];
-}
-
-function closureIds(prompt: string): string[] {
-  const closure = prompt.split(
-    "Verified transitive premise closure for audit only",
-  )[1];
-  if (closure === undefined) return [];
-  return [
-    ...new Set(
-      [...closure.matchAll(/"id": "(n[1-9][0-9]*)"/gu)].map(
-        (match) => match[1]!,
-      ),
-    ),
-  ];
-}
-
-function reconstructionStage(
-  options: PiRunOptions,
-): Reply["forCall"] | undefined {
-  const system = options.system ?? "";
-  if (system.startsWith("You are a fresh certifier")) {
-    return "reconstruction-certification";
-  }
-  if (system.startsWith("You are a fresh candidate-blind")) {
-    return "reconstruction-derive";
-  }
-  return undefined;
-}
-
-function replyBody(
-  state: NonNullable<Reply["state"]>,
-  reply: Reply,
-  telemetry: PiTelemetry,
-) {
-  switch (state) {
-    case "succeeded":
-      return { state, text: "done", transcript: [], telemetry };
-    case "failed":
-      return {
-        state,
-        text: "partial",
-        transcript: [],
-        telemetry,
-        error: reply.error ?? "failed call",
-        providerRetryable: reply.providerRetryable ?? false,
-        truncated: false,
-      };
-    case "cancelled":
-      return {
-        state,
-        text: "partial",
-        transcript: [],
-        telemetry,
-        error: reply.error ?? "cancelled call",
-      };
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Scripted-reply constructors and the shared campaign starter.
-// ---------------------------------------------------------------------------
-
-export const turn = (
-  findings: readonly {
-    text: string;
-    basedOn?: readonly string[];
-    basedOnFindings?: readonly number[];
-  }[],
-  extra: {
-    readonly nextObjective?: string;
-    readonly expand?: readonly string[];
-  } = {},
-): Reply => ({ submission: { findings, ...extra } as unknown as Json });
-
-export const curation = (
-  filings: readonly {
-    finding: number;
-    summary?: string;
-    statement?: string;
-    reconstruction?: {
-      readonly keyIdeas: readonly string[];
-      readonly allowedSources: readonly string[];
-    };
-    refines?: string;
-    duplicateOf?: string;
-  }[],
-): Reply => ({
-  submission: {
-    filings: filings.map((filing) => ({
-      ...filing,
-      reconstruction: filing.reconstruction ?? {
-        keyIdeas: [],
-        allowedSources: [],
-      },
-      ...(filing.summary === undefined || filing.statement !== undefined
-        ? {}
-        : { statement: filing.summary }),
-    })),
-  } as unknown as Json,
-});
-
-export const triage = (
-  plans: readonly {
-    note: string;
-    modes: readonly string[];
-    rationale: string;
-  }[],
-): Reply => ({ submission: { plans } as unknown as Json });
-
-export const verdict = (
-  value: "PASS" | "FAIL" | "INCONCLUSIVE",
-  report: string,
-): Reply => ({ submission: { verdict: value, report } });
-
-export const reconstruction = (proof: string): Reply => ({
-  submission: { proof } as unknown as Json,
-});
-
-export const boundaryReconstruction = (proof: string): Reply => ({
-  forCall: "reconstruction-derive",
-  submission: { proof } as unknown as Json,
-});
-
-export const bundleVerdict = (
-  value: "PASS" | "FAIL" | "INCONCLUSIVE",
-  report: string,
-): Reply => ({
-  forCall: "reconstruction-certification",
-  submission: { verdict: value, report },
-});
-
-export const serve = (expand: readonly string[], objective: string): Reply => ({
-  submission: { expand, objective } as unknown as Json,
-});
-
-export const goalServe = (goalNote: string): Reply => ({
-  submission: { goalNote },
-});
-
-export const retriageServe = (notes: readonly string[]): Reply => ({
-  submission: { retriage: notes },
-});
-
-export interface BatteryReports {
-  readonly proof: string;
-  readonly reconstruction: string;
-  readonly refutation: string;
-  readonly premises: string;
-  readonly criteria: string;
-}
-
-const batteryPasses = (reports: BatteryReports): Reply[] => [
-  verdict("PASS", reports.proof),
-  { submission: { report: reports.premises, premises: [] } },
-  verdict("PASS", reports.reconstruction),
-  verdict("PASS", reports.refutation),
-  verdict("PASS", reports.criteria),
-];
-
-export interface SolvedSpec {
-  readonly lemma: {
-    readonly text: string;
-    readonly summary: string;
-    readonly rationale: string;
-    readonly verdictReport: string;
-    readonly reconstruction?: {
-      readonly keyIdeas: readonly string[];
-      readonly allowedSources: readonly string[];
-    };
-  };
-  readonly route?: {
-    readonly text: string;
-    readonly summary: string;
-    readonly rationale: string;
-  };
-  readonly firstObjective?: string;
-  readonly serveObjective: string;
-  readonly goal: {
-    readonly text: string;
-    readonly summary: string;
-    readonly rationale: string;
-    readonly verdictReport: string;
-    readonly reconstruction?: {
-      readonly keyIdeas: readonly string[];
-      readonly allowedSources: readonly string[];
-    };
-  };
-  readonly battery: BatteryReports;
-}
-
-// The canonical two-turn solved campaign: a verified lemma, an optional
-// process note, a goal resting on the lemma, and a passing boundary battery.
-export function solvedReplies(spec: SolvedSpec): Reply[] {
-  const goalId = spec.route === undefined ? "n2" : "n3";
-  return [
-    turn(
-      [
-        { text: spec.lemma.text },
-        ...(spec.route === undefined
-          ? []
-          : [{ text: spec.route.text, basedOn: [] as readonly string[] }]),
-      ],
-      spec.firstObjective === undefined
-        ? {}
-        : { nextObjective: spec.firstObjective },
-    ),
-    curation([
-      {
-        finding: 1,
-        summary: spec.lemma.summary,
-        ...(spec.lemma.reconstruction === undefined
-          ? {}
-          : { reconstruction: spec.lemma.reconstruction }),
-      },
-      ...(spec.route === undefined
-        ? []
-        : [{ finding: 2, summary: spec.route.summary }]),
-    ]),
-    triage([
-      { note: "n1", modes: ["proof-audit"], rationale: spec.lemma.rationale },
-      ...(spec.route === undefined
-        ? []
-        : [{ note: "n2", modes: [], rationale: spec.route.rationale }]),
-    ]),
-    verdict("PASS", spec.lemma.verdictReport),
-    serve(["n1"], spec.serveObjective),
-    turn([{ text: spec.goal.text, basedOn: ["n1"] }]),
-    curation([
-      {
-        finding: 1,
-        summary: spec.goal.summary,
-        ...(spec.goal.reconstruction === undefined
-          ? {}
-          : { reconstruction: spec.goal.reconstruction }),
-      },
-    ]),
-    triage([
-      { note: goalId, modes: ["proof-audit"], rationale: spec.goal.rationale },
-    ]),
-    verdict("PASS", spec.goal.verdictReport),
-    goalServe(goalId),
-    ...batteryPasses(spec.battery),
-  ];
-}
-
-export async function startCampaign(
-  replies: readonly Reply[],
-  options: {
-    readonly settings?: Partial<Settings>;
-    readonly sourceReplies?: readonly SourceCheckResult[];
-    readonly statuses?: string[];
-  } = {},
-): Promise<{
-  readonly path: string;
-  readonly drive: ReturnType<typeof dependencies>;
-  readonly report: Awaited<ReturnType<typeof start>>;
-}> {
-  const path = campaignPath();
-  const drive = dependencies(replies, options.sourceReplies ?? []);
-  const report = await start(
-    {
-      problem,
-      completionCriteria: criteria,
-      campaignPath: path,
-      settings: runSettings(options.settings ?? {}),
-    },
-    options.statuses === undefined
-      ? drive
-      : { ...drive, status: (message) => options.statuses!.push(message) },
-  );
-  return { path, drive, report };
 }

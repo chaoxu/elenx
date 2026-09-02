@@ -1,54 +1,29 @@
-import { describe, expect, test } from "bun:test";
+import { expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 
-import { settings } from "../exploration";
+import { settings } from "../runner";
 
-const examplesDir = new URL("../examples/", import.meta.url);
-const files = readdirSync(examplesDir).filter((name) => name.endsWith(".json"));
+const directory = new URL("../examples/", import.meta.url);
 
-describe("example settings", () => {
-  test("every example parses with the settings schema", () => {
-    expect(files.length).toBeGreaterThan(0);
-    for (const name of files) {
-      const value = JSON.parse(
-        readFileSync(new URL(name, examplesDir), "utf8"),
-      );
-      const parsed = settings.safeParse(value);
-      expect(parsed.success, `${name}: ${parsed.error?.message}`).toBe(true);
-    }
-  });
-
-  test("the sol-max example stays the all-max baseline", () => {
-    const value = settings.parse(
-      JSON.parse(
-        readFileSync(new URL("exploration-sol-max.json", examplesDir), "utf8"),
-      ),
+test("every example uses the shared role settings", () => {
+  const files = readdirSync(directory).filter((name) => name.endsWith(".json"));
+  expect(files.length).toBeGreaterThan(0);
+  for (const name of files) {
+    const parsed = settings.safeParse(
+      JSON.parse(readFileSync(new URL(name, directory), "utf8")),
     );
-    for (const role of ["explorer", "curator", "triage", "verifier"] as const) {
-      expect(value[role].model).toBe("gpt-5.6-sol");
-      expect(value[role].reasoning).toBe("max");
-    }
-    expect(value.sourceChecker).toEqual({
-      model: "gpt-5.6-sol",
-      reasoning: "max",
-    });
-  });
+    expect(parsed.success, `${name}: ${parsed.error?.message}`).toBe(true);
+  }
+});
 
-  test("the mixed example downgrades only the curation-side roles", () => {
-    const value = settings.parse(
-      JSON.parse(
-        readFileSync(new URL("exploration-mixed.json", examplesDir), "utf8"),
-      ),
-    );
-    expect(value.curator.model).toBe("gpt-5.6-luna");
-    expect(value.triage.model).toBe("gpt-5.6-luna");
-    for (const role of ["explorer", "verifier"] as const) {
-      expect(value[role].model).toBe("gpt-5.6-sol");
-      expect(value[role].reasoning).toBe("max");
-    }
-    expect(value.sourceChecker).toEqual({
-      model: "gpt-5.6-sol",
-      reasoning: "max",
-    });
-  });
+test("the all-max example uses one profile per public role", () => {
+  const value = settings.parse(
+    JSON.parse(
+      readFileSync(new URL("settings-sol-max.json", directory), "utf8"),
+    ),
+  );
+  for (const role of ["explorer", "coordinator", "verifier"] as const) {
+    expect(value[role].model).toBe("gpt-5.6-sol");
+    expect(value[role].reasoning).toBe("max");
+  }
 });

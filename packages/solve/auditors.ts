@@ -1,10 +1,10 @@
 import { z } from "zod";
 
 import {
+  roleCallOutput,
   verifierResult,
   type Verifier,
   type VerifierInput,
-  type VerifierResult,
 } from "./roles";
 
 const nonblank = z.string().refine((value) => value.trim().length > 0, {
@@ -46,7 +46,7 @@ export const auditorDefinitions = [
   {
     name: "refutation",
     instruction:
-      "Actively search for counterexamples, missing cases, invalid bounds, and reasons the claimed resolution does not follow.",
+      "Actively search for counterexamples, missing cases, invalid bounds, and reasons the claimed resolution does not follow. Pass the candidate when this search finds no blocking defect.",
   },
 ] as const satisfies readonly AuditorDefinition[];
 
@@ -68,40 +68,4 @@ export function verifierFromAuditors(implementations: AuditorSet): Verifier {
   };
 }
 
-export const verifierCallOutput = verifierResult.extend({
-  state: z.literal("succeeded"),
-});
-
-export function verifierResultFromCallOutput(value: unknown): VerifierResult {
-  const { verdict, report } = verifierCallOutput.parse(value);
-  return { verdict, report };
-}
-
-export const legacyAuditSuiteResult = z.strictObject({
-  audits: z.strictObject({
-    correctness: auditResult,
-    requirements: auditResult,
-    refutation: auditResult,
-  }),
-});
-const legacyAuditorNames = [
-  "correctness",
-  "requirements",
-  "refutation",
-] as const;
-
-export function verifierResultFromLegacyAudits(value: unknown): VerifierResult {
-  const submission = legacyAuditSuiteResult.parse(value);
-  const failed = legacyAuditorNames.filter(
-    (name) => submission.audits[name].verdict === "FAIL",
-  );
-  return verifierResult.parse({
-    verdict: failed.length === 0 ? "ACCEPT" : "REJECT",
-    report:
-      failed.length === 0
-        ? "Every required audit completed without a blocking defect."
-        : failed
-            .map((name) => `${name}: ${submission.audits[name].report}`)
-            .join("\n\n"),
-  });
-}
+export const verifierCallOutput = roleCallOutput(verifierResult);

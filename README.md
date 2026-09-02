@@ -23,7 +23,7 @@ The API and campaign schema are experimental. Campaigns are accepted only when t
 | Question | Authority |
 | --- | --- |
 | What does the kernel guarantee? | [`SPEC.md`](SPEC.md) |
-| How does the current solver protocol behave? | [`packages/solve/docs/protocol.md`](packages/solve/docs/protocol.md) |
+| How does the current solver workflow behave? | [`packages/solve/docs/role-runner.md`](packages/solve/docs/role-runner.md) |
 | What design boundary guided the retired `exploration-v15` solver? | [`docs/design.md`](docs/design.md) (historical, repository-only) |
 | How do I build an application? | [`docs/application-author.md`](docs/application-author.md) |
 | Which `exploration-v15` policies were to be tested? | [`docs/hypotheses.md`](docs/hypotheses.md) (historical, repository-only) |
@@ -38,9 +38,9 @@ The deterministic verifier example is [`examples/v1/scripted-verifier.ts`](examp
 
 ## Solver
 
-[`packages/solve`](packages/solve) supplies the `exploration-v17` protocol. Fresh explorers report findings over a standing-annotated note index; a curator files every finding and serves each turn's working set; one verification subsystem audits notes as they enter and decides completion when the curator declares a goal note resting on a fully verified ancestor closure. The verified tower is the result; rendering it into a document is external tooling.
+[`packages/solve`](packages/solve) supplies one durable role workflow. Explorers report findings, the coordinator files them and chooses the next action, and the verifier accepts only after its requirements, correctness, and refutation auditors pass. `run`, `resume`, and `trial` replay the same journaled input-output calls.
 
-[`packages/solve/docs/`](packages/solve/docs/) is the current protocol documentation, with [`packages/solve/docs/protocol.md`](packages/solve/docs/protocol.md) the authority for exact runtime behavior. [`docs/design.md`](docs/design.md) and [`docs/hypotheses.md`](docs/hypotheses.md) are historical, repository-only design background for the retired `exploration-v15` protocol.
+[`packages/solve/docs/role-runner.md`](packages/solve/docs/role-runner.md) defines the current runtime behavior. [`docs/design.md`](docs/design.md) and [`docs/hypotheses.md`](docs/hypotheses.md) remain historical, repository-only design background.
 
 ## Development
 
