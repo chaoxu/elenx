@@ -13,13 +13,13 @@ import {
 } from "elenx";
 import { derivePiSpend, piStoredResult } from "elenx/pi";
 
-import { trialExecutionReport } from "./execution-contract";
 import {
-  createPiRoles,
-  piRoleSettings,
-  verifierResultFromSubmission,
-  type PiRoleSettings,
-} from "./pi-roles";
+  verifierCallOutput,
+  verifierResultFromCallOutput,
+  verifierResultFromLegacyAudits,
+} from "./auditors";
+import { trialExecutionReport } from "./execution-contract";
+import { createPiRoles, piRoleSettings, type PiRoleSettings } from "./pi-roles";
 import {
   coordinatorInput,
   explorerInput,
@@ -154,12 +154,8 @@ export function inspectRoleCampaign(
             ? piStoredResult.safeParse(result.output)
             : undefined;
         const visibleResult =
-          entry.role === role &&
-          result?.kind === "call-result" &&
-          result.state === "returned" &&
-          parsed?.success === true &&
-          parsed.data.state === "succeeded"
-            ? settledRoleResult(records, entry.seq, role)
+          entry.role === role
+            ? settledRoleResult(records, entry.seq, role, result)
             : undefined;
         return {
           call: entry.seq,
@@ -208,10 +204,20 @@ function settledRoleResult(
   records: readonly Entry[],
   call: number,
   role: RoleName,
+  result: Extract<Entry, { readonly kind: "call-result" }> | undefined,
 ): Json | undefined {
   try {
+    if (result?.state !== "returned") return undefined;
+    if (role === "verifier") {
+      const aggregate = verifierCallOutput.safeParse(result.output);
+      if (aggregate.success) {
+        return verifierResultFromCallOutput(aggregate.data);
+      }
+    }
+    const stored = piStoredResult.parse(result.output);
+    if (stored.state !== "succeeded") return undefined;
     const input = returnedToolSubmission(records, call, roleTools[role]).input;
-    return role === "verifier" ? verifierResultFromSubmission(input) : input;
+    return role === "verifier" ? verifierResultFromLegacyAudits(input) : input;
   } catch {
     return undefined;
   }

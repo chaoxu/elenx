@@ -8,7 +8,7 @@ CoordinatorInput -> coordinator -> CoordinatorResult
 VerifierInput    -> verifier    -> VerifierResult
 ```
 
-Each role command runs one journaled model session:
+The explorer and coordinator commands each run one journaled model session. The verifier command records one public verifier call and runs its auditors as private model calls:
 
 ```sh
 elenx-solve explorer explorer-input.json roles.db settings.json
@@ -19,24 +19,32 @@ elenx-solve inspect roles.db
 
 Verifier input contains only the task, the nominated answer and support notes, and an untrusted `candidateKind` of `solution` or `refutation`. The trial uses an internal hash to suppress an unchanged rejected proposal. Callers never supply that hash.
 
-The Pi-backed verifier must complete this fixed internal audit set:
+Every auditor has the same private interface:
+
+```text
+VerifierInput -> auditor -> AuditResult { verdict: PASS | FAIL, report }
+```
+
+The Pi-backed verifier supplies three implementations:
 
 | Audit          | Obligation                                                     |
 | -------------- | -------------------------------------------------------------- |
-| `correctness`  | Check every load-bearing mathematical claim.                   |
 | `requirements` | Check the exact target and every completion criterion.         |
+| `correctness`  | Check every load-bearing mathematical claim.                   |
 | `refutation`   | Search for counterexamples, missing cases, and invalid bounds. |
 
-Each internal audit returns `PASS` or `FAIL`. The terminal schema requires every audit exactly once. Elenx derives the public result in code:
+The verifier calls `requirements`, then `correctness`, then `refutation`. Each implementation receives the complete verifier input and returns through the same strict schema. A `FAIL` stops the sequence before later auditors consume tokens. Elenx derives the public result in code:
 
 ```text
-every required audit PASS -> ACCEPT the declared candidate kind
-any required audit FAIL   -> REJECT
-missing or repeated audit -> invalid verifier submission
-operational failure       -> propagated error
+all three audits PASS       -> ACCEPT the declared candidate kind
+first audit FAIL            -> REJECT and skip later auditors
+malformed auditor result    -> propagated error
+auditor operational failure -> propagated error
 ```
 
-The model cannot submit `ACCEPT` or `REJECT`. Standard role output and inspection expose only the derived `VerifierResult`. Before each verifier call, Elenx declares a kernel candidate whose material starts with the nominated answer and appends each support note in order. The verifier call is bound to that candidate. Aggregate `ACCEPT` records a kernel `PASS`, while aggregate `REJECT` records `FAIL`. Internal audit records remain verifier implementation data.
+Accepted proposals use three auditor model requests. Rejected proposals use one to three requests because the verifier stops at the first failure.
+
+An auditor cannot submit `ACCEPT` or `REJECT`. Before each public verifier call, Elenx declares a kernel candidate whose material starts with the nominated answer and appends each support note in order. The deterministic outer call and every child auditor call are bound to that candidate. The outer call records the exact `VerifierInput` and derived `VerifierResult`. Aggregate `ACCEPT` records a kernel `PASS`, while aggregate `REJECT` records `FAIL`. Standard role inspection exposes the outer result and keeps child audit records internal.
 
 `trial` connects the same role calls into an experimental search:
 
@@ -88,4 +96,4 @@ The settings file selects one model profile per role:
 
 The library exports the `Roles` interface, its input and result types, `runTrial`, and `allVerifiers` from `elenx-solve/roles`. Runtime schemas and the Pi adapter remain private. A `Roles` value contains `explorer(input)`, `coordinator(input)`, and `verifier(input)`, each returning its typed result directly. Call IDs, timing, and token use remain available through `elenx-solve inspect`. `runTrial` accepts any `Roles` value, so callers can replace one function without changing the trial. `allVerifiers(verifierA, verifierB)` returns `ACCEPT` only when every supplied verifier returns `ACCEPT`. A rejection from any verifier yields `REJECT`, while operational errors propagate without becoming mathematical verdicts.
 
-`elenx-solve inspect` detects role journals and V17 campaign journals. Role calls use `elenx-solve/role/<role>` journal labels. Inspection exposes a role result only after the exact terminal tool, its tool result, and the enclosing model call have all succeeded. Unsettled role calls are listed separately. Historical `role-calls.v1` journals remain readable, while new calls require `role-calls.v2`.
+`elenx-solve inspect` detects role journals and V17 campaign journals. Public role calls use `elenx-solve/role/<role>` labels. Verifier auditors use `elenx-solve/role/verifier/auditor/<name>` labels and stay outside the public call list. Inspection exposes an explorer or coordinator result only after its terminal tool and model call succeed. It exposes a verifier result only after the deterministic outer call returns. Unsettled public calls are listed separately.

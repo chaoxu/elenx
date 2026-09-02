@@ -1,13 +1,19 @@
 import { afterEach, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 
-import { createCampaign, deriveCandidateStatus } from "elenx";
+import { createCampaign, defineTool, deriveCandidateStatus } from "elenx";
+import { PI_TELEMETRY_SCHEMA_VERSIONS } from "elenx/pi";
 
 import {
-  createPiRoles,
-  piVerifierSubmission,
-  verifierResultFromSubmission,
-} from "../pi-roles";
+  auditResult,
+  auditorDefinitions,
+  auditorNames,
+  legacyAuditSuiteResult,
+  verifierFromAuditors,
+  verifierResultFromLegacyAudits,
+  type AuditorSet,
+} from "../auditors";
+import { createPiRoles } from "../pi-roles";
 import { inspectRoleCampaign } from "../role-cli";
 import {
   coordinatorResultFor,
@@ -42,7 +48,11 @@ const passingAuditSubmission = {
   },
 } as const;
 
-test("explorer, coordinator, and verifier each run one model session", async () => {
+const passingAuditReplies: readonly Reply[] = auditorNames.map((name) => ({
+  submission: passingAuditSubmission.audits[name],
+}));
+
+test("one public verifier call runs three independent auditors", async () => {
   const replies: Reply[] = [
     { submission: { findings: [{ text: "Proof of P." }] } },
     {
@@ -56,7 +66,7 @@ test("explorer, coordinator, and verifier each run one model session", async () 
         },
       },
     },
-    { submission: passingAuditSubmission },
+    ...passingAuditReplies,
   ];
   const drive = dependencies(replies);
   const path = campaignPath();
@@ -64,6 +74,12 @@ test("explorer, coordinator, and verifier each run one model session", async () 
     protocol: "role-calls.v2",
   });
   const settings = runSettings();
+  const verifierProposal = {
+    task,
+    candidateKind: "solution" as const,
+    answer: { id: "n1", summary: "proof of P", text: "Proof of P." },
+    support: [],
+  };
   try {
     const roles = createPiRoles(
       campaign,
@@ -91,12 +107,6 @@ test("explorer, coordinator, and verifier each run one model session", async () 
     });
     expect(coordinator.action.kind).toBe("verify");
 
-    const verifierProposal = {
-      task,
-      candidateKind: "solution" as const,
-      answer: { id: "n1", summary: "proof of P", text: "Proof of P." },
-      support: [],
-    };
     const verifier = await roles.verifier(verifierProposal);
     expect(verifier).toEqual({
       verdict: "ACCEPT",
@@ -116,22 +126,46 @@ test("explorer, coordinator, and verifier each run one model session", async () 
     expect(drive.calls.map(({ label }) => label)).toEqual([
       "elenx-solve/role/explorer",
       "elenx-solve/role/coordinator",
-      "elenx-solve/role/verifier",
+      "elenx-solve/role/verifier/auditor/requirements",
+      "elenx-solve/role/verifier/auditor/correctness",
+      "elenx-solve/role/verifier/auditor/refutation",
     ]);
+    expect(drive.calls.slice(2).map(({ candidate }) => candidate)).toEqual([
+      candidate.seq,
+      candidate.seq,
+      candidate.seq,
+    ]);
+    const auditCalls = drive.calls.slice(2);
+    expect(new Set(auditCalls.map(({ system }) => system)).size).toBe(1);
+    expect(new Set(auditCalls.map(({ cacheKey }) => cacheKey)).size).toBe(1);
+    expect(
+      auditCalls.map(({ prompt }) =>
+        auditorNames.find((name) => prompt.includes(`Audit:\n${name}`)),
+      ),
+    ).toEqual([...auditorNames]);
   } finally {
     campaign.close();
   }
-  const inspection = inspectRoleCampaign(path) as {
+  const inspection = inspectRoleCampaign(path, { includeInputs: true }) as {
     readonly calls: readonly {
       readonly role?: string;
       readonly result?: unknown;
+      readonly request?: unknown;
+      readonly declaredTools?: readonly unknown[];
     }[];
   };
+  expect(inspection.calls.map(({ role }) => role)).toEqual([
+    "explorer",
+    "coordinator",
+    "verifier",
+  ]);
   const visible = inspection.calls.find(({ role }) => role === "verifier");
   expect(visible?.result).toEqual({
     verdict: "ACCEPT",
     report: "Every required audit completed without a blocking defect.",
   });
+  expect(visible?.request).toEqual(verifierProposal);
+  expect(visible?.declaredTools).toEqual([]);
   expect(JSON.stringify(visible)).not.toContain('"PASS"');
   expect(JSON.stringify(visible)).not.toContain('"audits"');
 });
@@ -142,14 +176,8 @@ test("a rejected verifier proposal records a failed durable candidate", async ()
     protocol: "role-calls.v2",
   });
   const drive = dependencies([
-    {
-      submission: {
-        audits: {
-          ...passingAuditSubmission.audits,
-          correctness: { verdict: "FAIL", report: "A lemma is false." },
-        },
-      },
-    },
+    { submission: passingAuditSubmission.audits.requirements },
+    { submission: { verdict: "FAIL", report: "A lemma is false." } },
   ]);
   const settings = runSettings();
   const roles = createPiRoles(
@@ -186,13 +214,17 @@ test("a rejected verifier proposal records a failed durable candidate", async ()
     expect(new TextDecoder().decode(campaign.material(candidate.seq))).toBe(
       "Candidate proof.\n\n--- SUPPORT ---\n\nLemma text.",
     );
+    expect(drive.calls.map(({ label }) => label)).toEqual([
+      "elenx-solve/role/verifier/auditor/requirements",
+      "elenx-solve/role/verifier/auditor/correctness",
+    ]);
   } finally {
     campaign.close();
   }
 });
 
-test("verifier accepts exactly when every required audit passes", () => {
-  expect(verifierResultFromSubmission(passingAuditSubmission)).toEqual({
+test("legacy audit suites remain readable", () => {
+  expect(verifierResultFromLegacyAudits(passingAuditSubmission)).toEqual({
     verdict: "ACCEPT",
     report: "Every required audit completed without a blocking defect.",
   });
@@ -207,14 +239,14 @@ test("verifier accepts exactly when every required audit passes", () => {
         },
       },
     };
-    expect(verifierResultFromSubmission(failed)).toEqual({
+    expect(verifierResultFromLegacyAudits(failed)).toEqual({
       verdict: "REJECT",
       report: `${audit}: ${audit} failed.`,
     });
   }
 
   expect(
-    verifierResultFromSubmission({
+    verifierResultFromLegacyAudits({
       audits: {
         ...passingAuditSubmission.audits,
         correctness: { verdict: "FAIL", report: "Bad lemma." },
@@ -227,7 +259,7 @@ test("verifier accepts exactly when every required audit passes", () => {
   });
 
   expect(
-    piVerifierSubmission.safeParse({
+    legacyAuditSuiteResult.safeParse({
       audits: {
         correctness: passingAuditSubmission.audits.correctness,
         requirements: passingAuditSubmission.audits.requirements,
@@ -235,7 +267,7 @@ test("verifier accepts exactly when every required audit passes", () => {
     }).success,
   ).toBe(false);
   expect(
-    piVerifierSubmission.safeParse({
+    legacyAuditSuiteResult.safeParse({
       audits: {
         ...passingAuditSubmission.audits,
         extra: { verdict: "PASS", report: "Extra." },
@@ -248,6 +280,131 @@ test("verifier accepts exactly when every required audit passes", () => {
   ).toBe(false);
 });
 
+test("v1 and v2 verifier journals retain their aggregate projection", async () => {
+  for (const protocol of ["role-calls.v1", "role-calls.v2"]) {
+    const path = campaignPath();
+    const campaign = createCampaign(path, "elenx-solve-roles", { protocol });
+    const terminal = defineTool({
+      name: "submit_verification",
+      description: "Return legacy audits",
+      input: legacyAuditSuiteResult,
+      replay: "safe",
+      async run() {
+        return null;
+      },
+    });
+    await campaign.call(
+      {
+        label: "elenx-solve/role/verifier",
+        role: "verifier",
+        request: {},
+        tools: [terminal],
+      },
+      async ({ tools }) => {
+        await tools[0]!.execute(passingAuditSubmission);
+        return {
+          state: "succeeded",
+          transcript: [],
+          text: "",
+          telemetry: {
+            schemaVersions: PI_TELEMETRY_SCHEMA_VERSIONS,
+            spans: [],
+          },
+        };
+      },
+    );
+    campaign.close();
+    const inspection = inspectRoleCampaign(path) as {
+      readonly calls: readonly { readonly result?: unknown }[];
+    };
+    expect(inspection.calls[0]?.result).toEqual({
+      verdict: "ACCEPT",
+      report: "Every required audit completed without a blocking defect.",
+    });
+  }
+});
+
+test("auditors share one interface and short-circuit in fixed order", async () => {
+  expect(
+    auditorDefinitions.map(({ name, instruction }) => ({ name, instruction })),
+  ).toEqual([
+    {
+      name: "requirements",
+      instruction:
+        "Check the declared candidate kind against the exact target and every completion criterion.",
+    },
+    {
+      name: "correctness",
+      instruction: "Check every load-bearing mathematical claim.",
+    },
+    {
+      name: "refutation",
+      instruction:
+        "Actively search for counterexamples, missing cases, invalid bounds, and reasons the claimed resolution does not follow.",
+    },
+  ]);
+
+  for (const name of auditorNames) {
+    expect(
+      auditResult.parse({ verdict: "PASS", report: `${name} ok.` }),
+    ).toEqual({ verdict: "PASS", report: `${name} ok.` });
+    expect(
+      auditResult.safeParse({ verdict: "ACCEPT", report: "Wrong layer." })
+        .success,
+    ).toBe(false);
+  }
+
+  const acceptedOrder: string[] = [];
+  const pass = (name: (typeof auditorNames)[number]) => async () => {
+    acceptedOrder.push(name);
+    return { verdict: "PASS" as const, report: `${name} passed.` };
+  };
+  const accepting: AuditorSet = {
+    requirements: pass("requirements"),
+    correctness: pass("correctness"),
+    refutation: pass("refutation"),
+  };
+  expect(
+    await verifierFromAuditors(accepting)({
+      task,
+      candidateKind: "solution",
+      answer: { id: "n1", summary: "proof", text: "Proof." },
+      support: [],
+    }),
+  ).toEqual({
+    verdict: "ACCEPT",
+    report: "Every required audit completed without a blocking defect.",
+  });
+  expect(acceptedOrder).toEqual([...auditorNames]);
+
+  const rejectedOrder: string[] = [];
+  const rejecting: AuditorSet = {
+    async requirements() {
+      rejectedOrder.push("requirements");
+      return { verdict: "PASS", report: "Requirements passed." };
+    },
+    async correctness() {
+      rejectedOrder.push("correctness");
+      return { verdict: "FAIL", report: "A lemma is false." };
+    },
+    async refutation() {
+      throw new Error("refutation must be short-circuited");
+    },
+  };
+  expect(
+    await verifierFromAuditors(rejecting)({
+      task,
+      candidateKind: "solution",
+      answer: { id: "n1", summary: "proof", text: "Proof." },
+      support: [],
+    }),
+  ).toEqual({
+    verdict: "REJECT",
+    report: "correctness: A lemma is false.",
+  });
+  expect(rejectedOrder).toEqual(["requirements", "correctness"]);
+});
+
 test("inspection exposes no verdict from failed or malformed verifier calls", async () => {
   const proposal = {
     task,
@@ -257,7 +414,7 @@ test("inspection exposes no verdict from failed or malformed verifier calls", as
   };
   const replies: Reply[] = [
     {
-      submission: passingAuditSubmission,
+      submission: passingAuditSubmission.audits.requirements,
       state: "failed",
       error: "transport failed",
     },
@@ -272,7 +429,7 @@ test("inspection exposes no verdict from failed or malformed verifier calls", as
   for (const reply of replies) {
     const path = campaignPath();
     const campaign = createCampaign(path, "elenx-solve-roles", {
-      protocol: "role-calls.v1",
+      protocol: "role-calls.v2",
     });
     const drive = dependencies([reply]);
     const settings = runSettings();
@@ -299,6 +456,8 @@ test("inspection exposes no verdict from failed or malformed verifier calls", as
     expect(
       inspection.calls.find(({ role }) => role === "verifier")?.result,
     ).toBeUndefined();
+    expect(inspection.calls).toHaveLength(1);
+    expect(drive.calls).toHaveLength(1);
   }
 });
 
@@ -654,22 +813,26 @@ test("explorer and verifier inputs validate their supplied material", () => {
   ).toBe(false);
 });
 
-test("the main CLI inspects a role journal", () => {
-  const path = campaignPath();
-  createCampaign(path, "elenx-solve-roles", {
-    protocol: "role-calls.v1",
-  }).close();
-  const inspected = spawnSync(process.execPath, ["solve.ts", "inspect", path], {
-    cwd: import.meta.dir + "/..",
-    encoding: "utf8",
-  });
-  expect(inspected.status).toBe(0);
-  expect(JSON.parse(inspected.stdout)).toEqual({
-    calls: [],
-    spend: {
-      logicalProviderRequests: 0,
-      requestErrors: 0,
-      unmeasuredRequests: 0,
-    },
-  });
+test("the main CLI inspects supported role journals", () => {
+  for (const protocol of ["role-calls.v1", "role-calls.v2"]) {
+    const path = campaignPath();
+    createCampaign(path, "elenx-solve-roles", { protocol }).close();
+    const inspected = spawnSync(
+      process.execPath,
+      ["solve.ts", "inspect", path],
+      {
+        cwd: import.meta.dir + "/..",
+        encoding: "utf8",
+      },
+    );
+    expect(inspected.status).toBe(0);
+    expect(JSON.parse(inspected.stdout)).toEqual({
+      calls: [],
+      spend: {
+        logicalProviderRequests: 0,
+        requestErrors: 0,
+        unmeasuredRequests: 0,
+      },
+    });
+  }
 });

@@ -1,21 +1,34 @@
 import { createHash } from "node:crypto";
 
-import { defineTool, returnedToolSubmission, type Campaign } from "elenx";
+import {
+  defineTool,
+  returnedToolSubmission,
+  type Campaign,
+  type Json,
+} from "elenx";
 import { piReasoning, runPi } from "elenx/pi";
 import { z } from "zod";
 
+import {
+  auditResult,
+  auditorDefinitions,
+  auditorNames,
+  verifierCallOutput,
+  verifierFromAuditors,
+  verifierResultFromCallOutput,
+  type AuditorName,
+  type AuditorSet,
+} from "./auditors";
 import {
   coordinatorInput,
   coordinatorResultFor,
   explorerInput,
   explorerResult,
-  verifierResult,
   verifierInput,
   type CoordinatorInput,
   type ExplorerInput,
   type Task,
   type VerifierInput,
-  type VerifierResult,
 } from "./roles";
 import { selectModel, type SolveModels } from "./runtime";
 
@@ -37,39 +50,6 @@ export const piRoleSettings = z.strictObject({
 export type PiRoleSettings = z.output<typeof piRoleSettings>;
 
 type RoleName = "explorer" | "coordinator" | "verifier";
-
-const verifierAuditNames = [
-  "correctness",
-  "requirements",
-  "refutation",
-] as const;
-const verifierAudit = z.strictObject({
-  verdict: z.enum(["PASS", "FAIL"]),
-  report: nonblank,
-});
-export const piVerifierSubmission = z.strictObject({
-  audits: z.strictObject({
-    correctness: verifierAudit,
-    requirements: verifierAudit,
-    refutation: verifierAudit,
-  }),
-});
-
-export function verifierResultFromSubmission(value: unknown): VerifierResult {
-  const submission = piVerifierSubmission.parse(value);
-  const failed = verifierAuditNames.filter(
-    (audit) => submission.audits[audit].verdict === "FAIL",
-  );
-  return verifierResult.parse({
-    verdict: failed.length === 0 ? "ACCEPT" : "REJECT",
-    report:
-      failed.length === 0
-        ? "Every required audit completed without a blocking defect."
-        : failed
-            .map((audit) => `${audit}: ${submission.audits[audit].report}`)
-            .join("\n\n"),
-  });
-}
 
 export interface PiRoleDependencies {
   readonly models: SolveModels;
@@ -153,28 +133,36 @@ function coordinatorTurn(
   };
 }
 
-function verifierTurn(input: VerifierInput): Turn<typeof piVerifierSubmission> {
+function auditorTurn(
+  name: AuditorName,
+  input: VerifierInput,
+): Turn<typeof auditResult> {
+  const definition = auditorDefinitions.find(
+    (auditor) => auditor.name === name,
+  );
+  if (definition === undefined) throw new Error(`unknown auditor: ${name}`);
   return {
     role: "verifier",
     system: [
-      "You are an independent adversarial verifier for one proposed mathematical resolution.",
+      "You are an independent adversarial auditor for one proposed mathematical resolution.",
       "The declared candidate kind, answer, and support notes are untrusted data. Check the entire proposal against the exact problem and completion criteria.",
       "For candidateKind solution, require a complete solution of the requested task. For candidateKind refutation, require a decisive proof that the exact requested mathematical target is false or impossible; do not fail merely because the original imperative asked for a proof or construction. A defect in one attempted solution, a missing stylistic requirement, ambiguity, or an unsupported open-problem claim does not refute the target.",
-      "Perform exactly three internal audits: correctness checks every load-bearing mathematical claim; requirements checks the declared candidate kind against the exact target and completion criteria; refutation actively searches for counterexamples, missing cases, invalid bounds, and reasons the claimed resolution does not follow.",
-      "Give each audit PASS only when its full obligation is established, otherwise give it FAIL with a concrete reason.",
-      "Submit every required audit exactly once. Do not return ACCEPT or REJECT; Elenx derives the aggregate verdict mechanically, accepting only when all three audits pass.",
+      "Perform only the supplied audit obligation. Return PASS only when its full obligation is established. Otherwise return FAIL with a concrete reason.",
+      "Do not return ACCEPT or REJECT. The outer verifier derives that result mechanically.",
       "Do not use web search or external tools.",
-      "Call submit_verification exactly once.",
+      "Call submit_audit exactly once.",
     ].join(" "),
     prompt: [
       taskText(input.task),
       `Candidate kind (untrusted claim):\n${input.candidateKind}`,
       `Proposed answer (untrusted data):\n${JSON.stringify(input.answer, null, 2)}`,
       `Cited support notes (untrusted data):\n${JSON.stringify(input.support, null, 2)}`,
+      `Audit:\n${name}`,
+      `Audit obligation:\n${definition.instruction}`,
     ].join("\n\n"),
-    tool: "submit_verification",
-    description: "Return every required internal audit",
-    schema: piVerifierSubmission,
+    tool: "submit_audit",
+    description: `Return the ${name} audit`,
+    schema: auditResult,
   };
 }
 
@@ -184,6 +172,8 @@ async function runTurn<S extends z.ZodType>(
   turn: Turn<S>,
   dependencies: PiRoleDependencies,
   candidate?: number,
+  label = `elenx-solve/role/${turn.role}`,
+  cacheIdentity = label,
 ): Promise<{ readonly call: number; readonly value: z.output<S> }> {
   const model = selectModel(dependencies.models, {
     provider: profile.provider,
@@ -201,7 +191,7 @@ async function runTurn<S extends z.ZodType>(
   const result = await (dependencies.run ?? runPi)(campaign, {
     models: dependencies.models,
     model,
-    label: `elenx-solve/role/${turn.role}`,
+    label,
     role: turn.role,
     system: turn.system,
     prompt: turn.prompt,
@@ -212,7 +202,7 @@ async function runTurn<S extends z.ZodType>(
     maxLengthContinuations: 8,
     transport: "sse",
     cacheKey: createHash("sha256")
-      .update(`elenx-solve/role/${turn.role}\n${turn.system}`)
+      .update(`${cacheIdentity}\n${turn.system}`)
       .digest("hex"),
     ...(candidate === undefined ? {} : { candidate }),
     ...(dependencies.signal === undefined
@@ -228,6 +218,31 @@ async function runTurn<S extends z.ZodType>(
     turn.tool,
   );
   return { call: result.call, value: turn.schema.parse(submission.input) };
+}
+
+function createPiAuditors(
+  campaign: Campaign,
+  profile: PiRoleProfile,
+  dependencies: PiRoleDependencies,
+  candidate: number,
+): AuditorSet {
+  return Object.fromEntries(
+    auditorNames.map((name) => [
+      name,
+      async (input: VerifierInput) =>
+        (
+          await runTurn(
+            campaign,
+            profile,
+            auditorTurn(name, input),
+            dependencies,
+            candidate,
+            `elenx-solve/role/verifier/auditor/${name}`,
+            "elenx-solve/role/verifier/auditor",
+          )
+        ).value,
+    ]),
+  ) as AuditorSet;
 }
 
 export function createPiRoles(
@@ -267,16 +282,32 @@ export function createPiRoles(
       const candidate = campaign.submitCandidate(roleCandidateMaterial(input), [
         label,
       ]);
-      const turn = await runTurn(
-        campaign,
-        settings.verifier,
-        verifierTurn(input),
-        dependencies,
-        candidate,
+      const settled = await campaign.call(
+        {
+          label,
+          role: "verifier",
+          candidate,
+          request: jsonSnapshot(input),
+          ...(dependencies.signal === undefined
+            ? {}
+            : { signal: dependencies.signal }),
+        },
+        async ({ request, signal }) => {
+          const exactInput = verifierInput.parse(request);
+          const implementations = createPiAuditors(
+            campaign,
+            settings.verifier,
+            { ...dependencies, signal },
+            candidate,
+          );
+          const result =
+            await verifierFromAuditors(implementations)(exactInput);
+          return verifierCallOutput.parse({ state: "succeeded", ...result });
+        },
       );
-      const result = verifierResultFromSubmission(turn.value);
+      const result = verifierResultFromCallOutput(settled.output);
       campaign.recordVerdict(
-        turn.call,
+        settled.call,
         result.verdict === "ACCEPT" ? "PASS" : "FAIL",
         { report: result.report, candidateKind: input.candidateKind },
       );
@@ -287,6 +318,10 @@ export function createPiRoles(
       return acceptedCandidate;
     },
   };
+}
+
+function jsonSnapshot(value: unknown): Json {
+  return JSON.parse(JSON.stringify(value)) as Json;
 }
 
 function roleCandidateMaterial(input: VerifierInput): Uint8Array {

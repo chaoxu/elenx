@@ -90,7 +90,7 @@ test("standalone role commands cross the real CLI, model runtime, Pi, and journa
     "verifier",
   ]);
   expect(observed.spend).toMatchObject({
-    logicalProviderRequests: 3,
+    logicalProviderRequests: 5,
     requestErrors: 0,
     unmeasuredRequests: 0,
   });
@@ -100,7 +100,9 @@ test("standalone role commands cross the real CLI, model runtime, Pi, and journa
   expect(requests.map(requestedTool)).toEqual([
     "submit_findings",
     "submit_coordination",
-    "submit_verification",
+    "submit_audit",
+    "submit_audit",
+    "submit_audit",
   ]);
   expect(
     requests.every(
@@ -166,7 +168,7 @@ test("trial repairs one rejected proof and accepts the next exact proposal", asy
       .map(({ result }: { result: { verdict: string } }) => result.verdict),
   ).toEqual(["REJECT", "ACCEPT"]);
   expect(inspection.spend).toMatchObject({
-    logicalProviderRequests: 6,
+    logicalProviderRequests: 8,
     requestErrors: 0,
     unmeasuredRequests: 0,
   });
@@ -219,6 +221,7 @@ test("trial terminates when the verifier accepts an exact refutation", async () 
     "coordinator",
     "verifier",
   ]);
+  expect(inspection.spend.logicalProviderRequests).toBe(5);
 });
 
 test("trial turn limit is terminal without an accepted candidate", async () => {
@@ -278,7 +281,7 @@ test("provider failure exits nonzero and inspection exposes no mathematical resu
   expect(inspection.calls).toHaveLength(1);
   expect(inspection.calls[0]).toMatchObject({
     role: "verifier",
-    piState: "failed",
+    settlement: "threw",
   });
   expect(inspection.calls[0]).not.toHaveProperty("result");
   expect(inspection.spend.requestErrors).toBeGreaterThanOrEqual(1);

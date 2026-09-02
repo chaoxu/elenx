@@ -89,26 +89,24 @@ function submissionFor(tool: string, request: string): unknown {
       },
     };
   }
-  if (tool === "submit_verification") {
+  if (tool === "submit_audit") {
     const pass =
       request.includes("2 is prime") ||
       (refutation && request.includes("transitive tournament"));
-    const verdict = pass ? "PASS" : "FAIL";
+    const audit = request.includes("Audit:\\nrequirements")
+      ? "requirements"
+      : request.includes("Audit:\\ncorrectness")
+        ? "correctness"
+        : request.includes("Audit:\\nrefutation")
+          ? "refutation"
+          : undefined;
+    if (audit === undefined)
+      throw new Error("request omitted auditor identity");
     return {
-      audits: {
-        correctness: {
-          verdict,
-          report: pass ? "Correct." : "Missing nonempty list case.",
-        },
-        requirements: {
-          verdict,
-          report: pass ? "Complete." : "Not self-contained.",
-        },
-        refutation: {
-          verdict,
-          report: pass ? "No counterexample." : "Zero-prime case remains.",
-        },
-      },
+      verdict: pass ? "PASS" : "FAIL",
+      report: pass
+        ? `${audit} passed.`
+        : `${audit} found the missing nonempty-list case.`,
     };
   }
   throw new Error(`unexpected tool: ${tool}`);

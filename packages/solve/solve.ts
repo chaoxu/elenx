@@ -54,10 +54,10 @@ transient call failures in place with capped exponential backoff; a run report
 with outcome call-failure means that retry budget was exhausted by consecutive
 failures.
 
-explorer, coordinator, and verifier each run one journaled model session. trial
-connects those same roles into an in-memory experimental workflow; individual
-calls are journaled, but an interrupted trial does not reconstruct its workflow
-state.`;
+explorer and coordinator each run one journaled model session. verifier runs
+separate internal auditors behind one journaled public call. trial connects the
+same public roles into an in-memory experimental workflow. Individual calls are
+journaled, but an interrupted trial does not reconstruct its workflow state.`;
 
 async function main(args: readonly string[]): Promise<void> {
   const parsed = parseArgs({
