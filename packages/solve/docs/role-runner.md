@@ -8,49 +8,44 @@ CoordinatorInput -> CoordinatorResult
 VerifierInput    -> VerifierResult
 ```
 
+## Notes and verdicts
+
+A note is `id`, `summary`, `text`, and `verdicts`. The explorer writes the text, the coordinator writes the summary, and the verifiers write the verdicts. Notes are immutable: a change is a new note. Every role receives notes in this one shape.
+
+A verdict names the verifier that produced it, the note it is about, `PASS` or `FAIL`, and a report. A `PASS` names the note under verification. A `FAIL` names the note the report is about, which may be a support note. Verdicts accumulate on the note they name, so a reader can weigh a note by the verdicts it carries.
+
 ## Explorer
 
-`ExplorerInput` contains the exact task, a note index, selected full note texts, one objective, and the previous verifier response when repair is needed. `ExplorerResult` contains one or more self-contained findings.
-
-The explorer performs mathematics. It neither writes notes nor decides completion.
+`ExplorerInput` contains the task, one objective, and every note. The first objective is the problem. `ExplorerResult` contains one or more new note texts. The explorer performs mathematics. It neither writes summaries nor decides whether the task is resolved.
 
 ## Coordinator
 
-`CoordinatorInput` contains the task, stored notes, new findings, and the previous verifier response. The coordinator files every finding with a short summary, then returns one action:
+`CoordinatorInput` contains the task and every note, including the new notes that have no summary yet. `CoordinatorResult` files each of those notes with a summary, sets the next objective, and optionally verifies one note with the support notes whose results its text uses without proving them.
 
-- `explore` selects the next objective and context notes.
-- `verify` nominates one answer, labels it as a solution or refutation, and supplies only the notes used as premises.
-
-The coordinator may store unverified mathematics. Acceptance remains verifier-owned.
+A summary is for navigation and is never verified. It states what the note establishes or attempts, whether the text proves it or leaves a gap, and the notes it depends on. The coordinator has no correctness authority and never declares that the task is resolved.
 
 ## Verifier
 
-`VerifierInput` contains the task, candidate kind, nominated answer, and support notes. Every internal auditor implements:
+`VerifierInput` contains the task, the note, and its support notes. The verifier role runs the `requirements`, `correctness`, and `adversarial` verifiers in that order, every time, and returns their three verdicts. Each verifier judges the text on its own terms: whatever the text asserts, it must establish, with the support notes as premises whose own verdicts are visible. The requirements verifier alone decides whether the note resolves the task. Malformed results and provider failures remain operational errors.
+
+The public verifier call owns the kernel candidate. Each verifier call binds to that candidate and records its own verdict, so the kernel's candidate status is the acceptance rule: all three verifiers passed. A replacement `Roles.verifier` must do the same, because acceptance reads only kernel verdicts recorded under the verifier labels.
+
+## Replay and terminal results
+
+The journal stores every public role input and output. The workflow fold starts from the declared task and replays settled calls in order:
 
 ```text
-Auditor = VerifierInput -> PASS | FAIL + report
-```
-
-The built-in verifier runs `requirements`, `correctness`, and `adversarial` in that order. It returns `ACCEPT` only after all three pass. A failure returns `REJECT` immediately. Malformed results and provider failures remain operational errors.
-
-The public verifier call owns the kernel candidate and aggregate verdict. Auditor calls bind to the same candidate but remain private implementation records. Ordinary inspection shows one verifier response and includes all auditor usage in campaign spend.
-
-## Replay and terminal state
-
-The journal stores every public role input and output. The workflow fold starts from the declared task and replays successful calls in order:
-
-```text
-explorer -> coordinator -> explore
+explorer -> coordinator -> explorer
                         -> verifier -> accepted
-                                    -> repair -> explorer
+                                    -> explorer
 ```
 
-Coordinator filings deterministically mint `n1`, `n2`, and later notes. A repeated rejected proposal is suppressed from another verifier call and becomes repair context. Repeating `run` invokes the first role whose exact output is missing. Repeating it on a completed campaign makes no model request.
+Explorer results deterministically mint `n1`, `n2`, and later notes. Note verdicts are derived from the kernel verdict entries settled before each role call, so a verification that fails before it settles keeps the verdicts it did record, and they appear on the note once the repeated verification settles. Repeating `run` invokes the first role whose exact output is missing. Repeating it on a completed campaign makes no model request.
 
-`accepted`, `refuted`, and `turn-limit` are terminal results. `paused`, `call-failure`, and `interrupted` leave the campaign resumable.
+`accepted` and `turn-limit` are terminal results. `paused`, `call-failure`, and `interrupted` leave the campaign resumable.
 
 ## Inspection and export
 
-`inspect` reports the task, current state, notes, public calls, telemetry-derived spend, and optional exact public inputs. A terminal campaign adds `result`, derived from the journal. Child model calls remain outside the public call list.
+`inspect` reports the task, current phase, notes with verdicts, public calls, telemetry-derived spend, and optional exact public inputs. A terminal campaign adds `result`, derived from the journal. Verifier calls appear once each with their three verdicts; the model calls beneath them remain outside the public call list.
 
-`export` returns the accepted solution or verified refutation candidate bytes. The material contains the nominated answer followed by its supplied support notes.
+`export` returns the accepted candidate bytes: the accepted note followed by its support notes.

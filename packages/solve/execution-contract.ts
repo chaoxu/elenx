@@ -1,9 +1,9 @@
 import type { RunResult } from "./runner";
 import { applicationId, workflowProtocol } from "./roles";
+import { workflowSchemaVersion } from "./workflow";
 
 export const workflowOutcomes = [
   "accepted",
-  "refuted",
   "turn-limit",
   "paused",
   "call-failure",
@@ -11,23 +11,23 @@ export const workflowOutcomes = [
 ] as const;
 
 export const executionContract = {
-  schemaVersion: 1,
+  schemaVersion: workflowSchemaVersion,
   application: applicationId,
   protocol: workflowProtocol,
   run: {
     command: "run",
     arguments: ["task", "campaign", "settings"],
     report: {
-      schemaVersion: 1,
+      schemaVersion: workflowSchemaVersion,
       outcomes: workflowOutcomes,
-      terminalOutcomes: ["accepted", "refuted", "turn-limit"],
+      terminalOutcomes: ["accepted", "turn-limit"],
     },
   },
 } as const;
 
 export type ExecutionContract = typeof executionContract;
 export type ExecutionReport = RunResult & {
-  readonly schemaVersion: 1;
+  readonly schemaVersion: 2;
   readonly application: typeof applicationId;
   readonly protocol: typeof workflowProtocol;
 };

@@ -1,15 +1,12 @@
-export { allVerifiers } from "./roles";
 export type {
-  CandidateKind,
   CoordinatorInput,
   CoordinatorResult,
   ExplorerInput,
   ExplorerResult,
   Note,
-  NoteRef,
   Roles,
   Task,
-  Verifier,
+  Verdict,
   VerifierInput,
   VerifierResult,
 } from "./roles";

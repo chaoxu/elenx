@@ -34,7 +34,7 @@ const usage = `Usage:
   elenx-solve export CAMPAIGN.db
 
 run starts or resumes the durable explorer, coordinator, and verifier workflow.
-Standalone role commands execute the same typed role boundaries independently.`;
+Standalone role commands execute the same role boundaries independently.`;
 
 export function modelRuntimeOptions(environment: NodeJS.ProcessEnv): {
   readonly modelsPath: string | null;

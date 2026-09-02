@@ -2,9 +2,9 @@
 
 ## Simplicity invariant
 
-`elenx-solve` has one durable campaign workflow. A task is one JSON object with `problem` and `completionCriteria`. `run TASK.json CAMPAIGN.db SETTINGS.json` starts or resumes that workflow, and `inspect CAMPAIGN.db` derives its state and terminal result from the journal.
+`elenx-solve` has one durable campaign workflow. A task is one JSON object with `problem` and `completionCriteria`. `run TASK.json CAMPAIGN.db SETTINGS.json` starts or resumes that workflow, and `inspect CAMPAIGN.db` derives its phase and terminal result from the journal.
 
-Keep execution-contract schema version 1 while this contract remains unchanged. Standalone role commands exercise the same typed boundaries and must not become a second campaign mode. Elenx Lab must derive a worker result from `inspect.result`, not trust solver stdout as a second authority.
+Keep execution-contract schema version 2 while this contract remains unchanged. Standalone role commands exercise the same typed boundaries and must not become a second campaign mode. Elenx Lab must derive a worker result from `inspect.result`, not trust solver stdout as a second authority.
 
 Remove retired branches instead of preserving them behind compatibility schemas, aliases, adapters, or mode flags. Do not restore split problem and criteria arguments, separate `trial` or solver `resume` commands, legacy workflow protocols, or alternate result projections. Preserve old campaign databases as historical artifacts and open them only with their matching revision.
 

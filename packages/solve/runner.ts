@@ -62,11 +62,7 @@ async function drive(
   });
   try {
     const phase = await runWorkflow(campaign, roles, dependencies);
-    if (
-      phase.kind === "accepted" ||
-      phase.kind === "refuted" ||
-      phase.kind === "turn-limit"
-    ) {
+    if (phase.kind === "accepted" || phase.kind === "turn-limit") {
       return workflowResult(phase);
     }
     return { outcome: "paused", at: phase.kind };

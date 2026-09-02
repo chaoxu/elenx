@@ -30,19 +30,19 @@ test("run starts, resumes, inspects, and exports one workflow", async () => {
   const first = await cli(directory, "run", task, campaign, settings);
   expect(first.code).toBe(0);
   expect(JSON.parse(first.stdout)).toMatchObject({
-    schemaVersion: 1,
+    schemaVersion: 2,
     application: "elenx-solve",
     protocol: "workflow",
     outcome: "accepted",
-    candidateKind: "solution",
     turns: 2,
+    note: { id: "n2" },
   });
-  expect(await recordedRequests(directory)).toHaveLength(8);
+  expect(await recordedRequests(directory)).toHaveLength(10);
 
   const second = await cli(directory, "run", task, campaign, settings);
   expect(second.code).toBe(0);
   expect(JSON.parse(second.stdout).outcome).toBe("accepted");
-  expect(await recordedRequests(directory)).toHaveLength(8);
+  expect(await recordedRequests(directory)).toHaveLength(10);
 
   const inspection = JSON.parse(
     (await cli(directory, "inspect", campaign)).stdout,
@@ -51,9 +51,9 @@ test("run starts, resumes, inspects, and exports one workflow", async () => {
     task: {
       problem: "Prove that there are infinitely many prime numbers.",
     },
-    state: "accepted",
-    result: { outcome: "accepted", candidateKind: "solution" },
-    spend: { logicalProviderRequests: 8, requestErrors: 0 },
+    phase: "accepted",
+    result: { outcome: "accepted", note: { id: "n2" } },
+    spend: { logicalProviderRequests: 10, requestErrors: 0 },
   });
   expect(
     inspection.calls.map(({ role }: { readonly role: string }) => role),
@@ -65,7 +65,17 @@ test("run starts, resumes, inspects, and exports one workflow", async () => {
     "coordinator",
     "verifier",
   ]);
-  expect(JSON.stringify(inspection)).not.toContain('"audits"');
+  expect(
+    inspection.notes.map(
+      ({ id, verdicts }: { id: string; verdicts: unknown[] }) => [
+        id,
+        verdicts.length,
+      ],
+    ),
+  ).toEqual([
+    ["n1", 3],
+    ["n2", 3],
+  ]);
 
   const exported = await cli(directory, "export", campaign);
   expect(exported.code).toBe(0);
@@ -87,16 +97,16 @@ test("run refuses a concurrent owner of the same campaign", async () => {
   expect(result.stderr).toContain("campaign already has a running process");
 });
 
-test("a provider failure leaves no mathematical verifier result", async () => {
+test("a provider failure leaves no verdict", async () => {
   const directory = await testDirectory();
   const settings = await writeSettings(directory);
   const input = await writeJson(directory, "verifier.json", {
     task: { problem: "Prove P.", completionCriteria: "Give a proof." },
-    candidateKind: "solution",
-    answer: {
+    note: {
       id: "n1",
       summary: "failure",
       text: "TRIGGER_PROVIDER_ERROR",
+      verdicts: [],
     },
     support: [],
   });

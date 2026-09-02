@@ -26,7 +26,7 @@ The API and campaign schema are experimental. Campaigns are accepted only when t
 | How do I run the solver? | [`packages/solve/README.md`](packages/solve/README.md) |
 | How do the solver roles and replay behave? | [`packages/solve/docs/role-runner.md`](packages/solve/docs/role-runner.md) |
 | How do I build an application? | [`docs/application-author.md`](docs/application-author.md) |
-| Why was the workflow contract reset? | [`docs/workflow-rebuild-20260902.md`](docs/workflow-rebuild-20260902.md) |
+| Why was the workflow contract reset, and how are notes verified? | [`docs/workflow-rebuild-20260902.md`](docs/workflow-rebuild-20260902.md) |
 
 The deterministic verifier example is [`examples/v1/scripted-verifier.ts`](examples/v1/scripted-verifier.ts). [`examples/v1/pi-smoke.ts`](examples/v1/pi-smoke.ts) exercises the LLM-verdict path with a real Pi model.
 
@@ -49,7 +49,7 @@ bun packages/solve/solve.ts inspect campaign.db
 bun packages/solve/solve.ts export campaign.db
 ```
 
-The same `run` command creates a new campaign or resumes an existing one after matching its task and settings. Explorers report findings, the coordinator files them and chooses the next action, and the verifier accepts only after its requirements, correctness, and adversarial auditors pass. `inspect` derives state and terminal results from the journal.
+The same `run` command creates a new campaign or resumes an existing one after matching its task and settings. The explorer writes notes, the coordinator files them and sets the next objective, and the requirements, correctness, and adversarial verifiers record verdicts on the notes they judge. The workflow ends when all three pass one note. `inspect` derives the phase, notes, and terminal result from the journal.
 
 ## Development
 

@@ -3,14 +3,14 @@
 `elenx-solve` runs one durable mathematical workflow from a JSON task:
 
 ```text
-explorer(input)    -> findings
-coordinator(input) -> filings + explore | verify
-verifier(input)    -> ACCEPT | REJECT + report
+explorer(task, objective, notes)  -> notes
+coordinator(task, notes)          -> filings, objective, verify?
+verifier(task, note, support)     -> verdicts
 ```
 
-The coordinator files every explorer finding as an immutable note, selects the next working set, and nominates an answer with only the support notes it uses. The verifier runs requirements, correctness, and adversarial auditors through the same private `VerifierInput -> AuditResult` interface. All auditors must pass for `ACCEPT`. The first failure returns `REJECT` and stops later audits.
+The explorer writes notes. The coordinator files every new note with a summary, sets the next objective, and may verify one note with the support notes its text relies on. Verification runs the requirements, correctness, and adversarial verifiers on the note. Each verifier returns one verdict, `PASS` or `FAIL`, with a report and the id of the note it judges. A verdict is recorded on the note it names, and every role sees every note with its verdicts. The workflow ends when all three verifiers pass one note.
 
-Every public role call records its exact input and output in the Elenx journal. Notes and workflow state are derived from those records. Repeating `run` rebuilds the state and executes the first missing role call. Candidates, auditor calls, aggregate verdicts, telemetry, and spend remain append-only evidence.
+Every public role call records its exact input and output in the Elenx journal. Notes, verdicts, and the workflow phase are derived from those records. Repeating `run` rebuilds the phase and executes the first missing role call. Candidates, verdicts, telemetry, and spend remain append-only evidence.
 
 ## Task and settings
 
@@ -23,7 +23,7 @@ The task file has one schema:
 }
 ```
 
-Settings select one model profile per public role and cap explorer turns:
+Settings select one model profile per role and cap explorer turns:
 
 ```json
 {
@@ -46,7 +46,7 @@ Settings select one model profile per public role and cap explorer turns:
 }
 ```
 
-The verifier profile backs every built-in auditor. Accepted proposals use three auditor requests. Rejected proposals use one to three because verification stops at the first failure.
+The verifier profile backs all three verifiers. Every verification makes three verifier requests.
 
 ## Run
 
@@ -59,9 +59,9 @@ bun packages/solve/solve.ts inspect --include-inputs campaign.db
 bun packages/solve/solve.ts export campaign.db
 ```
 
-`run` creates a campaign or resumes the existing campaign after matching the exact task and settings against its declaration. A second process cannot drive the same database. `contract` reports execution-contract schema 1 with application `elenx-solve`, protocol `workflow`, and arguments `task`, `campaign`, and `settings`.
+`run` creates a campaign or resumes the existing campaign after matching the exact task and settings against its declaration. A second process cannot drive the same database. `contract` reports execution-contract schema 2 with application `elenx-solve`, protocol `workflow`, and arguments `task`, `campaign`, and `settings`.
 
-`inspect` is the read authority. It derives the task, current state, notes, public role calls, and spend from the append-only journal. Terminal campaigns also contain `result` with outcome `accepted`, `refuted`, or `turn-limit`. `paused`, `call-failure`, and `interrupted` are run outcomes that leave the campaign resumable. `export` emits the accepted solution or verified refutation bytes from a terminal candidate.
+`inspect` is the read authority. It derives the task, current phase, notes with their verdicts, public role calls, and spend from the append-only journal. Terminal campaigns also contain `result` with outcome `accepted` or `turn-limit`. `paused`, `call-failure`, and `interrupted` are run outcomes that leave the campaign resumable. `export` emits the accepted note followed by its support notes.
 
 Each role can also run alone:
 
@@ -80,4 +80,4 @@ bun run --cwd packages/solve check
 bun run e2e:roles
 ```
 
-[`docs/role-runner.md`](docs/role-runner.md) defines the role schemas, replay behavior, and inspection boundary. [`../../docs/workflow-rebuild-20260902.md`](../../docs/workflow-rebuild-20260902.md) records the contract reset and its verification plan.
+[`docs/role-runner.md`](docs/role-runner.md) defines the role schemas, replay behavior, and inspection boundary. [`../../docs/workflow-rebuild-20260902.md`](../../docs/workflow-rebuild-20260902.md) records the contract reset, note verification, and their verification plan.

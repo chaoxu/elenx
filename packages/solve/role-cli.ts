@@ -20,11 +20,11 @@ import {
   coordinatorResultFor,
   explorerInput,
   explorerResult,
-  roleCallOutput,
+  jsonSnapshot,
   roleFromLabel,
   roleNames,
-  verifierCallOutput,
   verifierInput,
+  verifierResult,
   type RoleName,
 } from "./roles";
 import {
@@ -84,19 +84,14 @@ function visibleResult(
 ): Json | undefined {
   if (result?.state !== "returned") return undefined;
   try {
-    if (role === "explorer") {
-      return roleCallOutput(explorerResult).parse(result.output).value;
-    }
+    if (role === "explorer") return explorerResult.parse(result.output);
     if (role === "coordinator") {
       const input = coordinatorInput.parse(call.request);
-      return roleCallOutput(
-        coordinatorResultFor(
-          input.notes.map(({ id }) => id),
-          input.findings.length,
-        ),
-      ).parse(result.output).value;
+      return jsonSnapshot(
+        coordinatorResultFor(input.notes).parse(result.output),
+      );
     }
-    return verifierCallOutput.parse(result.output).value;
+    return verifierResult.parse(result.output);
   } catch {
     return undefined;
   }
@@ -147,9 +142,7 @@ export function inspectCampaign(
     const snapshot = config.success ? deriveWorkflow(reader) : undefined;
     const phase = snapshot?.phase;
     const terminal =
-      phase?.kind === "accepted" ||
-      phase?.kind === "refuted" ||
-      phase?.kind === "turn-limit"
+      phase?.kind === "accepted" || phase?.kind === "turn-limit"
         ? executionReport(workflowResult(phase))
         : undefined;
     return JSON.parse(
@@ -158,7 +151,7 @@ export function inspectCampaign(
           ? {}
           : {
               task: snapshot.config.task,
-              state: phase?.kind,
+              phase: phase?.kind,
               notes: snapshot.notes,
               ...(terminal === undefined ? {} : { result: terminal }),
             }),
@@ -176,17 +169,13 @@ export function exportCandidate(path: string): Uint8Array {
   try {
     assertApplication(reader.records()[0]);
     const phase = deriveWorkflow(reader).phase;
-    if (phase.kind !== "accepted" && phase.kind !== "refuted") {
+    if (phase.kind !== "accepted") {
       throw new Error("workflow has no accepted candidate");
     }
     return reader.material(phase.candidate);
   } finally {
     reader.close();
   }
-}
-
-function jsonSnapshot(value: unknown): Json {
-  return JSON.parse(JSON.stringify(value)) as Json;
 }
 
 export async function runRoleCommand(

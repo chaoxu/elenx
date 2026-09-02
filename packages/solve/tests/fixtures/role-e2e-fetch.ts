@@ -57,56 +57,47 @@ function requestedTool(body: Record<string, unknown>): string {
 }
 
 function submissionFor(tool: string, request: string): unknown {
-  const refutation = request.includes(falseTournamentClaim);
-  if (tool === "submit_findings") {
+  if (tool === "submit_notes") {
     return {
-      findings: [
+      notes: [
         {
-          text: refutation
-            ? tournamentCounterexample
-            : request.includes("Previous verifier response")
-              ? completeProof
-              : incompleteProof,
+          text: request.includes('\\"verdict\\": \\"FAIL\\"')
+            ? completeProof
+            : incompleteProof,
         },
       ],
     };
   }
   if (tool === "submit_coordination") {
+    const withoutSummary = [...request.matchAll(/\\"id\\": \\"(n\d+)\\"/gu)]
+      .map(([, id]) => id)
+      .filter((id) => !request.includes(`Summary of ${id}`));
+    const note = withoutSummary.at(-1);
+    if (note === undefined) {
+      throw new Error("request omitted a note without a summary");
+    }
     return {
-      filings: [
-        {
-          finding: 1,
-          summary: refutation
-            ? "transitive tournament counterexample"
-            : "Euclid proof candidate",
-        },
-      ],
-      action: {
-        kind: "verify",
-        candidateKind: refutation ? "refutation" : "solution",
-        answer: { kind: "finding", finding: 1 },
-        support: [],
-      },
+      filings: withoutSummary.map((id) => ({
+        note: id,
+        summary: `Summary of ${id}`,
+      })),
+      objective: `Replace or extend ${note}.`,
+      verify: { note, support: [] },
     };
   }
-  if (tool === "submit_audit") {
-    const pass =
-      request.includes("2 is prime") ||
-      (refutation && request.includes("transitive tournament"));
-    const audit = request.includes("Audit:\\nrequirements")
-      ? "requirements"
-      : request.includes("Audit:\\ncorrectness")
-        ? "correctness"
-        : request.includes("Audit:\\nadversarial")
-          ? "adversarial"
-          : undefined;
-    if (audit === undefined)
-      throw new Error("request omitted auditor identity");
+  if (tool === "submit_verdict") {
+    const pass = request.includes("2 is prime");
+    const verifier = /You are the (\w+) verifier/u.exec(request)?.[1];
+    const note = /\\"id\\": \\"(n\d+)\\"/u.exec(request)?.[1];
+    if (verifier === undefined || note === undefined) {
+      throw new Error("request omitted verifier identity");
+    }
     return {
+      note,
       verdict: pass ? "PASS" : "FAIL",
       report: pass
-        ? `${audit} passed.`
-        : `${audit} found the missing nonempty-list case.`,
+        ? `${verifier} passed.`
+        : `${verifier} found the missing nonempty-list case.`,
     };
   }
   throw new Error(`unexpected tool: ${tool}`);
@@ -171,7 +162,3 @@ const incompleteProof =
   "Assume all primes are p_1,...,p_n. Their product plus one has a prime divisor outside the list.";
 const completeProof =
   "Since 2 is prime, the finite list is nonempty. Assume all primes are p_1,...,p_n. Their product plus one has a prime divisor outside the list, a contradiction.";
-const falseTournamentClaim =
-  "every tournament on three vertices has a directed cycle";
-const tournamentCounterexample =
-  "The claim is false. In the transitive tournament on vertices a,b,c, orient a to b, a to c, and b to c. Every edge increases the order a<b<c, so there is no directed cycle.";

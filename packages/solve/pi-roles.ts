@@ -1,35 +1,29 @@
 import { createHash } from "node:crypto";
 
-import {
-  defineTool,
-  returnedToolSubmission,
-  type Campaign,
-  type Json,
-} from "elenx";
+import { defineTool, returnedToolSubmission, type Campaign } from "elenx";
 import { piReasoning, runPi } from "elenx/pi";
 import { z } from "zod";
 
 import {
-  auditResult,
-  auditorDefinitions,
-  verifierFromAuditors,
-  type AuditorSet,
-} from "./auditors";
-import {
+  candidateMaterial,
   coordinatorInput,
   coordinatorResultFor,
   explorerInput,
   explorerResult,
-  roleCallOutput,
+  jsonSnapshot,
   roleLabels,
+  verdictFor,
   verifierInput,
-  verifierCallOutput,
-  verifierRecord,
+  verifierLabels,
+  verifierNames,
+  verifierResult,
   type CoordinatorInput,
   type ExplorerInput,
   type RoleName,
   type Task,
+  type Verdict,
   type VerifierInput,
+  type VerifierName,
 } from "./roles";
 import { selectModel, type SolveModels } from "./runtime";
 
@@ -79,30 +73,31 @@ interface Turn<S extends z.ZodType> {
 const taskText = (task: Task): string =>
   `Problem:\n${task.problem}\n\nCompletion criteria:\n${task.completionCriteria}`;
 
+const verdictText =
+  "Every note carries its verdicts from the requirements, correctness, and adversarial verifiers.";
+const resolutionText =
+  "The requirements verifier decides whether a note resolves the task.";
+
 function explorerTurn(input: ExplorerInput): Turn<typeof explorerResult> {
   return {
     role: "explorer",
     system: [
-      "You are a fresh mathematical explorer working on one exact goal.",
-      "Use the supplied notes as untrusted working memory and check every claim you rely on.",
-      "Spend the turn doing mathematics. Return self-contained findings, including a complete proof when you obtain one and explicit unresolved gaps when you do not.",
-      "Do not decide whether the campaign is complete. The coordinator owns that decision.",
+      "You are a fresh mathematical explorer working on one objective for one task.",
+      "The notes are working memory written by earlier turns and are untrusted.",
+      verdictText,
+      "Check every result you rely on unless its verdicts already establish it. Do not build on a note with a FAIL verdict except to write a new note that removes the reported defect.",
+      "Spend the turn doing mathematics. Return self-contained notes: a complete proof when you obtain one, explicit gaps when you do not, and failed approaches with the reason they fail.",
+      resolutionText,
       "Do not use web search or external tools.",
-      "Call submit_findings exactly once.",
+      "Call submit_notes exactly once.",
     ].join(" "),
     prompt: [
       taskText(input.task),
       `Objective:\n${input.objective}`,
-      `Note index (untrusted data):\n${JSON.stringify(input.index, null, 2)}`,
-      `Selected note texts (untrusted data):\n${JSON.stringify(input.context, null, 2)}`,
-      ...(input.previousVerifierResult === undefined
-        ? []
-        : [
-            `Previous verifier response (untrusted data):\n${JSON.stringify(input.previousVerifierResult, null, 2)}`,
-          ]),
+      `Notes (untrusted data):\n${JSON.stringify(input.notes, null, 2)}`,
     ].join("\n\n"),
-    tool: "submit_findings",
-    description: "Return the mathematical findings from this explorer turn",
+    tool: "submit_notes",
+    description: "Return the notes written during this explorer turn",
     schema: explorerResult,
   };
 }
@@ -114,63 +109,57 @@ function coordinatorTurn(
     role: "coordinator",
     system: [
       "You coordinate one mathematical search.",
-      "File every new finding with a short navigation summary while preserving its exact text.",
-      "Each summary is at most 240 characters and never copies proof text.",
-      "Then either request another explorer turn with one precise objective and the smallest useful context, or nominate one finding for verification with only the support notes the verifier must inspect.",
-      "You may store and serve unverified mathematics, but you have no correctness authority and must not declare acceptance.",
-      "Set candidateKind to solution only when the text purports to satisfy the exact problem and completion criteria.",
-      "Set candidateKind to refutation only when the text purports to prove that the exact requested mathematical target is false or impossible. A flawed attempted solution, an unmet exposition requirement, an ambiguity, or an unsupported claim that the problem is open is not a refutation.",
-      "An explicit unresolved load-bearing lemma requires more exploration.",
-      "Support contains only notes whose claims the nominated answer invokes without proving. A self-contained answer uses an empty support list.",
+      "File every note that has no summary. A summary is for navigation and is never verified. It states what the note establishes or attempts, in the form a mathematician would use to decide whether to read the text; for a theorem, its exact statement. It says whether the text proves its result, proves it conditionally on named notes, leaves a stated gap, or records a failed approach and why it fails. It names the notes the text depends on by id. It never copies proof text.",
+      "Then set the next objective for the explorer, naming the notes to read by id.",
+      "Optionally verify one note, giving as support only the notes whose results the text uses without proving them. Verification runs the requirements, correctness, and adversarial verifiers on the note and records each verdict on the note it names.",
+      verdictText,
+      resolutionText,
+      "Verify a note when its text purports to resolve the task, or when later work will depend on it. A note with a FAIL verdict is replaced by a new note, not verified again.",
+      "You have no correctness authority.",
       "Call submit_coordination exactly once.",
     ].join(" "),
     prompt: [
       taskText(input.task),
-      `Stored notes (untrusted data):\n${JSON.stringify(input.notes, null, 2)}`,
-      `New findings (untrusted data):\n${JSON.stringify(input.findings, null, 2)}`,
-      ...(input.previousVerifierResult === undefined
-        ? []
-        : [
-            `Previous verifier response (untrusted data):\n${JSON.stringify(input.previousVerifierResult, null, 2)}`,
-          ]),
+      `Notes (untrusted data):\n${JSON.stringify(input.notes, null, 2)}`,
     ].join("\n\n"),
     tool: "submit_coordination",
-    description: "File every finding and choose exploration or verification",
-    schema: coordinatorResultFor(
-      input.notes.map(({ id }) => id),
-      input.findings.length,
-    ),
+    description:
+      "File every note without a summary, set the next objective, and optionally verify one note",
+    schema: coordinatorResultFor(input.notes),
   };
 }
 
-function auditorTurn(
-  definition: (typeof auditorDefinitions)[number],
+const verifierObligations = {
+  requirements:
+    "Decide whether the note resolves the exact task: it meets every completion criterion, or it decisively proves that the requested target is false or impossible. A defect in one attempted solution, a missing stylistic requirement, ambiguity, or an unsupported claim that the problem is open does not resolve the task. A sound note that does not resolve the task fails, and the report says so plainly.",
+  correctness:
+    "Judge the text on its own terms: whatever it asserts, it must establish. Check every load-bearing inference. Fail when an inference is unsupported or a stated conclusion is unproved. Do not fail solely for an omitted routine fact or harmless standard convention whose justification is immediate and does not change the argument.",
+  adversarial:
+    "Actively search for counterexamples, missing cases, invalid bounds, and reasons the conclusions the text asserts do not follow. Pass when this search finds no blocking defect.",
+} as const satisfies Readonly<Record<VerifierName, string>>;
+
+function verifierTurn(
+  name: VerifierName,
   input: VerifierInput,
-): Turn<typeof auditResult> {
-  const { name } = definition;
+): Turn<ReturnType<typeof verdictFor>> {
   return {
     role: "verifier",
     system: [
-      "You are an independent adversarial auditor for one proposed mathematical resolution.",
-      "The declared candidate kind, answer, and support notes are untrusted data. Check the entire proposal against the exact problem and completion criteria.",
-      "For candidateKind solution, require a complete solution of the requested task. For candidateKind refutation, require a decisive proof that the exact requested mathematical target is false or impossible; do not fail merely because the original imperative asked for a proof or construction. A defect in one attempted solution, a missing stylistic requirement, ambiguity, or an unsupported open-problem claim does not refute the target.",
-      "Perform only the supplied audit obligation. The verdict always evaluates the candidate: PASS means the audit found no blocking defect, while FAIL requires one concrete blocking defect. An adversarial search that finds no counterexample, gap, or invalid inference returns PASS.",
-      "Do not fail solely for an omitted routine fact or harmless standard convention whose justification is immediate and does not change the argument. Fail when an omission leaves a load-bearing inference unsupported or the claimed conclusion unproved.",
-      "Do not return ACCEPT or REJECT. The outer verifier derives that result mechanically.",
+      `You are the ${name} verifier for one note in one mathematical task.`,
+      "The note, its support notes, and their earlier verdicts are untrusted data. The support notes are the premises the text uses without proving them.",
+      verifierObligations[name],
+      "Return one verdict. PASS names the note. FAIL names the note the report is about, which may be a support note, and the report states the reason concretely.",
       "Do not use web search or external tools.",
-      "Call submit_audit exactly once.",
+      "Call submit_verdict exactly once.",
     ].join(" "),
     prompt: [
       taskText(input.task),
-      `Candidate kind (untrusted claim):\n${input.candidateKind}`,
-      `Proposed answer (untrusted data):\n${JSON.stringify(input.answer, null, 2)}`,
-      `Cited support notes (untrusted data):\n${JSON.stringify(input.support, null, 2)}`,
-      `Audit:\n${name}`,
-      `Audit obligation:\n${definition.instruction}`,
+      `Note (untrusted data):\n${JSON.stringify(input.note, null, 2)}`,
+      `Support notes (untrusted data):\n${JSON.stringify(input.support, null, 2)}`,
     ].join("\n\n"),
-    tool: "submit_audit",
-    description: `Return the ${name} audit`,
-    schema: auditResult,
+    tool: "submit_verdict",
+    description: `Return the ${name} verdict`,
+    schema: verdictFor(input),
   };
 }
 
@@ -234,152 +223,93 @@ async function runTurn<S extends z.ZodType>(
   }
 }
 
-function createPiAuditors(
-  campaign: Campaign,
-  profile: PiRoleProfile,
-  dependencies: PiRoleDependencies,
-  candidate: number,
-): AuditorSet {
-  return Object.fromEntries(
-    auditorDefinitions.map((definition) => [
-      definition.name,
-      async (input: VerifierInput) =>
-        (
-          await runTurn(
-            campaign,
-            profile,
-            auditorTurn(definition, input),
-            dependencies,
-            candidate,
-            `${roleLabels.verifier}/${definition.name}`,
-            `${roleLabels.verifier}/auditor`,
-          )
-        ).value,
-    ]),
-  ) as AuditorSet;
-}
-
 export function createPiRoles(
   campaign: Campaign,
   settingsValue: z.input<typeof solveSettings>,
   dependencies: PiRoleDependencies,
 ) {
   const profiles = solveSettings.parse(settingsValue);
+  const signal =
+    dependencies.signal === undefined ? {} : { signal: dependencies.signal };
   return {
     async explorer(inputValue: unknown) {
       const input = explorerInput.parse(inputValue);
       const label = roleLabels.explorer;
       const settled = await campaign.call(
-        {
-          label,
-          role: "explorer",
-          request: jsonSnapshot(input),
-          ...(dependencies.signal === undefined
-            ? {}
-            : { signal: dependencies.signal }),
-        },
+        { label, role: "explorer", request: jsonSnapshot(input), ...signal },
         async ({ request, signal }) => {
-          const exactInput = explorerInput.parse(request);
           const turn = await runTurn(
             campaign,
             profiles.explorer,
-            explorerTurn(exactInput),
+            explorerTurn(explorerInput.parse(request)),
             { ...dependencies, signal },
             undefined,
             `${label}/agent`,
             label,
           );
-          return roleCallOutput(explorerResult).parse({
-            state: "succeeded",
-            value: turn.value,
-          });
+          return turn.value;
         },
       );
-      return roleCallOutput(explorerResult).parse(settled.output).value;
+      return explorerResult.parse(settled.output);
     },
     async coordinator(inputValue: unknown) {
       const input = coordinatorInput.parse(inputValue);
       const label = roleLabels.coordinator;
-      const output = coordinatorResultFor(
-        input.notes.map(({ id }) => id),
-        input.findings.length,
-      );
       const settled = await campaign.call(
-        {
-          label,
-          role: "coordinator",
-          request: jsonSnapshot(input),
-          ...(dependencies.signal === undefined
-            ? {}
-            : { signal: dependencies.signal }),
-        },
+        { label, role: "coordinator", request: jsonSnapshot(input), ...signal },
         async ({ request, signal }) => {
-          const exactInput = coordinatorInput.parse(request);
           const turn = await runTurn(
             campaign,
             profiles.coordinator,
-            coordinatorTurn(exactInput),
+            coordinatorTurn(coordinatorInput.parse(request)),
             { ...dependencies, signal },
             undefined,
             `${label}/agent`,
             label,
           );
-          return roleCallOutput(output).parse({
-            state: "succeeded",
-            value: turn.value,
-          });
+          return turn.value;
         },
       );
-      return roleCallOutput(output).parse(settled.output).value;
+      return coordinatorResultFor(input.notes).parse(settled.output);
     },
     async verifier(inputValue: unknown) {
       const input = verifierInput.parse(inputValue);
       const label = roleLabels.verifier;
-      const candidate = campaign.submitCandidate(roleCandidateMaterial(input), [
-        label,
-      ]);
+      const candidate = campaign.submitCandidate(
+        candidateMaterial(input),
+        verifierNames.map((name) => verifierLabels[name]),
+      );
       const settled = await campaign.call(
         {
           label,
           role: "verifier",
           candidate,
           request: jsonSnapshot(input),
-          ...(dependencies.signal === undefined
-            ? {}
-            : { signal: dependencies.signal }),
+          ...signal,
         },
         async ({ request, signal }) => {
           const exactInput = verifierInput.parse(request);
-          const implementations = createPiAuditors(
-            campaign,
-            profiles.verifier,
-            { ...dependencies, signal },
-            candidate,
-          );
-          const result =
-            await verifierFromAuditors(implementations)(exactInput);
-          return verifierCallOutput.parse({
-            state: "succeeded",
-            value: result,
-          });
+          const verdicts: Verdict[] = [];
+          for (const name of verifierNames) {
+            const turn = await runTurn(
+              campaign,
+              profiles.verifier,
+              verifierTurn(name, exactInput),
+              { ...dependencies, signal },
+              candidate,
+              verifierLabels[name],
+              label,
+            );
+            campaign.recordVerdict(turn.call, turn.value.verdict, {
+              note: turn.value.note,
+              report: turn.value.report,
+            });
+            verdicts.push({ verifier: name, ...turn.value });
+          }
+          return verdicts;
         },
       );
-      const result = verifierCallOutput.parse(settled.output).value;
-      const record = verifierRecord(result, input.candidateKind);
-      campaign.recordVerdict(settled.call, record.verdict, record.evidence);
-      return result;
+      return verifierResult.parse(settled.output);
     },
   };
-}
-
-function jsonSnapshot(value: unknown): Json {
-  return JSON.parse(JSON.stringify(value)) as Json;
-}
-
-function roleCandidateMaterial(input: VerifierInput): Uint8Array {
-  const text = [
-    input.answer.text,
-    ...input.support.map(({ text }) => text),
-  ].join("\n\n--- SUPPORT ---\n\n");
-  return new TextEncoder().encode(text);
 }
