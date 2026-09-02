@@ -67,7 +67,7 @@ export class RoleCallError extends Error {
   }
 }
 
-export interface Turn<S extends z.ZodType> {
+export interface RoleCall<S extends z.ZodType> {
   readonly role: RoleName;
   readonly label: string;
   readonly system: string;
@@ -82,12 +82,12 @@ const taskText = (task: Task): string =>
 
 const verdictText =
   "Every note carries its verdicts from the correctness, adversarial, and requirements verifiers, which run in that order and stop at the first FAIL.";
-const resolutionText =
-  "The requirements verifier decides whether a note resolves the task.";
+const completionText =
+  "The requirements verifier decides whether a note meets the completion criteria.";
 
-export function explorerTurn(
+export function explorerCall(
   input: ExplorerInput,
-): Turn<typeof explorerResult> {
+): RoleCall<typeof explorerResult> {
   return {
     role: "explorer",
     label: roleLabels.explorer,
@@ -95,9 +95,8 @@ export function explorerTurn(
       "You are a fresh mathematical explorer working on one objective for one task.",
       "The notes are working memory written by earlier turns and are untrusted. You see every note's summary and verdicts, and the full text of the support notes the coordinator selected.",
       verdictText,
-      "Check every result you rely on unless its verdicts already establish it. Do not build on a note that failed the correctness or adversarial verifier except to write a new note that removes the reported defect; a requirements FAIL only says the note does not resolve the task.",
+      "Check every result you rely on unless its verdicts already establish it. Do not build on a note that failed the correctness or adversarial verifier except to write a new note that removes the reported defect; a requirements FAIL only says the note does not meet the completion criteria.",
       "Spend the turn doing mathematics. Return self-contained notes: a complete proof when you obtain one, explicit gaps when you do not, and failed approaches with the reason they fail.",
-      resolutionText,
       "Do not use web search or external tools.",
       "Call submit_notes exactly once.",
     ].join(" "),
@@ -113,9 +112,9 @@ export function explorerTurn(
   };
 }
 
-export function coordinatorTurn(
+export function coordinatorCall(
   input: CoordinatorInput,
-): Turn<ReturnType<typeof coordinatorResultFor>> {
+): RoleCall<ReturnType<typeof coordinatorResultFor>> {
   return {
     role: "coordinator",
     label: roleLabels.coordinator,
@@ -125,8 +124,8 @@ export function coordinatorTurn(
       "Then set the next objective for the explorer and choose its support: the notes it must read in full. The explorer sees every note's summary and verdicts and only the support notes' texts.",
       "Optionally verify one note, giving as support only the notes whose results the text uses without proving them. Verification runs the verifiers on the note and records each verdict on the note it names.",
       verdictText,
-      resolutionText,
-      "Verify a note when its text purports to resolve the task, or when later work will depend on it. A note that failed the correctness or adversarial verifier is replaced by a new note. No note is verified twice.",
+      completionText,
+      "Verify a note when its text purports to meet the completion criteria, or when later work will depend on it. A note that failed the correctness or adversarial verifier is replaced by a new note. No note is verified twice.",
       "You have no correctness authority.",
       "Call submit_coordination exactly once.",
     ].join(" "),
@@ -147,16 +146,16 @@ const verifierObligations = {
   adversarial:
     "Actively search for counterexamples, missing cases, invalid bounds, and reasons the conclusions the text asserts do not follow. Pass when this search finds no blocking defect.",
   requirements:
-    "Decide whether the note resolves the exact task: it meets every completion criterion, or it decisively proves that the requested target is false or impossible. A defect in one attempted solution, a missing stylistic requirement, ambiguity, or an unsupported claim that the problem is open does not resolve the task. A sound note that does not resolve the task fails, and the report says so plainly.",
+    "Decide whether the note meets every completion criterion of the exact task. A defect in one attempted proof, a missing stylistic requirement, ambiguity, or an unsupported claim that the problem is open does not meet them. A sound note that does not meet them fails, and the report says so plainly.",
 } as const satisfies Readonly<Record<VerifierName, string>>;
 
 // The three verifier calls share their system prompt and the leading task,
 // note, and support text so a provider can cache that prefix across them;
 // only the verifier name and obligation at the end differ.
-export function verifierTurn(
+export function verifierCall(
   name: VerifierName,
   input: VerifierInput,
-): Turn<ReturnType<typeof verdictFor>> {
+): RoleCall<ReturnType<typeof verdictFor>> {
   return {
     role: "verifier",
     label: verifierLabels[name],
@@ -180,10 +179,10 @@ export function verifierTurn(
   };
 }
 
-async function runTurn<S extends z.ZodType>(
+async function runCall<S extends z.ZodType>(
   campaign: Campaign,
   profile: PiRoleProfile,
-  turn: Turn<S>,
+  roleCall: RoleCall<S>,
   dependencies: PiRoleDependencies,
   candidate?: EntryId,
 ): Promise<{ readonly call: EntryId; readonly value: z.output<S> }> {
@@ -191,10 +190,10 @@ async function runTurn<S extends z.ZodType>(
     provider: profile.provider,
     modelId: profile.model,
   });
-  const terminal = defineTool({
-    name: turn.tool,
-    description: turn.description,
-    input: turn.schema,
+  const submitTool = defineTool({
+    name: roleCall.tool,
+    description: roleCall.description,
+    input: roleCall.schema,
     replay: "safe",
     async run() {
       return null;
@@ -203,18 +202,18 @@ async function runTurn<S extends z.ZodType>(
   const result = await (dependencies.run ?? runPi)(campaign, {
     models: dependencies.models,
     model,
-    label: turn.label,
-    role: turn.role,
-    system: turn.system,
-    prompt: turn.prompt,
+    label: roleCall.label,
+    role: roleCall.role,
+    system: roleCall.system,
+    prompt: roleCall.prompt,
     reasoning: profile.reasoning,
-    tools: [terminal],
+    tools: [submitTool],
     stopAfterToolResult: true,
     maxRecoveries: 1,
     maxLengthContinuations: 8,
     transport: "sse",
     cacheKey: createHash("sha256")
-      .update(`${roleLabels[turn.role]}\n${turn.system}`)
+      .update(`${roleLabels[roleCall.role]}\n${roleCall.system}`)
       .digest("hex"),
     ...(candidate === undefined ? {} : { candidate }),
     ...(dependencies.signal === undefined
@@ -222,17 +221,19 @@ async function runTurn<S extends z.ZodType>(
       : { signal: dependencies.signal }),
   });
   if (result.state !== "succeeded") {
-    throw new RoleCallError(`${turn.role} failed: ${result.error}`);
+    throw new RoleCallError(`${roleCall.role} failed: ${result.error}`);
   }
   const submission = succeededSubmission(
     campaign.records(),
     result.call,
-    turn.tool,
+    roleCall.tool,
   );
   if (submission === undefined) {
-    throw new RoleCallError(`${turn.role} returned no ${turn.tool} submission`);
+    throw new RoleCallError(
+      `${roleCall.role} returned no ${roleCall.tool} submission`,
+    );
   }
-  return { call: result.call, value: turn.schema.parse(submission.input) };
+  return { call: result.call, value: roleCall.schema.parse(submission.input) };
 }
 
 export function createPiRoles(
@@ -243,14 +244,16 @@ export function createPiRoles(
   const profiles = solveSettings.parse(settingsValue);
   return {
     async explorer(inputValue) {
-      const turn = explorerTurn(explorerInput.parse(inputValue));
-      return (await runTurn(campaign, profiles.explorer, turn, dependencies))
-        .value;
+      const roleCall = explorerCall(explorerInput.parse(inputValue));
+      return (
+        await runCall(campaign, profiles.explorer, roleCall, dependencies)
+      ).value;
     },
     async coordinator(inputValue) {
-      const turn = coordinatorTurn(coordinatorInput.parse(inputValue));
-      return (await runTurn(campaign, profiles.coordinator, turn, dependencies))
-        .value;
+      const roleCall = coordinatorCall(coordinatorInput.parse(inputValue));
+      return (
+        await runCall(campaign, profiles.coordinator, roleCall, dependencies)
+      ).value;
     },
     async verifier(inputValue, candidateValue) {
       const input = verifierInput.parse(inputValue);
@@ -265,35 +268,39 @@ export function createPiRoles(
         const status = deriveCandidateStatus(records, candidate);
         if (status.failed.length > 0) break;
         if (!status.missing.includes(verifierLabels[name])) continue;
-        const turn = verifierTurn(name, input);
+        const roleCall = verifierCall(name, input);
         let settled:
           | {
               readonly call: EntryId;
-              readonly value: z.output<typeof turn.schema>;
+              readonly value: z.output<typeof roleCall.schema>;
             }
           | undefined;
         for (const entry of records) {
           if (
             entry.kind !== "call" ||
             entry.candidate !== candidate ||
-            entry.label !== turn.label
+            entry.label !== roleCall.label
           ) {
             continue;
           }
-          const submission = succeededSubmission(records, entry.seq, turn.tool);
+          const submission = succeededSubmission(
+            records,
+            entry.seq,
+            roleCall.tool,
+          );
           if (submission === undefined) continue;
           settled = {
             call: entry.seq,
-            value: turn.schema.parse(submission.input),
+            value: roleCall.schema.parse(submission.input),
           };
           break;
         }
         const { call, value } =
           settled ??
-          (await runTurn(
+          (await runCall(
             campaign,
             profiles.verifier,
-            turn,
+            roleCall,
             dependencies,
             candidate,
           ));

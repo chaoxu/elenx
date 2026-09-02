@@ -120,7 +120,7 @@ test("the durable workflow accepts a verified note", async () => {
       readonly role: string;
       readonly verifier?: string;
       readonly candidate?: number;
-      readonly result?: unknown;
+      readonly submission?: unknown;
     }[];
   };
   expect(inspection.phase).toBe("accepted");
@@ -135,11 +135,11 @@ test("the durable workflow accepts a verified note", async () => {
     "verifier",
     "verifier",
   ]);
-  expect(inspection.calls[1]?.result).toEqual(coordination("n1"));
+  expect(inspection.calls[1]?.submission).toEqual(coordination("n1"));
   expect(inspection.calls[3]).toMatchObject({
     verifier: "adversarial",
     candidate: phase.candidate,
-    result: { verdict: "PASS" },
+    submission: { verdict: "PASS" },
   });
   expect(new TextDecoder().decode(exportCandidate(path))).toBe(good.text);
 });

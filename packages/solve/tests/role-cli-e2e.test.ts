@@ -134,7 +134,7 @@ test("a provider failure leaves no verdict", async () => {
     (await cli(directory, "inspect", campaign)).stdout,
   );
   expect(inspection.calls).toHaveLength(1);
-  expect(inspection.calls[0]).not.toHaveProperty("result");
+  expect(inspection.calls[0]).not.toHaveProperty("submission");
   expect(inspection.spend.requestErrors).toBeGreaterThanOrEqual(1);
 });
 

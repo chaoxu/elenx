@@ -80,7 +80,7 @@ function openCalls(path: string): Campaign {
   }
 }
 
-function visibleResult(
+function visibleSubmission(
   records: readonly Entry[],
   call: Extract<Entry, { readonly kind: "call" }>,
   role: RoleName,
@@ -101,7 +101,7 @@ function visibleResult(
 
 export function inspectCampaign(
   path: string,
-  options: { readonly includeInputs?: boolean } = {},
+  options: { readonly includeRequests?: boolean } = {},
 ): Json {
   const reader = openReader(path);
   try {
@@ -122,7 +122,9 @@ export function inspectCampaign(
         const verifier = verifierFromLabel(entry.label);
         const result = results.get(entry.seq);
         const visible =
-          entry.role === role ? visibleResult(records, entry, role) : undefined;
+          entry.role === role
+            ? visibleSubmission(records, entry, role)
+            : undefined;
         return {
           call: entry.seq,
           role,
@@ -136,10 +138,12 @@ export function inspectCampaign(
             : {
                 settledAtMs: result.atMs,
                 elapsedMs: result.atMs - entry.atMs,
-                settlement: result.state,
+                state: result.state,
               }),
-          ...(visible === undefined ? {} : { result: visible }),
-          ...(options.includeInputs === true ? { input: entry.request } : {}),
+          ...(visible === undefined ? {} : { submission: visible }),
+          ...(options.includeRequests === true
+            ? { request: entry.request }
+            : {}),
         };
       });
     const declaration = records[0];

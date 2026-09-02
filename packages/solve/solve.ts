@@ -30,7 +30,7 @@ const usage = `Usage:
   elenx-solve explorer INPUT.json CAMPAIGN.db SETTINGS.json
   elenx-solve coordinator INPUT.json CAMPAIGN.db SETTINGS.json
   elenx-solve verifier INPUT.json CAMPAIGN.db SETTINGS.json
-  elenx-solve inspect [--include-inputs] CAMPAIGN.db
+  elenx-solve inspect [--include-requests] CAMPAIGN.db
   elenx-solve export CAMPAIGN.db
 
 run starts or resumes the durable explorer, coordinator, and verifier workflow.
@@ -53,7 +53,7 @@ async function main(args: readonly string[]): Promise<void> {
     strict: true,
     options: {
       help: { type: "boolean", short: "h" },
-      "include-inputs": { type: "boolean" },
+      "include-requests": { type: "boolean" },
     },
   });
   if (parsed.values.help) {
@@ -62,12 +62,15 @@ async function main(args: readonly string[]): Promise<void> {
   }
   const [command, ...positionals] = parsed.positionals;
   if (isRoleCommand(command)) {
-    if (parsed.values["include-inputs"] === true) throw new Error(usage);
+    if (parsed.values["include-requests"] === true) throw new Error(usage);
     writeJson(await runRoleCommand(command, positionals));
     return;
   }
   if (command === "contract") {
-    if (positionals.length !== 0 || parsed.values["include-inputs"] === true) {
+    if (
+      positionals.length !== 0 ||
+      parsed.values["include-requests"] === true
+    ) {
       throw new Error(usage);
     }
     writeJson(executionContract);
@@ -77,13 +80,16 @@ async function main(args: readonly string[]): Promise<void> {
     if (positionals.length !== 1) throw new Error(usage);
     writeJson(
       inspectCampaign(positionals[0]!, {
-        includeInputs: parsed.values["include-inputs"] === true,
+        includeRequests: parsed.values["include-requests"] === true,
       }),
     );
     return;
   }
   if (command === "export") {
-    if (positionals.length !== 1 || parsed.values["include-inputs"] === true) {
+    if (
+      positionals.length !== 1 ||
+      parsed.values["include-requests"] === true
+    ) {
       throw new Error(usage);
     }
     process.stdout.write(exportCandidate(positionals[0]!));
@@ -92,7 +98,7 @@ async function main(args: readonly string[]): Promise<void> {
   if (
     command !== "run" ||
     positionals.length !== 3 ||
-    parsed.values["include-inputs"] === true
+    parsed.values["include-requests"] === true
   ) {
     throw new Error(usage);
   }

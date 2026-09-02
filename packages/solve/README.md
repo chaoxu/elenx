@@ -1,6 +1,6 @@
 # elenx-solve
 
-`elenx-solve` runs one durable mathematical workflow from a JSON task:
+`elenx-solve` runs one durable workflow from a JSON task:
 
 ```text
 explorer(task, objective, notes, support)  -> notes
@@ -14,7 +14,7 @@ Every role call is one model call recorded in the Elenx journal with its prompt,
 
 ## Task and settings
 
-The task file has one schema:
+The task file has one schema. The completion criteria are the only statement of what an accepted note must do, so a task that would accept a disproof says so there:
 
 ```json
 {
@@ -55,13 +55,13 @@ bun install --frozen-lockfile
 bun packages/solve/solve.ts contract
 bun packages/solve/solve.ts run task.json campaign.db settings.json
 bun packages/solve/solve.ts inspect campaign.db
-bun packages/solve/solve.ts inspect --include-inputs campaign.db
+bun packages/solve/solve.ts inspect --include-requests campaign.db
 bun packages/solve/solve.ts export campaign.db
 ```
 
 `run` creates a campaign or resumes the existing campaign after matching the exact task and settings against its declaration. A second process cannot drive the same database. `contract` reports execution-contract schema 3 with application `elenx-solve`, protocol `workflow`, and arguments `task`, `campaign`, and `settings`.
 
-`inspect` is the read authority. It derives the task, current phase, notes with their verdicts, public role calls, and spend from the append-only journal. Terminal campaigns also contain `result` with outcome `accepted` or `turn-limit`. `paused`, `call-failure`, and `interrupted` are run outcomes that leave the campaign resumable. `export` emits the accepted note followed by its support notes.
+`inspect` is the read authority. It derives the task, current phase, notes with their verdicts, role calls with their submissions, and spend from the append-only journal. Terminal campaigns also contain `result` with outcome `accepted` or `turn-limit`. `paused`, `call-failure`, and `interrupted` are run outcomes that leave the campaign resumable. `export` emits the accepted note followed by its support notes.
 
 Each role can also run alone:
 
@@ -71,7 +71,7 @@ bun packages/solve/solve.ts coordinator input.json roles.db settings.json
 bun packages/solve/solve.ts verifier input.json roles.db settings.json
 ```
 
-Standalone role commands are boundary diagnostics. They use the same role schemas and journal machinery without creating another workflow contract.
+Standalone role commands are boundary diagnostics. They use the same role schemas and journal machinery and are not a second workflow.
 
 ## Development
 

@@ -9,11 +9,11 @@ import { piRequest } from "elenx/pi";
 import { z } from "zod";
 
 import {
-  coordinatorTurn,
-  explorerTurn,
+  coordinatorCall,
+  explorerCall,
   solveSettings,
-  verifierTurn,
-  type Turn,
+  verifierCall,
+  type RoleCall,
 } from "./pi-roles";
 import {
   applicationId,
@@ -32,7 +32,7 @@ import {
   type VerifierInput,
 } from "./roles";
 
-export const workflowSchemaVersion = 4;
+export const workflowSchemaVersion = 5;
 export const workflowConfig = z.strictObject({
   kind: z.literal("workflow"),
   schemaVersion: z.literal(workflowSchemaVersion),
@@ -94,24 +94,24 @@ type CallEntry = Extract<Entry, { readonly kind: "call" }>;
 function firstCall(
   records: readonly Entry[],
   after: EntryId,
-  turn: Turn<z.ZodType>,
+  roleCall: RoleCall<z.ZodType>,
 ): CallEntry | undefined {
   const call = records.find(
     (entry): entry is CallEntry =>
       entry.kind === "call" &&
       entry.seq > after &&
-      entry.label === turn.label &&
-      entry.role === turn.role,
+      entry.label === roleCall.label &&
+      entry.role === roleCall.role,
   );
   if (call === undefined) return undefined;
   const request = piRequest.safeParse(call.request);
   if (
     !request.success ||
-    request.data.system !== turn.system ||
-    request.data.prompt !== turn.prompt
+    request.data.system !== roleCall.system ||
+    request.data.prompt !== roleCall.prompt
   ) {
     throw new Error(
-      `call ${call.seq} does not match the derived ${turn.role} request`,
+      `call ${call.seq} does not match the derived ${roleCall.role} request`,
     );
   }
   return call;
@@ -120,18 +120,20 @@ function firstCall(
 function settledCall<S extends z.ZodType>(
   records: readonly Entry[],
   after: EntryId,
-  turn: Turn<S>,
+  roleCall: RoleCall<S>,
 ): { readonly settled: EntryId; readonly value: z.output<S> } | undefined {
   for (
-    let call = firstCall(records, after, turn);
+    let call = firstCall(records, after, roleCall);
     call !== undefined;
-    call = firstCall(records, call.seq, turn)
+    call = firstCall(records, call.seq, roleCall)
   ) {
-    const submission = succeededSubmission(records, call.seq, turn.tool);
+    const submission = succeededSubmission(records, call.seq, roleCall.tool);
     if (submission === undefined) continue;
-    const parsed = turn.schema.safeParse(submission.input);
+    const parsed = roleCall.schema.safeParse(submission.input);
     if (!parsed.success) {
-      throw new Error(`malformed ${turn.role} submission in call ${call.seq}`);
+      throw new Error(
+        `malformed ${roleCall.role} submission in call ${call.seq}`,
+      );
     }
     return { settled: submission.settled, value: parsed.data };
   }
@@ -142,12 +144,12 @@ export function deriveWorkflow(reader: Reader): WorkflowSnapshot {
   const records = reader.records();
   const config = parseConfig(records[0]);
   const verdicts = journalVerdicts(records);
-  const minted: { id: string; summary?: string; text: string }[] = [];
+  const numbered: { id: string; summary?: string; text: string }[] = [];
   let cursor = records[0]!.seq;
   let objective = config.task.problem;
   let support: string[] = [];
   const notesAt = (seq: EntryId): Note[] =>
-    minted.map((entry) => ({
+    numbered.map((entry) => ({
       ...entry,
       verdicts: verdicts
         .filter(
@@ -157,7 +159,7 @@ export function deriveWorkflow(reader: Reader): WorkflowSnapshot {
     }));
   const noteAt = (id: string, seq: EntryId): Note => {
     const found = notesAt(seq).find((entry) => entry.id === id);
-    if (found === undefined) throw new Error(`unresolved note ${id}`);
+    if (found === undefined) throw new Error(`unknown note ${id}`);
     return found;
   };
 
@@ -171,7 +173,7 @@ export function deriveWorkflow(reader: Reader): WorkflowSnapshot {
     const explored = settledCall(
       records,
       cursor,
-      explorerTurn(explorerRequest),
+      explorerCall(explorerRequest),
     );
     if (explored === undefined) {
       return {
@@ -182,7 +184,7 @@ export function deriveWorkflow(reader: Reader): WorkflowSnapshot {
     }
     cursor = explored.settled;
     for (const { text } of explored.value.notes) {
-      minted.push({ id: `n${minted.length + 1}`, text });
+      numbered.push({ id: `n${numbered.length + 1}`, text });
     }
     const coordinatorRequest = coordinatorInput.parse({
       task: config.task,
@@ -191,7 +193,7 @@ export function deriveWorkflow(reader: Reader): WorkflowSnapshot {
     const coordinated = settledCall(
       records,
       cursor,
-      coordinatorTurn(coordinatorRequest),
+      coordinatorCall(coordinatorRequest),
     );
     if (coordinated === undefined) {
       return {
@@ -202,7 +204,7 @@ export function deriveWorkflow(reader: Reader): WorkflowSnapshot {
     }
     cursor = coordinated.settled;
     for (const filing of coordinated.value.filings) {
-      minted.find(({ id }) => id === filing.note)!.summary = filing.summary;
+      numbered.find(({ id }) => id === filing.note)!.summary = filing.summary;
     }
     objective = coordinated.value.objective;
     support = coordinated.value.support;
@@ -216,7 +218,7 @@ export function deriveWorkflow(reader: Reader): WorkflowSnapshot {
     const first = firstCall(
       records,
       cursor,
-      verifierTurn(verifierNames[0], verifierRequest),
+      verifierCall(verifierNames[0], verifierRequest),
     );
     if (first === undefined) {
       return {

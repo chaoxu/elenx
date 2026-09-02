@@ -23,6 +23,7 @@ The API and campaign schema are experimental. Campaigns are accepted only when t
 | Question | Authority |
 | --- | --- |
 | What does the kernel guarantee? | [`SPEC.md`](SPEC.md) |
+| Which words name which concepts? | [`docs/terms.md`](docs/terms.md) |
 | How do I run the solver? | [`packages/solve/README.md`](packages/solve/README.md) |
 | How do the solver roles and replay behave? | [`packages/solve/docs/role-runner.md`](packages/solve/docs/role-runner.md) |
 | How do I build an application? | [`docs/application-author.md`](docs/application-author.md) |
