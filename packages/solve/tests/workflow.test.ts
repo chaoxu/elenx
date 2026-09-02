@@ -93,13 +93,17 @@ test("the durable workflow accepts a verified note", async () => {
     "elenx-solve/verifier/requirements",
   ]);
   expect(drive.calls[0]?.prompt).toContain(`Objective:\n${task.problem}`);
+  const correctness = drive.calls[2]!;
+  const prefix = correctness.prompt.split("\n\nVerifier:")[0]!;
   for (const verifier of drive.calls.slice(2)) {
-    expect(verifier.system).toContain(
-      "Return one verdict. PASS names the note.",
-    );
+    expect(verifier.system).toBe(correctness.system);
+    expect(verifier.cacheKey).toBe(correctness.cacheKey);
+    expect(verifier.prompt.startsWith(prefix)).toBe(true);
     expect(verifier.candidate).toBe(phase.candidate);
   }
-  expect(drive.calls[2]?.system).toContain("Judge the text on its own terms");
+  expect(correctness.prompt).toContain(
+    "Verifier:\ncorrectness\n\nObligation:\nJudge the text on its own terms",
+  );
   expect((await runWorkflow(campaign, roles)).kind).toBe("accepted");
   expect(drive.calls).toHaveLength(5);
   campaign.close();

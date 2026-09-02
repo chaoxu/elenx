@@ -88,7 +88,7 @@ function submissionFor(tool: string, request: string): unknown {
   }
   if (tool === "submit_verdict") {
     const pass = request.includes("2 is prime");
-    const verifier = /You are the (\w+) verifier/u.exec(request)?.[1];
+    const verifier = /Verifier:\\n(\w+)/u.exec(request)?.[1];
     const note = /\\"id\\": \\"(n\d+)\\"/u.exec(request)?.[1];
     if (verifier === undefined || note === undefined) {
       throw new Error("request omitted verifier identity");
