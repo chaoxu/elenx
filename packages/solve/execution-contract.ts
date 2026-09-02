@@ -27,7 +27,7 @@ export const executionContract = {
 
 export type ExecutionContract = typeof executionContract;
 export type ExecutionReport = RunResult & {
-  readonly schemaVersion: 2;
+  readonly schemaVersion: typeof workflowSchemaVersion;
   readonly application: typeof applicationId;
   readonly protocol: typeof workflowProtocol;
 };

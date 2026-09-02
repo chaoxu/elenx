@@ -82,6 +82,7 @@ function submissionFor(tool: string, request: string): unknown {
         summary: `Summary of ${id}`,
       })),
       objective: `Replace or extend ${note}.`,
+      support: [note],
       verify: { note, support: [] },
     };
   }

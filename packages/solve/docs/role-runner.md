@@ -16,23 +16,25 @@ A verdict names the verifier that produced it, the note it is about, `PASS` or `
 
 ## Explorer
 
-`ExplorerInput` contains the task, one objective, and every note. The first objective is the problem. `ExplorerResult` contains one or more new note texts. The explorer performs mathematics. It neither writes summaries nor decides whether the task is resolved.
+`ExplorerInput` contains the task, one objective, every note without its text, and the support notes in full. The first objective is the problem. `ExplorerResult` contains one or more new note texts. The explorer performs mathematics. It neither writes summaries nor decides whether the task is resolved.
 
 ## Coordinator
 
-`CoordinatorInput` contains the task and every note, including the new notes that have no summary yet. `CoordinatorResult` files each of those notes with a summary, sets the next objective, and optionally verifies one note with the support notes whose results its text uses without proving them.
+`CoordinatorInput` contains the task and every note, including the new notes that have no summary yet. `CoordinatorResult` files each of those notes with a summary, sets the next objective and the support notes the explorer reads in full, and optionally verifies one note with the support notes whose results its text uses without proving them.
 
 A summary is for navigation and is never verified. It states what the note establishes or attempts, whether the text proves it or leaves a gap, and the notes it depends on. The coordinator has no correctness authority and never declares that the task is resolved.
 
 ## Verifier
 
-`VerifierInput` contains the task, the note, and its support notes. The verifier role runs the `requirements`, `correctness`, and `adversarial` verifiers in that order, every time, and returns their three verdicts. Each verifier judges the text on its own terms: whatever the text asserts, it must establish, with the support notes as premises whose own verdicts are visible. The requirements verifier alone decides whether the note resolves the task. Malformed results and provider failures remain operational errors.
+`VerifierInput` contains the task, the note, and its support notes. The verifier role submits one kernel candidate for the note and its support, then runs the `correctness`, `adversarial`, and `requirements` verifiers in that order, stopping at the first `FAIL`, and returns the verdicts recorded on that candidate. The correctness and adversarial verifiers judge the text on its own terms: whatever the text asserts, it must establish, with the support notes as premises whose own verdicts are visible. The requirements verifier alone decides whether the note resolves the task. Malformed results and provider failures remain operational errors.
 
-The public verifier call owns the kernel candidate. Each verifier call binds to that candidate and records its own verdict, so the kernel's candidate status is the acceptance rule: all three verifiers passed. A replacement `Roles.verifier` must do the same, because acceptance reads only kernel verdicts recorded under the verifier labels.
+Each verifier call binds to the candidate and records its own verdict, so the kernel's candidate status is the acceptance rule: all three verifiers passed. A verification interrupted after some verdicts resumes on the same candidate and runs only the verifiers still missing. A replacement `Roles.verifier` must bind its calls and verdicts the same way, because acceptance reads only kernel verdicts recorded under the verifier labels.
 
 ## Replay and terminal results
 
-The journal stores every public role input and output. The workflow fold starts from the declared task and replays settled calls in order:
+Every role call is one Pi model call. Its prompt is a deterministic function of the role input, its structured result is the terminal tool submission, and its transcript, telemetry, and spend sit on the same call. The workflow fold starts from the declared task, derives each role input, and matches the journal call whose prompt bytes equal the derived prompt. A call whose bytes differ means the journal was written by other prompts, and the fold refuses it rather than running the role again.
+
+The fold replays settled calls in order:
 
 ```text
 explorer -> coordinator -> explorer
@@ -40,12 +42,12 @@ explorer -> coordinator -> explorer
                                     -> explorer
 ```
 
-Explorer results deterministically mint `n1`, `n2`, and later notes. Note verdicts are derived from the kernel verdict entries settled before each role call, so a verification that fails before it settles keeps the verdicts it did record, and they appear on the note once the repeated verification settles. Repeating `run` invokes the first role whose exact output is missing. Repeating it on a completed campaign makes no model request.
+Explorer results deterministically mint `n1`, `n2`, and later notes. Note verdicts are derived from the kernel verdict entries settled before each role call. Repeating `run` invokes the first role whose settled call is missing. Repeating it on a completed campaign makes no model request.
 
 `accepted` and `turn-limit` are terminal results. `paused`, `call-failure`, and `interrupted` leave the campaign resumable.
 
 ## Inspection and export
 
-`inspect` reports the task, current phase, notes with verdicts, public calls, telemetry-derived spend, and optional exact public inputs. A terminal campaign adds `result`, derived from the journal. Verifier calls appear once each with their three verdicts; the model calls beneath them remain outside the public call list.
+`inspect` reports the task, current phase, notes with verdicts, every role call once, telemetry-derived spend, and optional exact Pi requests. A terminal campaign adds `result`, derived from the journal. Each verifier call carries its verifier name, its candidate, and its verdict.
 
 `export` returns the accepted candidate bytes: the accepted note followed by its support notes.

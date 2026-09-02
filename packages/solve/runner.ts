@@ -67,7 +67,12 @@ async function drive(
     }
     return { outcome: "paused", at: phase.kind };
   } catch (error) {
-    const at = deriveWorkflow(campaign).phase.kind;
+    let at: string;
+    try {
+      at = deriveWorkflow(campaign).phase.kind;
+    } catch {
+      throw error;
+    }
     if (dependencies.signal?.aborted) {
       return { outcome: "interrupted", at, reason: "operator interruption" };
     }

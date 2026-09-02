@@ -49,7 +49,7 @@ bun packages/solve/solve.ts inspect campaign.db
 bun packages/solve/solve.ts export campaign.db
 ```
 
-The same `run` command creates a new campaign or resumes an existing one after matching its task and settings. The explorer writes notes, the coordinator files them and sets the next objective, and the requirements, correctness, and adversarial verifiers record verdicts on the notes they judge. The workflow ends when all three pass one note. `inspect` derives the phase, notes, and terminal result from the journal.
+The same `run` command creates a new campaign or resumes an existing one after matching its task and settings. The explorer writes notes, the coordinator files them and sets the next objective, and the correctness, adversarial, and requirements verifiers record verdicts on the notes they judge. The workflow ends when all three pass one note. `inspect` derives the phase, notes, and terminal result from the journal.
 
 ## Development
 

@@ -17,14 +17,17 @@ import { createPiRoles, solveSettings, type SolveSettings } from "./pi-roles";
 import {
   applicationId,
   coordinatorInput,
-  coordinatorResultFor,
+  coordinatorResult,
   explorerInput,
   explorerResult,
   jsonSnapshot,
   roleFromLabel,
   roleNames,
+  roleTools,
+  succeededSubmission,
+  verdict,
+  verifierFromLabel,
   verifierInput,
-  verifierResult,
   type RoleName,
 } from "./roles";
 import {
@@ -78,20 +81,19 @@ function openCalls(path: string): Campaign {
 }
 
 function visibleResult(
+  records: readonly Entry[],
   call: Extract<Entry, { readonly kind: "call" }>,
-  result: Extract<Entry, { readonly kind: "call-result" }> | undefined,
   role: RoleName,
 ): Json | undefined {
-  if (result?.state !== "returned") return undefined;
+  const verifier = verifierFromLabel(call.label);
+  const submission = succeededSubmission(records, call.seq, roleTools[role]);
+  if (submission === undefined) return undefined;
   try {
-    if (role === "explorer") return explorerResult.parse(result.output);
+    if (role === "explorer") return explorerResult.parse(submission.input);
     if (role === "coordinator") {
-      const input = coordinatorInput.parse(call.request);
-      return jsonSnapshot(
-        coordinatorResultFor(input.notes).parse(result.output),
-      );
+      return jsonSnapshot(coordinatorResult.parse(submission.input));
     }
-    return verifierResult.parse(result.output);
+    return verdict.parse({ verifier, ...(submission.input as object) });
   } catch {
     return undefined;
   }
@@ -117,12 +119,17 @@ export function inspectCampaign(
       )
       .map((entry) => {
         const role = roleFromLabel(entry.label)!;
+        const verifier = verifierFromLabel(entry.label);
         const result = results.get(entry.seq);
         const visible =
-          entry.role === role ? visibleResult(entry, result, role) : undefined;
+          entry.role === role ? visibleResult(records, entry, role) : undefined;
         return {
           call: entry.seq,
           role,
+          ...(verifier === undefined ? {} : { verifier }),
+          ...(entry.candidate === undefined
+            ? {}
+            : { candidate: entry.candidate }),
           startedAtMs: entry.atMs,
           ...(result === undefined
             ? {}
