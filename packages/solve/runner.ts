@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { isDeepStrictEqual } from "node:util";
 
 import { createCampaign, openCampaign, type Campaign } from "elenx";
@@ -6,34 +7,30 @@ import { z } from "zod";
 
 import {
   createPiRoles,
-  piRoleSettings,
   RoleCallError,
+  solveSettings,
   type PiRoleDependencies,
-  type PiRoleSettings,
+  type SolveSettings,
 } from "./pi-roles";
-import { roleApplication, task } from "./roles";
+import { applicationId, task } from "./roles";
 import { withCampaignLock } from "./runtime";
 import {
   deriveWorkflow,
   runWorkflow,
   workflowConfig,
   workflowConfiguration,
-  type RunReport,
+  workflowResult,
   type WorkflowConfig,
+  type WorkflowResult,
 } from "./workflow";
 
-export const settings = piRoleSettings;
-export type Settings = PiRoleSettings;
+export const settings = solveSettings;
+export type Settings = SolveSettings;
 
-const startRequest = z.strictObject({
-  problem: z.string().min(1),
-  completionCriteria: z.string().min(1),
+const runRequest = z.strictObject({
+  task,
   campaignPath: z.string().min(1),
-  settings: piRoleSettings,
-});
-const resumeRequest = z.strictObject({
-  campaignPath: z.string().min(1),
-  settings: piRoleSettings,
+  settings: solveSettings,
 });
 
 export interface RunDependencies extends Omit<PiRoleDependencies, "models"> {
@@ -42,45 +39,19 @@ export interface RunDependencies extends Omit<PiRoleDependencies, "models"> {
   readonly status?: (message: string) => void;
 }
 
-function configFor(
-  problem: string,
-  completionCriteria: string,
-  settings: Settings,
-): WorkflowConfig {
-  return workflowConfiguration({
-    task: task.parse({ problem, completionCriteria }),
-    objective: "Produce a complete solution or a decisive refutation.",
-    maxExplorerTurns: settings.maxExplorerTurns,
-    settings,
-  });
-}
-
-function reportFromPhase(
-  phase: ReturnType<typeof deriveWorkflow>["phase"],
-): RunReport {
-  if (phase.kind === "accepted" || phase.kind === "refuted") {
-    return {
-      outcome: "solved",
-      phase: "solved",
-      candidate: phase.candidate,
-      candidateKind: phase.kind === "accepted" ? "solution" : "refutation",
+export type RunResult =
+  | WorkflowResult
+  | {
+      readonly outcome: "paused" | "call-failure" | "interrupted";
+      readonly at: string;
+      readonly reason?: string;
     };
-  }
-  if (phase.kind === "turn-limit") {
-    return {
-      outcome: "turn-limit",
-      phase: "turn-limit",
-      reason: `explorer turns ${phase.turns} reached maxExplorerTurns`,
-    };
-  }
-  return { outcome: "paused", phase: phase.kind };
-}
 
 async function drive(
   campaign: Campaign,
   config: WorkflowConfig,
   dependencies: RunDependencies,
-): Promise<RunReport> {
+): Promise<RunResult> {
   const models = dependencies.models ?? builtinPi();
   const roles = createPiRoles(campaign, config.settings, {
     models,
@@ -91,21 +62,21 @@ async function drive(
   });
   try {
     const phase = await runWorkflow(campaign, roles, dependencies);
-    return reportFromPhase(phase);
+    if (
+      phase.kind === "accepted" ||
+      phase.kind === "refuted" ||
+      phase.kind === "turn-limit"
+    ) {
+      return workflowResult(phase);
+    }
+    return { outcome: "paused", at: phase.kind };
   } catch (error) {
+    const at = deriveWorkflow(campaign).phase.kind;
     if (dependencies.signal?.aborted) {
-      return {
-        outcome: "interrupted",
-        phase: deriveWorkflow(campaign).phase.kind,
-        reason: "operator interruption",
-      };
+      return { outcome: "interrupted", at, reason: "operator interruption" };
     }
     if (error instanceof RoleCallError) {
-      return {
-        outcome: "call-failure",
-        phase: deriveWorkflow(campaign).phase.kind,
-        reason: error.message,
-      };
+      return { outcome: "call-failure", at, reason: error.message };
     }
     throw error;
   } finally {
@@ -113,40 +84,26 @@ async function drive(
   }
 }
 
-export async function start(
-  input: z.input<typeof startRequest>,
+export async function run(
+  input: z.input<typeof runRequest>,
   dependencies: RunDependencies = {},
-): Promise<RunReport> {
-  const request = startRequest.parse(input);
-  const config = configFor(
-    request.problem,
-    request.completionCriteria,
-    request.settings,
-  );
-  return withCampaignLock(request.campaignPath, () =>
-    drive(
-      createCampaign(request.campaignPath, roleApplication, config),
-      config,
-      dependencies,
-    ),
-  );
-}
-
-export async function resume(
-  input: z.input<typeof resumeRequest>,
-  dependencies: RunDependencies = {},
-): Promise<RunReport> {
-  const request = resumeRequest.parse(input);
-  return withCampaignLock(request.campaignPath, async () => {
-    const campaign = openCampaign(request.campaignPath);
-    let config: WorkflowConfig;
+): Promise<RunResult> {
+  const request = runRequest.parse(input);
+  const config = workflowConfiguration({
+    task: request.task,
+    settings: request.settings,
+  });
+  return withCampaignLock(request.campaignPath, () => {
+    const campaign = existsSync(request.campaignPath)
+      ? openCampaign(request.campaignPath)
+      : createCampaign(request.campaignPath, applicationId, config);
     try {
       const declaration = campaign.records()[0];
-      config = workflowConfig.parse(
+      const frozen = workflowConfig.parse(
         declaration?.kind === "campaign" ? declaration.config : undefined,
       );
-      if (!isDeepStrictEqual(config.settings, request.settings)) {
-        throw new Error("settings disagree with the workflow journal");
+      if (!isDeepStrictEqual(frozen, config)) {
+        throw new Error("task or settings disagree with the workflow journal");
       }
     } catch (error) {
       campaign.close();

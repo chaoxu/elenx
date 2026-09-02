@@ -9,7 +9,6 @@ export type {
   NoteRef,
   Roles,
   Task,
-  TrialResult,
   Verifier,
   VerifierInput,
   VerifierResult,

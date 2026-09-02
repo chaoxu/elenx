@@ -97,8 +97,8 @@ function submissionFor(tool: string, request: string): unknown {
       ? "requirements"
       : request.includes("Audit:\\ncorrectness")
         ? "correctness"
-        : request.includes("Audit:\\nrefutation")
-          ? "refutation"
+        : request.includes("Audit:\\nadversarial")
+          ? "adversarial"
           : undefined;
     if (audit === undefined)
       throw new Error("request omitted auditor identity");

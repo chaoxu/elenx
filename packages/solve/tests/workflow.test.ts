@@ -4,13 +4,13 @@ import { createCampaign, deriveCandidateStatus, openCampaign } from "elenx";
 
 import {
   auditResult,
-  auditorNames,
+  auditorDefinitions,
   verifierFromAuditors,
   type AuditorSet,
 } from "../auditors";
 import { createPiRoles } from "../pi-roles";
-import { allVerifiers, roleApplication, type Verifier } from "../roles";
-import { exportRoleAnswer, inspectRoleCampaign } from "../role-cli";
+import { allVerifiers, applicationId, type Verifier } from "../roles";
+import { exportCandidate, inspectCampaign } from "../role-cli";
 import {
   deriveWorkflow,
   runWorkflow,
@@ -31,16 +31,15 @@ const task = {
   completionCriteria: "Give a complete proof of P.",
 };
 const good = { text: "Complete proof of P." };
-const passingAudits: readonly Reply[] = auditorNames.map((name) => ({
+const passingAudits: readonly Reply[] = auditorDefinitions.map(({ name }) => ({
   submission: { verdict: "PASS", report: `${name} passed.` },
 }));
 
 function config(maxExplorerTurns = 4) {
+  const settings = { ...roleSettings(), maxExplorerTurns };
   return workflowConfiguration({
     task,
-    objective: "Prove P.",
-    maxExplorerTurns,
-    settings: roleSettings(),
+    settings,
   });
 }
 
@@ -67,7 +66,7 @@ test("auditors share one interface and the verifier short-circuits", async () =>
       order.push("correctness");
       return auditResult.parse({ verdict: "FAIL", report: "false lemma" });
     },
-    async refutation() {
+    async adversarial() {
       throw new Error("must be skipped");
     },
   };
@@ -87,7 +86,7 @@ test("auditors share one interface and the verifier short-circuits", async () =>
 test("the durable workflow accepts through the public verifier", async () => {
   const path = campaignPath();
   const workflow = config();
-  const campaign = createCampaign(path, roleApplication, workflow);
+  const campaign = createCampaign(path, applicationId, workflow);
   const drive = dependencies([
     { submission: { findings: [good] } },
     { submission: coordinatorSubmission() },
@@ -97,7 +96,6 @@ test("the durable workflow accepts through the public verifier", async () => {
   const phase = await runWorkflow(campaign, roles);
   expect(phase).toMatchObject({
     kind: "accepted",
-    outcome: "accepted",
     turns: 1,
     answer: { text: good.text },
     verifier: { verdict: "ACCEPT" },
@@ -107,11 +105,11 @@ test("the durable workflow accepts through the public verifier", async () => {
     deriveCandidateStatus(campaign.records(), phase.candidate).verified,
   ).toBe(true);
   expect(drive.calls.map(({ label }) => label)).toEqual([
-    "elenx-solve/role/explorer/agent",
-    "elenx-solve/role/coordinator/agent",
-    "elenx-solve/role/verifier/auditor/requirements",
-    "elenx-solve/role/verifier/auditor/correctness",
-    "elenx-solve/role/verifier/auditor/refutation",
+    "elenx-solve/explorer/agent",
+    "elenx-solve/coordinator/agent",
+    "elenx-solve/verifier/requirements",
+    "elenx-solve/verifier/correctness",
+    "elenx-solve/verifier/adversarial",
   ]);
   for (const audit of drive.calls.slice(2)) {
     expect(audit.system).toContain(
@@ -120,34 +118,39 @@ test("the durable workflow accepts through the public verifier", async () => {
     expect(audit.system).toContain(
       "FAIL requires one concrete blocking defect",
     );
+    expect(audit.system).toContain(
+      "Do not fail solely for an omitted routine fact",
+    );
   }
   expect((await runWorkflow(campaign, roles)).kind).toBe("accepted");
   expect(drive.calls).toHaveLength(5);
   campaign.close();
 
-  const inspection = inspectRoleCampaign(path) as {
-    readonly phase: string;
-    readonly candidate: number;
-    readonly candidateKind: string;
-    readonly answer: { readonly text: string };
+  const inspection = inspectCampaign(path) as {
+    readonly state: string;
+    readonly result: {
+      readonly candidate: number;
+      readonly candidateKind: string;
+      readonly answer: { readonly text: string };
+    };
     readonly calls: readonly { readonly role: string }[];
   };
-  expect(inspection.phase).toBe("accepted");
-  expect(inspection.candidate).toBe(phase.candidate);
-  expect(inspection.candidateKind).toBe("solution");
-  expect(inspection.answer.text).toBe(good.text);
+  expect(inspection.state).toBe("accepted");
+  expect(inspection.result.candidate).toBe(phase.candidate);
+  expect(inspection.result.candidateKind).toBe("solution");
+  expect(inspection.result.answer.text).toBe(good.text);
   expect(inspection.calls.map(({ role }) => role)).toEqual([
     "explorer",
     "coordinator",
     "verifier",
   ]);
-  expect(new TextDecoder().decode(exportRoleAnswer(path))).toBe(good.text);
+  expect(new TextDecoder().decode(exportCandidate(path))).toBe(good.text);
 });
 
 test("a rejection becomes durable repair context", async () => {
   const path = campaignPath();
   const workflow = config();
-  const campaign = createCampaign(path, roleApplication, workflow);
+  const campaign = createCampaign(path, applicationId, workflow);
   const drive = dependencies([
     { submission: { findings: [{ text: "Gap." }] } },
     { submission: coordinatorSubmission("Gap.") },
@@ -174,7 +177,7 @@ test("a rejection becomes durable repair context", async () => {
 test("resume reconstructs the next role from the journal", async () => {
   const path = campaignPath();
   const workflow = config();
-  let campaign = createCampaign(path, roleApplication, workflow);
+  let campaign = createCampaign(path, applicationId, workflow);
   const first = dependencies([{ submission: { findings: [good] } }]);
   const paused = await runWorkflow(
     campaign,

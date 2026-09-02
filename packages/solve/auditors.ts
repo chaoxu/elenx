@@ -1,11 +1,6 @@
 import { z } from "zod";
 
-import {
-  roleCallOutput,
-  verifierResult,
-  type Verifier,
-  type VerifierInput,
-} from "./roles";
+import { verifierResult, type Verifier, type VerifierInput } from "./roles";
 
 const nonblank = z.string().refine((value) => value.trim().length > 0, {
   message: "must contain non-whitespace text",
@@ -16,22 +11,6 @@ export const auditResult = z.strictObject({
   report: nonblank,
 });
 export type AuditResult = z.output<typeof auditResult>;
-
-export const auditorNames = [
-  "requirements",
-  "correctness",
-  "refutation",
-] as const;
-export type AuditorName = (typeof auditorNames)[number];
-
-export type AuditorInput = VerifierInput;
-export type Auditor = (input: AuditorInput) => Promise<AuditResult>;
-export type AuditorSet = { readonly [Name in AuditorName]: Auditor };
-
-export interface AuditorDefinition {
-  readonly name: AuditorName;
-  readonly instruction: string;
-}
 
 export const auditorDefinitions = [
   {
@@ -44,15 +23,19 @@ export const auditorDefinitions = [
     instruction: "Check every load-bearing mathematical claim.",
   },
   {
-    name: "refutation",
+    name: "adversarial",
     instruction:
       "Actively search for counterexamples, missing cases, invalid bounds, and reasons the claimed resolution does not follow. Pass the candidate when this search finds no blocking defect.",
   },
-] as const satisfies readonly AuditorDefinition[];
+] as const;
+export type AuditorName = (typeof auditorDefinitions)[number]["name"];
+export type AuditorInput = VerifierInput;
+export type Auditor = (input: AuditorInput) => Promise<AuditResult>;
+export type AuditorSet = { readonly [Name in AuditorName]: Auditor };
 
 export function verifierFromAuditors(implementations: AuditorSet): Verifier {
   return async (input) => {
-    for (const name of auditorNames) {
+    for (const { name } of auditorDefinitions) {
       const result = auditResult.parse(await implementations[name](input));
       if (result.verdict === "FAIL") {
         return verifierResult.parse({
@@ -67,5 +50,3 @@ export function verifierFromAuditors(implementations: AuditorSet): Verifier {
     });
   };
 }
-
-export const verifierCallOutput = roleCallOutput(verifierResult);

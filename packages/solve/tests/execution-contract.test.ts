@@ -1,67 +1,44 @@
 import { expect, test } from "bun:test";
 
-import {
-  executionContract,
-  executionReport,
-  trialExecutionReport,
-} from "../execution-contract";
-import type { TrialResult } from "../roles";
+import { executionContract, executionReport } from "../execution-contract";
 
-test("run and trial publish one workflow contract", () => {
-  expect(executionContract).toMatchObject({
-    schemaVersion: 4,
-    application: "elenx-solve-roles",
-    protocol: "role-calls.v2",
+test("publishes one workflow execution contract", () => {
+  expect(executionContract).toEqual({
+    schemaVersion: 1,
+    application: "elenx-solve",
+    protocol: "workflow",
     run: {
       command: "run",
+      arguments: ["task", "campaign", "settings"],
       report: {
+        schemaVersion: 1,
         outcomes: [
-          "solved",
+          "accepted",
+          "refuted",
+          "turn-limit",
           "paused",
           "call-failure",
           "interrupted",
-          "turn-limit",
         ],
+        terminalOutcomes: ["accepted", "refuted", "turn-limit"],
       },
-    },
-    trial: {
-      command: "trial",
-      application: "elenx-solve-roles",
-      protocol: "role-calls.v2",
     },
   });
   expect(
-    executionReport({ outcome: "solved", phase: "solved", candidate: 7 }),
+    executionReport({
+      outcome: "accepted",
+      turns: 1,
+      answer: { id: "n1", summary: "proof", text: "Proof." },
+      verifier: { verdict: "ACCEPT", report: "checked" },
+      notes: [{ id: "n1", summary: "proof", text: "Proof." }],
+      candidate: 7,
+      candidateKind: "solution",
+    }),
   ).toMatchObject({
-    application: "elenx-solve-roles",
-    protocol: "role-calls.v2",
-    outcome: "solved",
-    candidate: 7,
-  });
-});
-
-test("trial reports bind terminal answers to durable candidates", () => {
-  const proof = { id: "n1", summary: "proof", text: "Proof." };
-  const accepted: TrialResult = {
-    outcome: "accepted",
-    turns: 1,
-    answer: proof,
-    verifier: { verdict: "ACCEPT", report: "Correct." },
-    notes: [proof],
-  };
-  expect(trialExecutionReport(accepted, 7)).toMatchObject({
+    schemaVersion: 1,
+    application: "elenx-solve",
+    protocol: "workflow",
     outcome: "accepted",
     candidate: 7,
-    candidateKind: "solution",
-  });
-  expect(() => trialExecutionReport(accepted)).toThrow("durable candidate");
-  const limited: TrialResult = {
-    outcome: "turn-limit",
-    turns: 2,
-    notes: [proof],
-  };
-  expect(trialExecutionReport(limited)).toMatchObject({
-    outcome: "turn-limit",
-    phase: "turn-limit",
   });
 });

@@ -6,7 +6,7 @@ import { join } from "node:path";
 import type { Campaign, Json } from "elenx";
 import type { PiResult, PiRunOptions } from "elenx/pi";
 
-import type { PiRoleSettings } from "../pi-roles";
+import type { SolveSettings } from "../pi-roles";
 import type { SolveModels } from "../runtime";
 import { fakePiRequest, fakePiTelemetry } from "./fake-pi";
 
@@ -43,7 +43,7 @@ export function cleanupCampaigns(): void {
   }
 }
 
-export function roleSettings(): PiRoleSettings {
+export function roleSettings(): SolveSettings {
   const profile = {
     provider: model.provider,
     model: model.id,

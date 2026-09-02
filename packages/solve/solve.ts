@@ -1,74 +1,49 @@
 #!/usr/bin/env bun
 
-import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { isAbsolute } from "node:path";
 import { parseArgs } from "node:util";
 
 import { executionContract, executionReport } from "./execution-contract";
 import {
-  exportRoleAnswer,
-  inspectRoleCampaign,
+  exportCandidate,
+  inspectCampaign,
   isRoleCommand,
-  readRoleSettings,
+  readSettings,
   runRoleCommand,
 } from "./role-cli";
+import { run, settings, type RunDependencies, type Settings } from "./runner";
+import { task } from "./roles";
 import {
-  resume,
-  settings,
-  start,
-  type RunDependencies,
-  type Settings,
-} from "./runner";
+  modelRegistryPath,
+  requireCredentials,
+  type SolveModels,
+} from "./runtime";
 import { withSerialToolCalls } from "./serial-tools";
 
-export type { SolveModels } from "./runtime";
-export { executionContract, resume, settings, start };
+export { executionContract, run, settings };
 export type { ExecutionContract, ExecutionReport } from "./execution-contract";
-export type { RunDependencies, Settings } from "./runner";
+export type { RunDependencies, Settings, SolveModels };
 
 const usage = `Usage:
   elenx-solve contract
-  elenx-solve run PROBLEM.md CRITERIA.md CAMPAIGN.db SETTINGS.json
-  elenx-solve start PROBLEM.md CRITERIA.md CAMPAIGN.db SETTINGS.json
-  elenx-solve resume CAMPAIGN.db SETTINGS.json
+  elenx-solve run TASK.json CAMPAIGN.db SETTINGS.json
   elenx-solve explorer INPUT.json CAMPAIGN.db SETTINGS.json
   elenx-solve coordinator INPUT.json CAMPAIGN.db SETTINGS.json
   elenx-solve verifier INPUT.json CAMPAIGN.db SETTINGS.json
-  elenx-solve trial TRIAL.json CAMPAIGN.db SETTINGS.json
   elenx-solve inspect [--include-inputs] CAMPAIGN.db
   elenx-solve export CAMPAIGN.db
 
-Explorer, coordinator, and verifier are exact journaled input-output calls.
-The coordinator files findings and chooses exploration or verification. The
-verifier runs private auditors and exposes only ACCEPT or REJECT. Run, resume,
-and trial use the same durable workflow.`;
+run starts or resumes the durable explorer, coordinator, and verifier workflow.
+Standalone role commands execute the same typed role boundaries independently.`;
 
 export function modelRuntimeOptions(environment: NodeJS.ProcessEnv): {
   readonly modelsPath: string | null;
 } {
-  const modelsPath = environment["ELENX_MODELS_PATH"];
-  if (modelsPath === undefined) return { modelsPath: null };
-  if (!isAbsolute(modelsPath)) {
-    throw new Error("ELENX_MODELS_PATH must be absolute");
-  }
-  return { modelsPath };
+  return { modelsPath: modelRegistryPath(environment) };
 }
 
-async function requireCredentials(
-  runtime: { readonly checkAuth: (provider: string) => Promise<unknown> },
-  providers: readonly string[],
-): Promise<void> {
-  const missing = (
-    await Promise.all(
-      [...new Set(providers)].map(async (provider) =>
-        (await runtime.checkAuth(provider)) === undefined ? [provider] : [],
-      ),
-    )
-  ).flat();
-  if (missing.length > 0) {
-    throw new Error(`No credential for provider(s): ${missing.join(", ")}`);
-  }
+async function readJson(path: string): Promise<unknown> {
+  return JSON.parse(await readFile(path, "utf8")) as unknown;
 }
 
 async function main(args: readonly string[]): Promise<void> {
@@ -101,7 +76,7 @@ async function main(args: readonly string[]): Promise<void> {
   if (command === "inspect") {
     if (positionals.length !== 1) throw new Error(usage);
     writeJson(
-      inspectRoleCampaign(positionals[0]!, {
+      inspectCampaign(positionals[0]!, {
         includeInputs: parsed.values["include-inputs"] === true,
       }),
     );
@@ -111,23 +86,27 @@ async function main(args: readonly string[]): Promise<void> {
     if (positionals.length !== 1 || parsed.values["include-inputs"] === true) {
       throw new Error(usage);
     }
-    process.stdout.write(exportRoleAnswer(positionals[0]!));
+    process.stdout.write(exportCandidate(positionals[0]!));
     return;
   }
   if (
-    (command !== "run" && command !== "start" && command !== "resume") ||
-    positionals.length !== (command === "resume" ? 2 : 4) ||
+    command !== "run" ||
+    positionals.length !== 3 ||
     parsed.values["include-inputs"] === true
   ) {
     throw new Error(usage);
   }
-  const roleSettings = await readRoleSettings(positionals.at(-1)!);
+
+  const taskPath = positionals[0]!;
+  const campaignPath = positionals[1]!;
+  const settingsPath = positionals[2]!;
+  const workflowSettings = await readSettings(settingsPath);
   const { ModelRuntime } = await import("@earendil-works/pi-coding-agent");
   const runtime = await ModelRuntime.create(modelRuntimeOptions(process.env));
   await requireCredentials(runtime, [
-    roleSettings.explorer.provider,
-    roleSettings.coordinator.provider,
-    roleSettings.verifier.provider,
+    workflowSettings.explorer.provider,
+    workflowSettings.coordinator.provider,
+    workflowSettings.verifier.provider,
   ]);
   const controller = new AbortController();
   let pauseRequested = false;
@@ -142,61 +121,26 @@ async function main(args: readonly string[]): Promise<void> {
   process.on("SIGINT", stop);
   process.on("SIGTERM", stop);
   try {
-    const dependencies: RunDependencies = {
-      models: withSerialToolCalls(runtime),
-      signal: controller.signal,
-      pauseRequested: () => pauseRequested,
-      status: (phase) => console.error(phase),
-    };
-    const report =
-      command === "resume"
-        ? await resume(
-            { campaignPath: positionals[0]!, settings: roleSettings },
-            dependencies,
-          )
-        : await startOrResume(command, positionals, roleSettings, dependencies);
-    writeJson(executionReport(report));
-    if (report.outcome === "interrupted") process.exitCode = 130;
-    if (report.outcome === "call-failure") process.exitCode = 1;
+    const result = await run(
+      {
+        task: task.parse(await readJson(taskPath)),
+        campaignPath,
+        settings: workflowSettings,
+      },
+      {
+        models: withSerialToolCalls(runtime),
+        signal: controller.signal,
+        pauseRequested: () => pauseRequested,
+        status: (phase) => console.error(phase),
+      },
+    );
+    writeJson(executionReport(result));
+    if (result.outcome === "interrupted") process.exitCode = 130;
+    if (result.outcome === "call-failure") process.exitCode = 1;
   } finally {
     process.off("SIGINT", stop);
     process.off("SIGTERM", stop);
   }
-}
-
-async function startOrResume(
-  command: "run" | "start",
-  positionals: readonly string[],
-  roleSettings: Settings,
-  dependencies: RunDependencies,
-) {
-  const [problemPath, criteriaPath, campaignPath] = positionals as readonly [
-    string,
-    string,
-    string,
-    string,
-  ];
-  const [problem, completionCriteria] = await Promise.all([
-    readFile(problemPath, "utf8"),
-    readFile(criteriaPath, "utf8"),
-  ]);
-  if (command === "run" && existsSync(campaignPath)) {
-    const inspection = inspectRoleCampaign(campaignPath) as {
-      readonly problem?: unknown;
-      readonly completionCriteria?: unknown;
-    };
-    if (
-      inspection.problem !== problem ||
-      inspection.completionCriteria !== completionCriteria
-    ) {
-      throw new Error("problem or criteria disagree with the workflow journal");
-    }
-    return resume({ campaignPath, settings: roleSettings }, dependencies);
-  }
-  return start(
-    { problem, completionCriteria, campaignPath, settings: roleSettings },
-    dependencies,
-  );
 }
 
 function writeJson(value: unknown): void {

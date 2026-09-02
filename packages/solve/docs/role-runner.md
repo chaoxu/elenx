@@ -1,6 +1,6 @@
-# Role workflow
+# Task workflow
 
-The campaign and standalone commands use the same role contracts:
+One task contains the exact `problem` and `completionCriteria`. The campaign and standalone commands use the same role contracts:
 
 ```text
 ExplorerInput    -> ExplorerResult
@@ -31,11 +31,11 @@ The coordinator may store unverified mathematics. Acceptance remains verifier-ow
 Auditor = VerifierInput -> PASS | FAIL + report
 ```
 
-The built-in verifier runs `requirements`, `correctness`, and `refutation` in that order. It returns `ACCEPT` only after all three pass. A failure returns `REJECT` immediately. Malformed results and provider failures remain operational errors.
+The built-in verifier runs `requirements`, `correctness`, and `adversarial` in that order. It returns `ACCEPT` only after all three pass. A failure returns `REJECT` immediately. Malformed results and provider failures remain operational errors.
 
 The public verifier call owns the kernel candidate and aggregate verdict. Auditor calls bind to the same candidate but remain private implementation records. Ordinary inspection shows one verifier response and includes all auditor usage in campaign spend.
 
-## Replay
+## Replay and terminal state
 
 The journal stores every public role input and output. The workflow fold starts from the declared task and replays successful calls in order:
 
@@ -45,10 +45,12 @@ explorer -> coordinator -> explore
                                     -> repair -> explorer
 ```
 
-Coordinator filings deterministically mint `n1`, `n2`, and later notes. A repeated rejected proposal is suppressed from another verifier call and becomes repair context. Resume invokes the first role whose exact output is missing. A completed campaign resumes without a model request.
+Coordinator filings deterministically mint `n1`, `n2`, and later notes. A repeated rejected proposal is suppressed from another verifier call and becomes repair context. Repeating `run` invokes the first role whose exact output is missing. Repeating it on a completed campaign makes no model request.
+
+`accepted`, `refuted`, and `turn-limit` are terminal results. `paused`, `call-failure`, and `interrupted` leave the campaign resumable.
 
 ## Inspection and export
 
-`inspect` reports the task, current phase, notes, public calls, terminal candidate, verifier response, telemetry-derived spend, and optional exact public inputs. Child model calls remain outside the public call list.
+`inspect` reports the task, current state, notes, public calls, telemetry-derived spend, and optional exact public inputs. A terminal campaign adds `result`, derived from the journal. Child model calls remain outside the public call list.
 
-`export` returns the accepted kernel candidate bytes. The material contains the nominated answer followed by its supplied support notes.
+`export` returns the accepted solution or verified refutation candidate bytes. The material contains the nominated answer followed by its supplied support notes.

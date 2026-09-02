@@ -11,8 +11,19 @@ const summaryText = nonblank.refine((value) => value.length <= 240, {
 const positiveInteger = z.number().int().positive();
 const noteId = z.string().regex(/^n[1-9][0-9]*$/u);
 
-export const roleApplication = "elenx-solve-roles";
-export const roleProtocol = "role-calls.v2";
+export const applicationId = "elenx-solve";
+export const workflowProtocol = "workflow";
+export const roleNames = ["explorer", "coordinator", "verifier"] as const;
+export type RoleName = (typeof roleNames)[number];
+export const roleLabels = {
+  explorer: `${applicationId}/explorer`,
+  coordinator: `${applicationId}/coordinator`,
+  verifier: `${applicationId}/verifier`,
+} as const satisfies Readonly<Record<RoleName, string>>;
+
+export function roleFromLabel(label: string): RoleName | undefined {
+  return roleNames.find((name) => roleLabels[name] === label);
+}
 
 export const task = z.strictObject({
   problem: nonblank,
@@ -36,6 +47,7 @@ export type VerifierResult = z.output<typeof verifierResult>;
 export function roleCallOutput<S extends z.ZodType>(value: S) {
   return z.strictObject({ state: z.literal("succeeded"), value });
 }
+export const verifierCallOutput = roleCallOutput(verifierResult);
 
 export const explorerInput = z
   .strictObject({
@@ -201,6 +213,14 @@ export function verifierInputHash(value: VerifierInput): string {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex");
 }
 
+export function verifierRecord(result: VerifierResult, kind: CandidateKind) {
+  return {
+    verdict:
+      result.verdict === "ACCEPT" ? ("PASS" as const) : ("FAIL" as const),
+    evidence: { report: result.report, candidateKind: kind },
+  };
+}
+
 export interface Roles {
   readonly explorer: (input: ExplorerInput) => Promise<ExplorerResult>;
   readonly coordinator: (input: CoordinatorInput) => Promise<CoordinatorResult>;
@@ -230,25 +250,3 @@ export function allVerifiers(...verifiers: readonly Verifier[]): Verifier {
     };
   };
 }
-
-export type TrialResult =
-  | {
-      readonly outcome: "accepted";
-      readonly turns: number;
-      readonly answer: Note;
-      readonly verifier: VerifierResult;
-      readonly notes: readonly Note[];
-    }
-  | {
-      readonly outcome: "refuted";
-      readonly turns: number;
-      readonly refutation: Note;
-      readonly verifier: VerifierResult;
-      readonly notes: readonly Note[];
-    }
-  | {
-      readonly outcome: "turn-limit";
-      readonly turns: number;
-      readonly notes: readonly Note[];
-      readonly lastVerifierResult?: VerifierResult;
-    };

@@ -10,45 +10,65 @@ import {
 } from "elenx";
 import { z } from "zod";
 
-import { verifierCallOutput } from "./auditors";
-import { piRoleSettings } from "./pi-roles";
+import { solveSettings } from "./pi-roles";
 import {
+  applicationId,
   coordinatorInput,
   coordinatorResultFor,
   explorerInput,
   explorerResult,
-  roleApplication,
   roleCallOutput,
-  roleProtocol,
+  roleLabels,
   task,
+  verifierCallOutput,
   verifierInput,
   verifierInputHash,
+  verifierRecord,
   type CoordinatorInput,
   type ExplorerInput,
   type Note,
   type NoteRef,
+  type RoleName,
   type Roles,
   type Task,
-  type TrialResult,
   type VerifierInput,
   type VerifierResult,
 } from "./roles";
 
-const nonblank = z.string().refine((value) => value.trim().length > 0, {
-  message: "must contain non-whitespace text",
-});
-const positiveInteger = z.number().int().positive();
+const initialObjective =
+  "Produce a complete solution or a decisive refutation.";
 
 export const workflowConfig = z.strictObject({
-  protocol: z.literal(roleProtocol),
   kind: z.literal("workflow"),
   task,
-  objective: nonblank,
-  maxExplorerTurns: positiveInteger,
-  settings: piRoleSettings,
+  settings: solveSettings,
 });
 export type WorkflowConfig = z.output<typeof workflowConfig>;
 
+type AcceptedPhase = {
+  readonly kind: "accepted";
+  readonly turns: number;
+  readonly answer: Note;
+  readonly verifier: VerifierResult;
+  readonly notes: readonly Note[];
+  readonly candidate: EntryId;
+};
+type RefutedPhase = {
+  readonly kind: "refuted";
+  readonly turns: number;
+  readonly refutation: Note;
+  readonly verifier: VerifierResult;
+  readonly notes: readonly Note[];
+  readonly candidate: EntryId;
+};
+type TurnLimitPhase = {
+  readonly kind: "turn-limit";
+  readonly turns: number;
+  readonly notes: readonly Note[];
+  readonly lastVerifierResult?: VerifierResult;
+};
+
+export type WorkflowTerminal = AcceptedPhase | RefutedPhase | TurnLimitPhase;
 export type WorkflowPhase =
   | { readonly kind: "explorer"; readonly input: ExplorerInput }
   | { readonly kind: "coordinator"; readonly input: CoordinatorInput }
@@ -59,17 +79,18 @@ export type WorkflowPhase =
       readonly verdict: "PASS" | "FAIL";
       readonly evidence: Json;
     }
-  | ({ readonly kind: "accepted"; readonly candidate: EntryId } & Extract<
-      TrialResult,
-      { readonly outcome: "accepted" }
-    >)
-  | ({ readonly kind: "refuted"; readonly candidate: EntryId } & Extract<
-      TrialResult,
-      { readonly outcome: "refuted" }
-    >)
-  | (Extract<TrialResult, { readonly outcome: "turn-limit" }> & {
-      readonly kind: "turn-limit";
-    });
+  | WorkflowTerminal;
+
+export type WorkflowResult =
+  | (Omit<AcceptedPhase, "kind"> & {
+      readonly outcome: "accepted";
+      readonly candidateKind: "solution";
+    })
+  | (Omit<RefutedPhase, "kind"> & {
+      readonly outcome: "refuted";
+      readonly candidateKind: "refutation";
+    })
+  | (Omit<TurnLimitPhase, "kind"> & { readonly outcome: "turn-limit" });
 
 export interface WorkflowSnapshot {
   readonly config: WorkflowConfig;
@@ -90,7 +111,7 @@ function jsonSnapshot(value: unknown): Json {
 function parseConfig(declaration: Entry | undefined): WorkflowConfig {
   if (
     declaration?.kind !== "campaign" ||
-    declaration.application !== roleApplication
+    declaration.application !== applicationId
   ) {
     throw new Error("not an Elenx workflow campaign");
   }
@@ -104,11 +125,10 @@ function parseConfig(declaration: Entry | undefined): WorkflowConfig {
 function settledCall<S extends z.ZodType>(
   records: readonly Entry[],
   after: EntryId,
-  role: "explorer" | "coordinator" | "verifier",
+  role: RoleName,
   input: unknown,
   output: S,
 ): SettledCall<z.output<S>> | undefined {
-  const label = `elenx-solve/role/${role}`;
   const results = new Map(
     records
       .filter((entry) => entry.kind === "call-result")
@@ -118,7 +138,7 @@ function settledCall<S extends z.ZodType>(
     if (
       call.kind !== "call" ||
       call.seq <= after ||
-      call.label !== label ||
+      call.label !== roleLabels[role] ||
       call.role !== role ||
       !isDeepStrictEqual(call.request, jsonSnapshot(input))
     ) {
@@ -160,11 +180,11 @@ export function deriveWorkflow(reader: Reader): WorkflowSnapshot {
   const notes: Note[] = [];
   const attempted = new Set<string>();
   let cursor = records[0]!.seq;
-  let objective = config.objective;
+  let objective = initialObjective;
   let context: Note[] = [];
   let previousVerifierResult: VerifierResult | undefined;
 
-  for (let turn = 1; turn <= config.maxExplorerTurns; turn += 1) {
+  for (let turn = 1; turn <= config.settings.maxExplorerTurns; turn += 1) {
     const explorerRequest = explorerInput.parse({
       task: config.task,
       index: notes.map(({ id, summary }) => ({ id, summary })),
@@ -274,10 +294,11 @@ export function deriveWorkflow(reader: Reader): WorkflowSnapshot {
     }
     const result = verified.value.value;
     const status = deriveCandidateStatus(records, candidate);
-    const label = "elenx-solve/role/verifier";
+    const record = verifierRecord(result, proposal.candidateKind);
     if (
       (result.verdict === "ACCEPT" && !status.verified) ||
-      (result.verdict === "REJECT" && !status.failed.includes(label))
+      (result.verdict === "REJECT" &&
+        !status.failed.includes(roleLabels.verifier))
     ) {
       return {
         config,
@@ -285,11 +306,8 @@ export function deriveWorkflow(reader: Reader): WorkflowSnapshot {
         phase: {
           kind: "record-verdict",
           call: verified.call.seq,
-          verdict: result.verdict === "ACCEPT" ? "PASS" : "FAIL",
-          evidence: jsonSnapshot({
-            report: result.report,
-            candidateKind: proposal.candidateKind,
-          }),
+          verdict: record.verdict,
+          evidence: record.evidence,
         },
       };
     }
@@ -300,7 +318,6 @@ export function deriveWorkflow(reader: Reader): WorkflowSnapshot {
             notes,
             phase: {
               kind: "accepted",
-              outcome: "accepted",
               turns: turn,
               answer,
               verifier: result,
@@ -313,7 +330,6 @@ export function deriveWorkflow(reader: Reader): WorkflowSnapshot {
             notes,
             phase: {
               kind: "refuted",
-              outcome: "refuted",
               turns: turn,
               refutation: answer,
               verifier: result,
@@ -332,8 +348,7 @@ export function deriveWorkflow(reader: Reader): WorkflowSnapshot {
     notes,
     phase: {
       kind: "turn-limit",
-      outcome: "turn-limit",
-      turns: config.maxExplorerTurns,
+      turns: config.settings.maxExplorerTurns,
       notes,
       ...(previousVerifierResult === undefined
         ? {}
@@ -342,18 +357,22 @@ export function deriveWorkflow(reader: Reader): WorkflowSnapshot {
   };
 }
 
+export function workflowResult(phase: WorkflowTerminal): WorkflowResult {
+  if (phase.kind === "accepted") {
+    const { kind, ...result } = phase;
+    return { ...result, outcome: kind, candidateKind: "solution" };
+  }
+  if (phase.kind === "refuted") {
+    const { kind, ...result } = phase;
+    return { ...result, outcome: kind, candidateKind: "refutation" };
+  }
+  const { kind, ...result } = phase;
+  return { ...result, outcome: kind };
+}
+
 export interface WorkflowDependencies {
   readonly pauseRequested?: () => boolean;
   readonly status?: (message: string) => void;
-}
-
-export interface RunReport {
-  readonly outcome:
-    "solved" | "paused" | "call-failure" | "interrupted" | "turn-limit";
-  readonly phase: string;
-  readonly candidate?: EntryId;
-  readonly candidateKind?: "solution" | "refutation";
-  readonly reason?: string;
 }
 
 export async function runWorkflow(
@@ -386,13 +405,7 @@ export async function runWorkflow(
 
 export function workflowConfiguration(options: {
   readonly task: Task;
-  readonly objective: string;
-  readonly maxExplorerTurns: number;
-  readonly settings: z.output<typeof piRoleSettings>;
+  readonly settings: z.output<typeof solveSettings>;
 }): WorkflowConfig {
-  return workflowConfig.parse({
-    protocol: roleProtocol,
-    kind: "workflow",
-    ...options,
-  });
+  return workflowConfig.parse({ kind: "workflow", ...options });
 }

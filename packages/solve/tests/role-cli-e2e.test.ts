@@ -18,62 +18,45 @@ afterEach(async () => {
   }
 });
 
-test("run, resume, inspect, and export share the durable role workflow", async () => {
+test("run starts, resumes, inspects, and exports one workflow", async () => {
   const directory = await testDirectory();
   const settings = await writeSettings(directory);
-  const problem = await writeText(
-    directory,
-    "problem.md",
-    "Prove that there are infinitely many prime numbers.",
-  );
-  const criteria = await writeText(
-    directory,
-    "criteria.md",
-    "Give a complete self-contained proof.",
-  );
+  const task = await writeJson(directory, "task.json", {
+    problem: "Prove that there are infinitely many prime numbers.",
+    completionCriteria: "Give a complete self-contained proof.",
+  });
   const campaign = join(directory, "run.db");
 
-  const first = await cli(
-    directory,
-    "run",
-    problem,
-    criteria,
-    campaign,
-    settings,
-  );
+  const first = await cli(directory, "run", task, campaign, settings);
   expect(first.code).toBe(0);
   expect(JSON.parse(first.stdout)).toMatchObject({
-    application: "elenx-solve-roles",
-    protocol: "role-calls.v2",
-    outcome: "solved",
+    schemaVersion: 1,
+    application: "elenx-solve",
+    protocol: "workflow",
+    outcome: "accepted",
     candidateKind: "solution",
+    turns: 2,
   });
-  const requestsAfterFirst = await recordedRequests(directory);
-  expect(requestsAfterFirst).toHaveLength(8);
-
-  const second = await cli(
-    directory,
-    "run",
-    problem,
-    criteria,
-    campaign,
-    settings,
-  );
-  expect(second.code).toBe(0);
-  expect(JSON.parse(second.stdout).outcome).toBe("solved");
   expect(await recordedRequests(directory)).toHaveLength(8);
 
-  const inspection = await cli(directory, "inspect", campaign);
-  expect(inspection.code).toBe(0);
-  const observed = JSON.parse(inspection.stdout);
-  expect(observed).toMatchObject({
-    phase: "accepted",
-    outcome: "accepted",
-    problem: "Prove that there are infinitely many prime numbers.",
+  const second = await cli(directory, "run", task, campaign, settings);
+  expect(second.code).toBe(0);
+  expect(JSON.parse(second.stdout).outcome).toBe("accepted");
+  expect(await recordedRequests(directory)).toHaveLength(8);
+
+  const inspection = JSON.parse(
+    (await cli(directory, "inspect", campaign)).stdout,
+  );
+  expect(inspection).toMatchObject({
+    task: {
+      problem: "Prove that there are infinitely many prime numbers.",
+    },
+    state: "accepted",
+    result: { outcome: "accepted", candidateKind: "solution" },
     spend: { logicalProviderRequests: 8, requestErrors: 0 },
   });
   expect(
-    observed.calls.map(({ role }: { readonly role: string }) => role),
+    inspection.calls.map(({ role }: { readonly role: string }) => role),
   ).toEqual([
     "explorer",
     "coordinator",
@@ -82,51 +65,24 @@ test("run, resume, inspect, and export share the durable role workflow", async (
     "coordinator",
     "verifier",
   ]);
-  expect(JSON.stringify(observed)).not.toContain('"audits"');
+  expect(JSON.stringify(inspection)).not.toContain('"audits"');
 
   const exported = await cli(directory, "export", campaign);
   expect(exported.code).toBe(0);
   expect(exported.stdout).toContain("Since 2 is prime");
 });
 
-test("trial uses the same resumable workflow", async () => {
+test("run refuses a concurrent owner of the same campaign", async () => {
   const directory = await testDirectory();
   const settings = await writeSettings(directory);
-  const trial = await writeJson(directory, "trial.json", {
-    task: {
-      problem: "Prove that there are infinitely many prime numbers.",
-      completionCriteria: "Give a complete self-contained proof.",
-    },
-    objective: "Produce a complete proof.",
-    maxExplorerTurns: 3,
-  });
-  const campaign = join(directory, "trial.db");
-  const first = await cli(directory, "trial", trial, campaign, settings);
-  expect(first.code).toBe(0);
-  expect(JSON.parse(first.stdout)).toMatchObject({
-    outcome: "accepted",
-    turns: 2,
-    candidateKind: "solution",
-  });
-  const count = (await recordedRequests(directory)).length;
-  const resumed = await cli(directory, "trial", trial, campaign, settings);
-  expect(resumed.code).toBe(0);
-  expect(JSON.parse(resumed.stdout).outcome).toBe("accepted");
-  expect(await recordedRequests(directory)).toHaveLength(count);
-});
-
-test("trial refuses a concurrent owner of the same campaign", async () => {
-  const directory = await testDirectory();
-  const settings = await writeSettings(directory);
-  const trial = await writeJson(directory, "trial.json", {
-    task: { problem: "Prove P.", completionCriteria: "Give a proof." },
-    objective: "Prove P.",
-    maxExplorerTurns: 1,
+  const task = await writeJson(directory, "task.json", {
+    problem: "Prove P.",
+    completionCriteria: "Give a proof.",
   });
   const campaign = join(directory, "locked.db");
   using lock = new Database(`${campaign}.runner.lock`, { create: true });
   lock.run("BEGIN EXCLUSIVE");
-  const result = await cli(directory, "trial", trial, campaign, settings);
+  const result = await cli(directory, "run", task, campaign, settings);
   expect(result.code).toBe(1);
   expect(result.stderr).toContain("campaign already has a running process");
 });
@@ -135,10 +91,7 @@ test("a provider failure leaves no mathematical verifier result", async () => {
   const directory = await testDirectory();
   const settings = await writeSettings(directory);
   const input = await writeJson(directory, "verifier.json", {
-    task: {
-      problem: "Prove P.",
-      completionCriteria: "Give a complete proof.",
-    },
+    task: { problem: "Prove P.", completionCriteria: "Give a proof." },
     candidateKind: "solution",
     answer: {
       id: "n1",
@@ -211,16 +164,8 @@ async function writeJson(
   name: string,
   value: unknown,
 ): Promise<string> {
-  return writeText(directory, name, `${JSON.stringify(value, null, 2)}\n`);
-}
-
-async function writeText(
-  directory: string,
-  name: string,
-  value: string,
-): Promise<string> {
   const path = join(directory, name);
-  await Bun.write(path, value);
+  await Bun.write(path, `${JSON.stringify(value, null, 2)}\n`);
   return path;
 }
 

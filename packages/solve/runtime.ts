@@ -1,6 +1,6 @@
 import { Database, SQLiteError } from "bun:sqlite";
 import { realpathSync } from "node:fs";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, isAbsolute, join } from "node:path";
 
 import { builtinPi } from "elenx/pi";
 
@@ -8,6 +8,31 @@ export type SolveModels = Pick<
   ReturnType<typeof builtinPi>,
   "getModel" | "streamSimple"
 >;
+
+export function modelRegistryPath(
+  environment: NodeJS.ProcessEnv,
+): string | null {
+  const value = environment["ELENX_MODELS_PATH"];
+  if (value === undefined) return null;
+  if (!isAbsolute(value)) throw new Error("ELENX_MODELS_PATH must be absolute");
+  return value;
+}
+
+export async function requireCredentials(
+  runtime: { readonly checkAuth: (provider: string) => Promise<unknown> },
+  providers: readonly string[],
+): Promise<void> {
+  const missing = (
+    await Promise.all(
+      [...new Set(providers)].map(async (provider) =>
+        (await runtime.checkAuth(provider)) === undefined ? [provider] : [],
+      ),
+    )
+  ).flat();
+  if (missing.length > 0) {
+    throw new Error(`No credential for provider(s): ${missing.join(", ")}`);
+  }
+}
 
 function runnerLockPath(campaignPath: string): string {
   let canonicalPath: string;
