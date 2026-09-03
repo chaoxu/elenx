@@ -95,12 +95,16 @@ const distinctSupport = [
   { message: string; path: string[] },
 ];
 const passOrFail = z.enum(["PASS", "FAIL"]);
+// A note is verified when one verification passed every verifier but
+// requirements, so its result can be built on; the candidate is accepted
+// when requirements passed as well.
 const noteFields = z.strictObject({
   id: noteId,
   summary: nonblank.optional(),
   text: nonblank,
   support: z.array(noteId),
   verdicts: z.array(verdict),
+  verified: z.boolean(),
 });
 export const note = noteFields.refine(...distinctSupport);
 export type Note = z.output<typeof note>;
@@ -182,13 +186,26 @@ export const coordinatorResult = z.strictObject({
 export type CoordinatorResult = z.output<typeof coordinatorResult>;
 
 export function coordinatorResultFor(
-  notes: readonly Pick<Note, "id" | "summary">[],
+  notes: readonly Pick<Note, "id" | "summary" | "support" | "verified">[],
 ) {
   const known = new Set(notes.map(({ id }) => id));
   const withoutSummary = new Set(
     notes.filter(({ summary }) => summary === undefined).map(({ id }) => id),
   );
+  const verified = new Set(
+    notes.filter(({ verified }) => verified).map(({ id }) => id),
+  );
   return coordinatorResult.superRefine((value, ctx) => {
+    if (value.verify !== undefined) {
+      const note = notes.find(({ id }) => id === value.verify?.note);
+      if (note?.support.some((id) => !verified.has(id)) === true) {
+        ctx.addIssue({
+          code: "custom",
+          message: "a note is verified only after every note in its support is",
+          path: ["verify", "note"],
+        });
+      }
+    }
     const filed = new Set<string>();
     for (const [index, filing] of value.filings.entries()) {
       if (!withoutSummary.has(filing.note) || filed.has(filing.note)) {
@@ -279,23 +296,6 @@ export function statementFor(input: VerifierInput) {
 
 /** The proof the reconstruction verifier writes from the statement and support statements alone. */
 export const proof = z.strictObject({ proof: nonblank });
-
-const normalized = (value: string): string =>
-  value.replace(/\s+/gu, " ").trim();
-
-/** Whether the statements would hand the note's text to the proof call. */
-export function statementLeaks(
-  input: VerifierInput,
-  value: Statement,
-): boolean {
-  const exact = normalized(input.note.text);
-  const supplied = normalized(
-    [value.statement, ...value.support.map(({ statement }) => statement)].join(
-      " ",
-    ),
-  );
-  return exact.length > 0 && supplied.includes(exact);
-}
 
 /** What the source verifier confirmed: one entry per external result the text invokes. */
 // A plain string in the schema because the provider's structured output

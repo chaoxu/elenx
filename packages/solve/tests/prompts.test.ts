@@ -19,6 +19,7 @@ const note = {
   summary: "P holds.",
   text: "Proof of P.",
   support: [],
+  verified: true,
   verdicts: [
     {
       verifier: "correctness" as const,
@@ -40,7 +41,10 @@ test("prompt bytes are frozen with the workflow schema version", () => {
     }),
     coordinatorCall({
       task,
-      notes: [note, { id: "n2", text, support: ["n1"], verdicts: [] }],
+      notes: [
+        note,
+        { id: "n2", text, support: ["n1"], verdicts: [], verified: false },
+      ],
     }),
     ...verifierNames
       .filter((name) => name !== "source" && name !== "reconstruction")
@@ -80,8 +84,8 @@ test("prompt bytes are frozen with the workflow schema version", () => {
   // Changing any role prompt changes the bytes the workflow fold matches
   // against journals, so bump workflowSchemaVersion and update this digest
   // in the same change.
-  expect(workflowSchemaVersion).toBe(8);
+  expect(workflowSchemaVersion).toBe(9);
   expect(digest.digest("hex")).toBe(
-    "52561c1162784e38d03244b0f2ad0e6594a56945048269af5fba3df4d7d72bc6",
+    "4dfa3f591c7a1beab0d37b0c2185866f068d9414e5e44e1d07562c19524def9f",
   );
 });

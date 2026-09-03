@@ -34,7 +34,7 @@ import {
   type VerifierInput,
 } from "./roles";
 
-export const workflowSchemaVersion = 8;
+export const workflowSchemaVersion = 9;
 export const workflowConfig = z.strictObject({
   kind: z.literal("workflow"),
   schemaVersion: z.literal(workflowSchemaVersion),
@@ -237,12 +237,7 @@ export async function deriveWorkflow(
         );
       }
       for (const name of verifierNames) {
-        const recorded = verdicts.find(
-          (entry) =>
-            entry.seq > cursor &&
-            entry.candidate === candidate &&
-            entry.verdict.verifier === name,
-        );
+        const recorded = await projection.verdictAfter(cursor, candidate, name);
         if (recorded === undefined) {
           return {
             config,

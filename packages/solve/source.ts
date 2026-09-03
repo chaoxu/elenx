@@ -87,11 +87,9 @@ function eventObject(value: Json): Record<string, Json> {
 /** The final agent message, the searches made, and the usage of one Codex run. */
 export function codexTranscript(stdout: string): {
   readonly message: string;
-  readonly queries: readonly string[];
   readonly searches: number;
   readonly usage: CodexUsage;
 } {
-  const queries: string[] = [];
   let searches = 0;
   let usage: CodexUsage | undefined;
   let stage: "start" | "thread" | "turn" | "complete" = "start";
@@ -134,15 +132,7 @@ export function codexTranscript(stdout: string): {
       throw new Error(`Codex used forbidden item type: ${itemType}`);
     }
     if (type !== "item.completed") continue;
-    if (itemType === "web_search") {
-      searches += 1;
-      const action = eventObject(item["action"] ?? {});
-      const parsed = z.array(nonblank).safeParse(action["queries"]);
-      if (parsed.success) queries.push(...parsed.data);
-      else if (typeof item["query"] === "string" && item["query"] !== "") {
-        queries.push(item["query"]);
-      }
-    }
+    if (itemType === "web_search") searches += 1;
     last = itemType;
     if (itemType === "agent_message") message = nonblank.parse(item["text"]);
   }
@@ -151,7 +141,7 @@ export function codexTranscript(stdout: string): {
   if (last !== "agent_message" || message === undefined) {
     throw new Error("Codex emitted no final completed agent message");
   }
-  return { message, queries, searches, usage };
+  return { message, searches, usage };
 }
 
 /** The parsed final message of a succeeded Codex call, with its searches and usage. Throws on a malformed transcript. */

@@ -20,7 +20,8 @@ This is the vocabulary of Elenx and its solver. Work in this repository uses the
 | candidate | An entry holding material and the labels of its required verifiers. |
 | material | The bytes attached to a candidate. |
 | verdict | `PASS`, `FAIL`, or `INCONCLUSIVE` with evidence, recorded against a call bound to a candidate. |
-| verified | The candidate status in which every required verifier recorded `PASS` and none recorded `FAIL`. An `INCONCLUSIVE` leaves the verifier missing. |
+| verified | For a candidate, the kernel status in which every required verifier recorded `PASS`; an `INCONCLUSIVE` leaves the verifier missing. For a note, one verification passed every verifier but requirements, so its result can be built on; the coordinator verifies a note only after every note in its support is verified, so an accepted note's closure is verified. |
+| transcript | The provider messages of a settled call, on its call-result. A Codex call's transcript is its JSONL output. |
 | telemetry, spend | Provider request observation of Pi calls, and the summary derived from it: request counts, request errors, measured usage in tokens, and estimated cost. A Codex call's usage is on its submission. |
 
 ## Solver
@@ -29,8 +30,8 @@ This is the vocabulary of Elenx and its solver. Work in this repository uses the
 | --- | --- |
 | workflow | The solver's one protocol: the turn loop from a task to `accepted` or `turn-limit`. It is the declaration kind `workflow` and the contract's `protocol`. Standalone role commands write the declaration kind `calls` and are not a second workflow. |
 | task | `problem` and `completionCriteria`. Fixed for a campaign. |
-| completion criteria | The task's statement of what an accepted note must do. The requirements verifier alone checks a note against them; a note is accepted when all five verifiers pass, so a task that would accept a disproof says so here. |
-| note | `id`, `summary`, `text`, `support`, `verdicts`. Immutable: a change is a new note. Numbered `n1`, `n2`, and so on in the order the explorer wrote them. |
+| completion criteria | The task's statement of what an accepted note must do. The requirements verifier alone checks a note against them; a note is accepted when all five verifiers pass on one candidate, so a task that would accept a disproof says so here. |
+| note | `id`, `summary`, `text`, `support`, `verdicts`, `verified`. Immutable: a change is a new note. Numbered `n1`, `n2`, and so on in the order the explorer wrote them. |
 | summary | The coordinator's navigation text for a note. Never verified. |
 | text | The explorer's mathematics in a note. |
 | explorer | The role that writes note texts for one objective. |
@@ -45,7 +46,7 @@ This is the vocabulary of Elenx and its solver. Work in this repository uses the
 | verifier | The role, and each of `correctness`, `adversarial`, `source`, `reconstruction`, `requirements`, which run in that order and stop at the first verdict that is not `PASS`. The source verifier is a Codex call with web search; the reconstruction verifier is three Pi calls; the others are one Pi call each. |
 | sources | The source verifier's evidence: one entry per external result the text invokes, a result attributed to the literature or a named source and proved neither in the text nor in a support note. `result` is the result as the source states it, `source` is where it is stated, `url` is the page opened. |
 | obligation | The fixed instruction of one verifier. |
-| verdict | `verifier`, `note`, `PASS`, `FAIL`, or `INCONCLUSIVE`, `report`, recorded on the note it names. A `PASS` names the note under verification; a `FAIL` names the note the report is about. Only the reconstruction verifier returns `INCONCLUSIVE`, and it names the note under verification: the proof left something unproved and no defect was found, or the statement misstated or gave away the note, which blocks acceptance without marking the note defective. |
+| verdict | `verifier`, `note`, `PASS`, `FAIL`, or `INCONCLUSIVE`, `report`, recorded on the note it names. A `PASS` names the note under verification; a `FAIL` names the note the report is about. Only the reconstruction verifier returns `INCONCLUSIVE`, and it names the note under verification: the proof left something unproved and no defect was found, or the statement misstated or gave away the note, which blocks acceptance without marking the note defective. A requirements `FAIL` leaves the note verified but not accepted. |
 | statement | What a text establishes, with nothing of how: hypotheses, quantifiers, parameters, side conditions, conclusion. The reconstruction verifier states it for the note and each support note, then has a fresh call that never sees the note's text write a proof of it from the support statements. |
 | proof | The reconstruction verifier's evidence: a proof of the statement written by a fresh call from the statement and the support statements alone, never from the note's text. It may leave something unproved and say so. |
 | report | The text of a verdict. Qualified as execution report: a run's result with `schemaVersion`, `application`, and `protocol`, as `run` and `inspect` emit it. |

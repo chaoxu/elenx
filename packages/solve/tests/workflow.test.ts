@@ -189,10 +189,11 @@ test("the durable workflow accepts a verified note", async () => {
     }[];
   };
   expect(inspection.phase).toBe("accepted");
-  expect(inspection.result.schemaVersion).toBe(6);
+  expect(inspection.result.schemaVersion).toBe(7);
   expect(inspection.result.candidate).toBe(phase.candidate);
   expect(inspection.result.note.text).toBe(good.text);
   expect(inspection.notes[0]?.verdicts).toHaveLength(5);
+  expect(phase.note.verified).toBe(true);
   expect(inspection.calls.map(({ role }) => role)).toEqual([
     "explorer",
     "coordinator",
@@ -298,6 +299,11 @@ test("verdicts accumulate on the notes they name and stop at the first FAIL", as
   });
   expect(drive.calls).toHaveLength(19);
   expect(drive.codexCalls).toHaveLength(2);
+  expect(phase.notes.map(({ verified }) => verified)).toEqual([
+    true,
+    false,
+    true,
+  ]);
   expect(drive.calls[8]?.prompt).toContain("L is not P.");
   expect(drive.calls[8]?.prompt).toContain(`Objective:\nContinue from n1.`);
   expect(drive.calls[8]?.prompt).not.toContain(`"text": "Lemma L."`);
@@ -508,47 +514,6 @@ test("an INCONCLUSIVE reconstruction blocks acceptance without a defect and can 
   campaign.close();
 });
 
-test("a statement that contains the note's text yields no proof", async () => {
-  const path = campaignPath();
-  const workflow = config(1);
-  const campaign = createCampaign(path, applicationId, workflow);
-  const drive = dependencies([
-    { submission: { notes: [good] } },
-    { submission: coordination("n1") },
-    { submission: { note: "n1", verdict: "PASS", report: "sound" } },
-    { submission: { note: "n1", verdict: "PASS", report: "no counter" } },
-    {
-      codex: {
-        note: "n1",
-        verdict: "PASS",
-        report: "nothing cited",
-        sources: [],
-      },
-    },
-    { submission: { statement: `Trivially, ${good.text}`, support: [] } },
-    {
-      submission: {
-        note: "n1",
-        verdict: "INCONCLUSIVE",
-        report: "The statement gave the note away.",
-      },
-    },
-  ]);
-  const phase = await runWorkflow(
-    campaign,
-    createPiRoles(campaign, workflow.settings, drive),
-  );
-  expect(phase).toMatchObject({ kind: "turn-limit", turns: 1 });
-  expect(drive.calls.map(({ label }) => label).slice(4)).toEqual([
-    "elenx-solve/verifier/reconstruction/statement",
-    "elenx-solve/verifier/reconstruction",
-  ]);
-  expect(drive.calls[5]?.prompt).toContain("no proof was written");
-  if (phase.kind !== "turn-limit") throw new Error("expected turn limit");
-  expect(phase.notes[0]?.verdicts.at(-1)?.verdict).toBe("INCONCLUSIVE");
-  campaign.close();
-});
-
 test("a source PASS that confirms sources without searching is an operational error", async () => {
   const path = campaignPath();
   const workflow = config(1);
@@ -607,10 +572,11 @@ test("explorer notes name only earlier notes as support", () => {
   ).toBe(false);
 });
 
-test("coordination files every note without a summary and references known notes", () => {
+test("coordination files every note without a summary, references known notes, and verifies only over verified support", () => {
   const schema = coordinatorResultFor([
-    { id: "n1", summary: "filed" },
-    { id: "n2" },
+    { id: "n1", summary: "filed", support: [], verified: true },
+    { id: "n2", support: ["n1"], verified: false },
+    { id: "n3", summary: "filed", support: ["n2"], verified: false },
   ]);
   expect(
     schema.safeParse({ filings: [], objective: "Go.", support: [] }).success,
@@ -645,13 +611,37 @@ test("coordination files every note without a summary and references known notes
       verify: { note: "n9" },
     }).success,
   ).toBe(false);
+  expect(
+    schema.safeParse({
+      filings: [{ note: "n2", summary: "new" }],
+      objective: "Go.",
+      support: [],
+      verify: { note: "n3" },
+    }).success,
+  ).toBe(false);
 });
 
 test("a PASS names the note and a FAIL may name a support note", () => {
   const schema = verdictFor({
     task,
-    note: { id: "n2", summary: "s", text: "t", support: ["n1"], verdicts: [] },
-    support: [{ id: "n1", summary: "s", text: "t", support: [], verdicts: [] }],
+    note: {
+      id: "n2",
+      summary: "s",
+      text: "t",
+      support: ["n1"],
+      verdicts: [],
+      verified: false,
+    },
+    support: [
+      {
+        id: "n1",
+        summary: "s",
+        text: "t",
+        support: [],
+        verdicts: [],
+        verified: true,
+      },
+    ],
   });
   expect(
     schema.safeParse({ note: "n2", verdict: "PASS", report: "ok" }).success,

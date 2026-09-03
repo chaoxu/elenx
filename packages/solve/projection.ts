@@ -2,7 +2,13 @@ import { createRequire } from "node:module";
 
 import type { EntryId } from "elenx";
 
-import { note as noteSchema, type JournalVerdict, type Note } from "./roles";
+import {
+  note as noteSchema,
+  verifierNames,
+  type JournalVerdict,
+  type Note,
+  type Verdict,
+} from "./roles";
 
 const require = createRequire(import.meta.url);
 // cozo-node is CommonJS with a native addon; require keeps Bun and Node happy.
@@ -100,7 +106,7 @@ export class Projection {
 
   /** Every note that exists at `seq`, with the summary and verdicts recorded by then, in id order. */
   async at(seq: EntryId): Promise<Note[]> {
-    const [notes, summaries, support, verdicts] = await Promise.all([
+    const [notes, summaries, support, verdicts, verified] = await Promise.all([
       this.db.run("?[id, text] := *note{id, seq, text}, seq <= $seq", { seq }),
       this.db.run(
         "?[note, summary] := *summary{note, seq, summary}, seq <= $seq",
@@ -111,7 +117,17 @@ export class Projection {
         "?[seq, verifier, note, verdict, report] := *verdict{seq, verifier, note, verdict, report}, seq <= $seq :order seq",
         { seq },
       ),
+      // Verified: one candidate passed every verifier but requirements.
+      this.db.run(
+        `passed[candidate, note, verifier] := *verdict{seq, candidate, verifier, note, verdict: "PASS"}, seq <= $seq
+?[note] := ${verifierNames
+          .filter((name) => name !== "requirements")
+          .map((name) => `passed[candidate, note, "${name}"]`)
+          .join(", ")}`,
+        { seq },
+      ),
     ]);
+    const verifiedNotes = new Set(verified.rows.map(([note]) => note));
     const summaryOf = new Map(
       summaries.rows.map(([note, summary]) => [note, summary]),
     );
@@ -133,9 +149,29 @@ export class Projection {
               verdict,
               report,
             })),
+          verified: verifiedNotes.has(id),
         }),
       )
       .sort((left, right) => byId(left.id, right.id));
+  }
+
+  /** The first verdict of one verifier on one candidate recorded after `after`. */
+  async verdictAfter(
+    after: EntryId,
+    candidate: EntryId,
+    verifier: string,
+  ): Promise<{ readonly seq: EntryId; readonly verdict: Verdict } | undefined> {
+    const result = await this.db.run(
+      "?[seq, note, verdict, report] := *verdict{seq, candidate, verifier, note, verdict, report}, seq > $after, candidate == $candidate, verifier == $verifier :order seq :limit 1",
+      { after, candidate, verifier },
+    );
+    const row = result.rows[0];
+    if (row === undefined) return undefined;
+    const [seq, note, verdict, report] = row;
+    return {
+      seq: seq as EntryId,
+      verdict: { verifier, note, verdict, report } as Verdict,
+    };
   }
 
   /** The transitive support of a note, in id order. */
