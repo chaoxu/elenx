@@ -30,7 +30,7 @@ test("run starts, resumes, inspects, and exports one workflow", async () => {
   const first = await cli(directory, "run", task, campaign, settings);
   expect(first.code).toBe(0);
   expect(JSON.parse(first.stdout)).toMatchObject({
-    schemaVersion: 3,
+    schemaVersion: 4,
     application: "elenx-solve",
     protocol: "workflow",
     outcome: "accepted",
@@ -122,6 +122,7 @@ test("a provider failure leaves no verdict", async () => {
       id: "n1",
       summary: "failure",
       text: "TRIGGER_PROVIDER_ERROR",
+      support: [],
       verdicts: [],
     },
     support: [],

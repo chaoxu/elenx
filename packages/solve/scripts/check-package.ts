@@ -59,6 +59,7 @@ try {
         elenx: `file:${kernelArchive}`,
         "elenx-solve": `file:${solverArchive}`,
       },
+      trustedDependencies: ["cozo-node"],
     }),
   );
   await run([process.execPath, "install"], consumer);

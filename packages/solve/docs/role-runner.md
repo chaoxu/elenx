@@ -10,23 +10,25 @@ VerifierInput    -> VerifierResult
 
 ## Notes and verdicts
 
-A note is `id`, `summary`, `text`, and `verdicts`. The explorer writes the text, the coordinator writes the summary, and the verifiers write the verdicts. Notes are immutable: a change is a new note. Every role receives notes in this one shape.
+A note is `id`, `summary`, `text`, `support`, and `verdicts`. The explorer writes the text and names the support, the notes whose results the text uses without proving them; the coordinator writes the summary; the verifiers write the verdicts. Notes are immutable: a change is a new note. Every role receives notes in this one shape.
+
+The fold builds the projection on every derivation: an in-memory Cozo database of notes, summaries, and verdicts, each carrying the journal sequence that produced it, and support edges. Which notes exist at a journal sequence, and a note's closure, are queries against the projection. Nothing is persisted there; the journal is the only source of truth.
 
 A verdict names the verifier that produced it, the note it is about, `PASS` or `FAIL`, and a report. A `PASS` names the note under verification. A `FAIL` names the note the report is about, which may be a support note. Verdicts accumulate on the note they name, so a reader can weigh a note by the verdicts it carries.
 
 ## Explorer
 
-`ExplorerInput` contains the task, one objective, every note without its text, and the support notes in full. The first objective is the problem. `ExplorerResult` contains one or more new note texts. The explorer performs mathematics and writes no summaries.
+`ExplorerInput` contains the task, one objective, every note without its text, and the support notes in full. The first objective is the problem. `ExplorerResult` contains one or more new notes, each a text with its support. The new notes are numbered after the notes the explorer received, in the order it returns them, and a note may name an earlier note of the same turn. The explorer performs mathematics and writes no summaries.
 
 ## Coordinator
 
-`CoordinatorInput` contains the task and every note, including the new notes that have no summary yet. `CoordinatorResult` files each of those notes with a summary, sets the next objective and the support notes the explorer reads in full, and optionally verifies one note with the support notes whose results its text uses without proving them.
+`CoordinatorInput` contains the task and every note, including the new notes that have no summary yet. `CoordinatorResult` files each of those notes with a summary, sets the next objective and the support notes the explorer reads in full, and optionally verifies one note against the support it declares.
 
-A summary is for navigation and is never verified. It states what the note establishes or attempts, whether the text proves it or leaves a gap, and the notes it depends on. The coordinator has no correctness authority.
+A summary is for navigation and is never verified. It states what the note establishes or attempts and whether the text proves it or leaves a gap. The coordinator has no correctness authority.
 
 ## Verifier
 
-`VerifierInput` contains the task, the note, and its support notes. The verifier role submits one kernel candidate for the note and its support, then runs the `correctness`, `adversarial`, and `requirements` verifiers in that order, stopping at the first `FAIL`, and returns the verdicts recorded on that candidate. The correctness and adversarial verifiers judge the text on its own terms: whatever the text asserts, it must establish, with the support notes as premises whose own verdicts are visible. The requirements verifier alone decides whether the note meets the completion criteria. Malformed results and provider failures remain operational errors.
+`VerifierInput` contains the task, the note, and the support notes it declares, in full. The verifier role submits one kernel candidate for the note and its support, then runs the `correctness`, `adversarial`, and `requirements` verifiers in that order, stopping at the first `FAIL`, and returns the verdicts recorded on that candidate. The correctness and adversarial verifiers judge the text on its own terms: whatever the text asserts, it must establish, with the support notes as premises whose own verdicts are visible. The requirements verifier alone decides whether the note meets the completion criteria. Malformed results and provider failures remain operational errors.
 
 The three verifier calls share one system prompt and begin with the same task, note, and support text, so a provider can serve that prefix from cache; only the verifier name and obligation at the end differ. Each verifier call binds to the candidate and records its own verdict, so the kernel's candidate status is the acceptance rule: all three verifiers passed. A verification interrupted after some verdicts resumes on the same candidate and runs only the verifiers still missing. A replacement `Roles.verifier` must bind its calls and verdicts the same way, because acceptance reads only kernel verdicts recorded under the verifier labels.
 
@@ -50,4 +52,4 @@ Explorer results number the notes `n1`, `n2`, and so on in order. Note verdicts 
 
 `inspect` reports the task, current phase, notes with verdicts, every role call once with its state and submission, telemetry-derived spend, and with `--include-requests` the exact Pi requests. A terminal campaign adds `result`, derived from the journal. Each verifier call carries its verifier name and its candidate.
 
-`export` returns the accepted candidate bytes: the accepted note followed by its support notes.
+`export` returns the accepted note preceded by its closure in id order, each under a heading with its id.

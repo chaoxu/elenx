@@ -64,12 +64,22 @@ export const verdict = z.strictObject({
 });
 export type Verdict = z.output<typeof verdict>;
 
-export const note = z.strictObject({
+const distinctSupport = [
+  (value: { readonly support: readonly string[] }) =>
+    new Set(value.support).size === value.support.length,
+  { message: "support ids must be distinct", path: ["support"] },
+] as [
+  (value: { readonly support: readonly string[] }) => boolean,
+  { message: string; path: string[] },
+];
+const noteFields = z.strictObject({
   id: noteId,
   summary: nonblank.optional(),
   text: nonblank,
+  support: z.array(noteId),
   verdicts: z.array(verdict),
 });
+export const note = noteFields.refine(...distinctSupport);
 export type Note = z.output<typeof note>;
 
 function distinctKnown(
@@ -95,7 +105,7 @@ export const explorerInput = z
   .strictObject({
     task,
     objective: nonblank,
-    notes: z.array(note.omit({ text: true })),
+    notes: z.array(noteFields.omit({ text: true }).refine(...distinctSupport)),
     support: z.array(note),
   })
   .superRefine((value, ctx) => {
@@ -109,9 +119,30 @@ export const explorerInput = z
 export type ExplorerInput = z.output<typeof explorerInput>;
 
 export const explorerResult = z.strictObject({
-  notes: z.array(z.strictObject({ text: nonblank })).min(1),
+  notes: z
+    .array(z.strictObject({ text: nonblank, support: z.array(noteId) }))
+    .min(1),
 });
 export type ExplorerResult = z.output<typeof explorerResult>;
+
+/** The explorer's notes are numbered after the notes it received, in order. */
+export function noteIdAfter(count: number, position: number): string {
+  return `n${count + position + 1}`;
+}
+
+export function explorerResultFor(known: readonly string[]) {
+  return explorerResult.superRefine((value, ctx) => {
+    const allowed = new Set(known);
+    for (const [position, entry] of value.notes.entries()) {
+      distinctKnown(allowed, entry.support, ctx, [
+        "notes",
+        position,
+        "support",
+      ]);
+      allowed.add(noteIdAfter(known.length, position));
+    }
+  });
+}
 
 export const coordinatorInput = z.strictObject({
   task,
@@ -123,7 +154,7 @@ export const coordinatorResult = z.strictObject({
   filings: z.array(z.strictObject({ note: noteId, summary: nonblank })),
   objective: nonblank,
   support: z.array(noteId),
-  verify: z.strictObject({ note: noteId, support: z.array(noteId) }).optional(),
+  verify: z.strictObject({ note: noteId }).optional(),
 });
 export type CoordinatorResult = z.output<typeof coordinatorResult>;
 
@@ -155,9 +186,7 @@ export function coordinatorResultFor(
     }
     distinctKnown(known, value.support, ctx, ["support"]);
     if (value.verify === undefined) return;
-    distinctKnown(known, [value.verify.note, ...value.verify.support], ctx, [
-      "verify",
-    ]);
+    distinctKnown(known, [value.verify.note], ctx, ["verify", "note"]);
   });
 }
 
@@ -167,19 +196,15 @@ export const verifierInput = z
     note,
     support: z.array(note),
   })
-  .superRefine((value, ctx) => {
-    const ids = new Set([value.note.id]);
-    for (const [position, entry] of value.support.entries()) {
-      if (ids.has(entry.id)) {
-        ctx.addIssue({
-          code: "custom",
-          message: "note and support ids must be distinct",
-          path: ["support", position, "id"],
-        });
-      }
-      ids.add(entry.id);
-    }
-  });
+  .refine(
+    (value) =>
+      value.support.map(({ id }) => id).join(",") ===
+      value.note.support.join(","),
+    {
+      message: "support must be the notes the note declares, in order",
+      path: ["support"],
+    },
+  );
 export type VerifierInput = z.output<typeof verifierInput>;
 
 export function verdictFor(input: VerifierInput) {

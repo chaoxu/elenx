@@ -64,6 +64,7 @@ function submissionFor(tool: string, request: string): unknown {
           text: request.includes('\\"verdict\\": \\"FAIL\\"')
             ? completeProof
             : incompleteProof,
+          support: [],
         },
       ],
     };
@@ -83,7 +84,7 @@ function submissionFor(tool: string, request: string): unknown {
       })),
       objective: `Replace or extend ${note}.`,
       support: [note],
-      verify: { note, support: [] },
+      verify: { note },
     };
   }
   if (tool === "submit_verdict") {

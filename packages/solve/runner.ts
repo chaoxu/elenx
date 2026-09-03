@@ -69,7 +69,7 @@ async function drive(
   } catch (error) {
     let at: string;
     try {
-      at = deriveWorkflow(campaign).phase.kind;
+      at = (await deriveWorkflow(campaign)).phase.kind;
     } catch {
       throw error;
     }

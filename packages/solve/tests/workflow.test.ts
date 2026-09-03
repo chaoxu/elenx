@@ -6,6 +6,7 @@ import { createPiRoles } from "../pi-roles";
 import {
   applicationId,
   coordinatorResultFor,
+  explorerResultFor,
   verdictFor,
   verifierNames,
 } from "../roles";
@@ -29,7 +30,7 @@ const task = {
   problem: "Prove P.",
   completionCriteria: "Give a complete proof of P.",
 };
-const good = { text: "Complete proof of P." };
+const good = { text: "Complete proof of P.", support: [] };
 
 function passes(note: string): readonly Reply[] {
   return verifierNames.map((name) => ({
@@ -46,20 +47,18 @@ function config(maxExplorerTurns = 4) {
 
 function coordination(
   note: string,
-  options: {
-    readonly verify?: boolean;
-    readonly support?: string[];
-    readonly read?: string[];
-  } = {},
+  options: { readonly verify?: boolean; readonly read?: string[] } = {},
 ) {
   return {
     filings: [{ note, summary: `Summary of ${note}.` }],
     objective: `Continue from ${note}.`,
     support: options.read ?? [note],
-    ...(options.verify === false
-      ? {}
-      : { verify: { note, support: options.support ?? [] } }),
+    ...(options.verify === false ? {} : { verify: { note } }),
   };
+}
+
+async function phaseOf(campaign: Parameters<typeof deriveWorkflow>[0]) {
+  return (await deriveWorkflow(campaign)).phase;
 }
 
 test("the durable workflow accepts a verified note", async () => {
@@ -93,6 +92,7 @@ test("the durable workflow accepts a verified note", async () => {
     "elenx-solve/verifier/requirements",
   ]);
   expect(drive.calls[0]?.prompt).toContain(`Objective:\n${task.problem}`);
+  expect(drive.calls[0]?.prompt).toContain("Your first note is n1.");
   const correctness = drive.calls[2]!;
   const prefix = correctness.prompt.split("\n\nVerifier:")[0]!;
   for (const verifier of drive.calls.slice(2)) {
@@ -108,7 +108,7 @@ test("the durable workflow accepts a verified note", async () => {
   expect(drive.calls).toHaveLength(5);
   campaign.close();
 
-  const inspection = inspectCampaign(path) as {
+  const inspection = (await inspectCampaign(path)) as {
     readonly phase: string;
     readonly notes: readonly { readonly verdicts: readonly unknown[] }[];
     readonly result: {
@@ -124,7 +124,7 @@ test("the durable workflow accepts a verified note", async () => {
     }[];
   };
   expect(inspection.phase).toBe("accepted");
-  expect(inspection.result.schemaVersion).toBe(3);
+  expect(inspection.result.schemaVersion).toBe(4);
   expect(inspection.result.candidate).toBe(phase.candidate);
   expect(inspection.result.note.text).toBe(good.text);
   expect(inspection.notes[0]?.verdicts).toHaveLength(3);
@@ -141,7 +141,9 @@ test("the durable workflow accepts a verified note", async () => {
     candidate: phase.candidate,
     submission: { verdict: "PASS" },
   });
-  expect(new TextDecoder().decode(exportCandidate(path))).toBe(good.text);
+  expect(new TextDecoder().decode(await exportCandidate(path))).toBe(
+    `--- n1 ---\n\n${good.text}`,
+  );
 });
 
 test("verdicts accumulate on the notes they name and stop at the first FAIL", async () => {
@@ -149,16 +151,20 @@ test("verdicts accumulate on the notes they name and stop at the first FAIL", as
   const workflow = config();
   const campaign = createCampaign(path, applicationId, workflow);
   const drive = dependencies([
-    { submission: { notes: [{ text: "Lemma L." }] } },
+    { submission: { notes: [{ text: "Lemma L.", support: [] }] } },
     { submission: coordination("n1", { read: [] }) },
     { submission: { note: "n1", verdict: "PASS", report: "L holds." } },
     { submission: { note: "n1", verdict: "PASS", report: "No gap." } },
     { submission: { note: "n1", verdict: "FAIL", report: "L is not P." } },
-    { submission: { notes: [{ text: "P from L, with a gap." }] } },
-    { submission: coordination("n2", { support: ["n1"], read: ["n1", "n2"] }) },
+    {
+      submission: {
+        notes: [{ text: "P from L, with a gap.", support: ["n1"] }],
+      },
+    },
+    { submission: coordination("n2", { read: ["n1", "n2"] }) },
     { submission: { note: "n1", verdict: "FAIL", report: "L misused." } },
-    { submission: { notes: [good] } },
-    { submission: coordination("n3", { support: ["n1"] }) },
+    { submission: { notes: [{ ...good, support: ["n1"] }] } },
+    { submission: coordination("n3") },
     ...passes("n3"),
   ]);
   const phase = await runWorkflow(
@@ -187,9 +193,13 @@ test("verdicts accumulate on the notes they name and stop at the first FAIL", as
   expect(drive.calls[5]?.prompt).toContain("L is not P.");
   expect(drive.calls[5]?.prompt).toContain(`Objective:\nContinue from n1.`);
   expect(drive.calls[5]?.prompt).not.toContain(`"text": "Lemma L."`);
+  expect(drive.calls[7]?.prompt).toContain(`"text": "Lemma L."`);
   expect(drive.calls[8]?.prompt).toContain("L misused.");
   expect(drive.calls[8]?.prompt).toContain(`"text": "Lemma L."`);
   campaign.close();
+  expect(new TextDecoder().decode(await exportCandidate(path))).toBe(
+    `--- n1 ---\n\nLemma L.\n\n--- n3 ---\n\n${good.text}`,
+  );
 });
 
 test("resume reconstructs the next role from the journal", async () => {
@@ -206,7 +216,7 @@ test("resume reconstructs the next role from the journal", async () => {
   campaign.close();
 
   campaign = openCampaign(path);
-  expect(deriveWorkflow(campaign).phase.kind).toBe("coordinator");
+  expect((await phaseOf(campaign)).kind).toBe("coordinator");
   const rest = dependencies([
     { submission: coordination("n1") },
     ...passes("n1"),
@@ -233,7 +243,7 @@ test("a verification that fails mid-way resumes on the same candidate", async ()
   await expect(
     runWorkflow(campaign, createPiRoles(campaign, workflow.settings, first)),
   ).rejects.toThrow("provider down");
-  const paused = deriveWorkflow(campaign).phase;
+  const paused = await phaseOf(campaign);
   expect(paused.kind).toBe("verifier");
   if (paused.kind !== "verifier") throw new Error("expected verifier");
   expect(paused.candidate).toBe(first.calls[2]!.candidate!);
@@ -272,7 +282,7 @@ test("a journal written by other prompts is refused", async () => {
     notes: [],
     support: [],
   });
-  expect(() => deriveWorkflow(campaign)).toThrow(
+  await expect(deriveWorkflow(campaign)).rejects.toThrow(
     "does not match the derived explorer request",
   );
   campaign.close();
@@ -297,6 +307,32 @@ test("the turn limit ends a workflow without a verified note", async () => {
   campaign.close();
 });
 
+test("explorer notes name only earlier notes as support", () => {
+  const schema = explorerResultFor(["n1", "n2"]);
+  expect(
+    schema.safeParse({
+      notes: [
+        { text: "a", support: ["n1"] },
+        { text: "b", support: ["n2", "n3"] },
+      ],
+    }).success,
+  ).toBe(true);
+  expect(
+    schema.safeParse({ notes: [{ text: "a", support: ["n3"] }] }).success,
+  ).toBe(false);
+  expect(
+    schema.safeParse({ notes: [{ text: "a", support: ["n1", "n1"] }] }).success,
+  ).toBe(false);
+  expect(
+    schema.safeParse({
+      notes: [
+        { text: "a", support: ["n4"] },
+        { text: "b", support: [] },
+      ],
+    }).success,
+  ).toBe(false);
+});
+
 test("coordination files every note without a summary and references known notes", () => {
   const schema = coordinatorResultFor([
     { id: "n1", summary: "filed" },
@@ -317,7 +353,7 @@ test("coordination files every note without a summary and references known notes
       filings: [{ note: "n2", summary: "new" }],
       objective: "Go.",
       support: ["n2"],
-      verify: { note: "n2", support: ["n1"] },
+      verify: { note: "n2" },
     }).success,
   ).toBe(true);
   expect(
@@ -332,7 +368,7 @@ test("coordination files every note without a summary and references known notes
       filings: [{ note: "n2", summary: "new" }],
       objective: "Go.",
       support: [],
-      verify: { note: "n2", support: ["n2"] },
+      verify: { note: "n9" },
     }).success,
   ).toBe(false);
 });
@@ -340,8 +376,8 @@ test("coordination files every note without a summary and references known notes
 test("a PASS names the note and a FAIL may name a support note", () => {
   const schema = verdictFor({
     task,
-    note: { id: "n2", summary: "s", text: "t", verdicts: [] },
-    support: [{ id: "n1", summary: "s", text: "t", verdicts: [] }],
+    note: { id: "n2", summary: "s", text: "t", support: ["n1"], verdicts: [] },
+    support: [{ id: "n1", summary: "s", text: "t", support: [], verdicts: [] }],
   });
   expect(
     schema.safeParse({ note: "n2", verdict: "PASS", report: "ok" }).success,

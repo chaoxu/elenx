@@ -79,7 +79,7 @@ async function main(args: readonly string[]): Promise<void> {
   if (command === "inspect") {
     if (positionals.length !== 1) throw new Error(usage);
     writeJson(
-      inspectCampaign(positionals[0]!, {
+      await inspectCampaign(positionals[0]!, {
         includeRequests: parsed.values["include-requests"] === true,
       }),
     );
@@ -92,7 +92,7 @@ async function main(args: readonly string[]): Promise<void> {
     ) {
       throw new Error(usage);
     }
-    process.stdout.write(exportCandidate(positionals[0]!));
+    process.stdout.write(await exportCandidate(positionals[0]!));
     return;
   }
   if (

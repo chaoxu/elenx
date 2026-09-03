@@ -99,10 +99,10 @@ function visibleSubmission(
   }
 }
 
-export function inspectCampaign(
+export async function inspectCampaign(
   path: string,
   options: { readonly includeRequests?: boolean } = {},
-): Json {
+): Promise<Json> {
   const reader = openReader(path);
   try {
     const records = reader.records();
@@ -150,7 +150,7 @@ export function inspectCampaign(
     const config = workflowConfig.safeParse(
       declaration?.kind === "campaign" ? declaration.config : undefined,
     );
-    const snapshot = config.success ? deriveWorkflow(reader) : undefined;
+    const snapshot = config.success ? await deriveWorkflow(reader) : undefined;
     const phase = snapshot?.phase;
     const terminal =
       phase?.kind === "accepted" || phase?.kind === "turn-limit"
@@ -175,15 +175,22 @@ export function inspectCampaign(
   }
 }
 
-export function exportCandidate(path: string): Uint8Array {
+/** The accepted note preceded by its transitive support, in id order. */
+export async function exportCandidate(path: string): Promise<Uint8Array> {
   const reader = openReader(path);
   try {
     assertApplication(reader.records()[0]);
-    const phase = deriveWorkflow(reader).phase;
+    const phase = (await deriveWorkflow(reader)).phase;
     if (phase.kind !== "accepted") {
       throw new Error("workflow has no accepted candidate");
     }
-    return reader.material(phase.candidate);
+    const text = [...phase.closure, phase.note.id]
+      .map((id) => {
+        const note = phase.notes.find((entry) => entry.id === id)!;
+        return `--- ${id} ---\n\n${note.text}`;
+      })
+      .join("\n\n");
+    return new TextEncoder().encode(text);
   } finally {
     reader.close();
   }

@@ -8,6 +8,7 @@ import {
 import { piRequest } from "elenx/pi";
 import { z } from "zod";
 
+import { Projection } from "./projection";
 import {
   coordinatorCall,
   explorerCall,
@@ -20,6 +21,7 @@ import {
   coordinatorInput,
   explorerInput,
   journalVerdicts,
+  noteIdAfter,
   succeededSubmission,
   task,
   verifierInput,
@@ -32,7 +34,7 @@ import {
   type VerifierInput,
 } from "./roles";
 
-export const workflowSchemaVersion = 5;
+export const workflowSchemaVersion = 6;
 export const workflowConfig = z.strictObject({
   kind: z.literal("workflow"),
   schemaVersion: z.literal(workflowSchemaVersion),
@@ -47,6 +49,8 @@ type AcceptedPhase = {
   readonly note: Note;
   readonly notes: readonly Note[];
   readonly candidate: EntryId;
+  /** The accepted note's transitive support, in id order. */
+  readonly closure: readonly string[];
 };
 type TurnLimitPhase = {
   readonly kind: "turn-limit";
@@ -66,7 +70,7 @@ export type WorkflowPhase =
   | WorkflowTerminal;
 
 export type WorkflowResult =
-  | (Omit<AcceptedPhase, "kind"> & { readonly outcome: "accepted" })
+  | (Omit<AcceptedPhase, "kind" | "closure"> & { readonly outcome: "accepted" })
   | (Omit<TurnLimitPhase, "kind"> & { readonly outcome: "turn-limit" });
 
 export interface WorkflowSnapshot {
@@ -140,144 +144,149 @@ function settledCall<S extends z.ZodType>(
   return undefined;
 }
 
-export function deriveWorkflow(reader: Reader): WorkflowSnapshot {
+function pick(notes: readonly Note[], id: string): Note {
+  const found = notes.find((entry) => entry.id === id);
+  if (found === undefined) throw new Error(`unknown note ${id}`);
+  return found;
+}
+
+export async function deriveWorkflow(
+  reader: Reader,
+): Promise<WorkflowSnapshot> {
   const records = reader.records();
   const config = parseConfig(records[0]);
   const verdicts = journalVerdicts(records);
-  const numbered: { id: string; summary?: string; text: string }[] = [];
-  let cursor = records[0]!.seq;
-  let objective = config.task.problem;
-  let support: string[] = [];
-  const notesAt = (seq: EntryId): Note[] =>
-    numbered.map((entry) => ({
-      ...entry,
-      verdicts: verdicts
-        .filter(
-          ({ seq: at, verdict }) => at <= seq && verdict.note === entry.id,
-        )
-        .map(({ verdict }) => verdict),
-    }));
-  const noteAt = (id: string, seq: EntryId): Note => {
-    const found = notesAt(seq).find((entry) => entry.id === id);
-    if (found === undefined) throw new Error(`unknown note ${id}`);
-    return found;
-  };
-
-  for (let turn = 1; turn <= config.settings.maxExplorerTurns; turn += 1) {
-    const explorerRequest = explorerInput.parse({
-      task: config.task,
-      objective,
-      notes: notesAt(cursor).map(({ text, ...rest }) => rest),
-      support: support.map((id) => noteAt(id, cursor)),
-    });
-    const explored = settledCall(
-      records,
-      cursor,
-      explorerCall(explorerRequest),
-    );
-    if (explored === undefined) {
-      return {
-        config,
-        notes: notesAt(cursor),
-        phase: { kind: "explorer", input: explorerRequest },
-      };
-    }
-    cursor = explored.settled;
-    for (const { text } of explored.value.notes) {
-      numbered.push({ id: `n${numbered.length + 1}`, text });
-    }
-    const coordinatorRequest = coordinatorInput.parse({
-      task: config.task,
-      notes: notesAt(cursor),
-    });
-    const coordinated = settledCall(
-      records,
-      cursor,
-      coordinatorCall(coordinatorRequest),
-    );
-    if (coordinated === undefined) {
-      return {
-        config,
-        notes: notesAt(cursor),
-        phase: { kind: "coordinator", input: coordinatorRequest },
-      };
-    }
-    cursor = coordinated.settled;
-    for (const filing of coordinated.value.filings) {
-      numbered.find(({ id }) => id === filing.note)!.summary = filing.summary;
-    }
-    objective = coordinated.value.objective;
-    support = coordinated.value.support;
-    if (coordinated.value.verify === undefined) continue;
-
-    const verifierRequest = verifierInput.parse({
-      task: config.task,
-      note: noteAt(coordinated.value.verify.note, cursor),
-      support: coordinated.value.verify.support.map((id) => noteAt(id, cursor)),
-    });
-    const first = firstCall(
-      records,
-      cursor,
-      verifierCall(verifierNames[0], verifierRequest),
-    );
-    if (first === undefined) {
-      return {
-        config,
-        notes: notesAt(cursor),
-        phase: { kind: "verifier", input: verifierRequest },
-      };
-    }
-    const candidate = first.candidate;
-    if (candidate === undefined) {
-      throw new Error(`verifier call ${first.seq} is not bound to a candidate`);
-    }
-    for (const name of verifierNames) {
-      const recorded = verdicts.find(
-        (entry) =>
-          entry.seq > cursor &&
-          entry.candidate === candidate &&
-          entry.verdict.verifier === name,
+  const projection = await Projection.open(verdicts);
+  try {
+    let cursor = records[0]!.seq;
+    let objective = config.task.problem;
+    let support: readonly string[] = [];
+    for (let turn = 1; turn <= config.settings.maxExplorerTurns; turn += 1) {
+      const known = await projection.at(cursor);
+      const explorerRequest = explorerInput.parse({
+        task: config.task,
+        objective,
+        notes: known.map(({ text, ...rest }) => rest),
+        support: support.map((id) => pick(known, id)),
+      });
+      const explored = settledCall(
+        records,
+        cursor,
+        explorerCall(explorerRequest),
       );
-      if (recorded === undefined) {
+      if (explored === undefined) {
         return {
           config,
-          notes: notesAt(cursor),
-          phase: { kind: "verifier", input: verifierRequest, candidate },
+          notes: known,
+          phase: { kind: "explorer", input: explorerRequest },
         };
       }
-      cursor = recorded.seq;
-      if (recorded.verdict.verdict === "FAIL") break;
-    }
-    if (deriveCandidateStatus(records, candidate).verified) {
-      const notes = notesAt(cursor);
-      return {
-        config,
-        notes,
-        phase: {
-          kind: "accepted",
-          turns: turn,
-          note: notes.find(({ id }) => id === verifierRequest.note.id)!,
-          notes,
-          candidate,
-        },
-      };
-    }
-  }
+      cursor = explored.settled;
+      await projection.add(
+        explored.value.notes.map((entry, position) => ({
+          id: noteIdAfter(known.length, position),
+          ...entry,
+        })),
+        cursor,
+      );
+      const coordinatorRequest = coordinatorInput.parse({
+        task: config.task,
+        notes: await projection.at(cursor),
+      });
+      const coordinated = settledCall(
+        records,
+        cursor,
+        coordinatorCall(coordinatorRequest),
+      );
+      if (coordinated === undefined) {
+        return {
+          config,
+          notes: coordinatorRequest.notes,
+          phase: { kind: "coordinator", input: coordinatorRequest },
+        };
+      }
+      cursor = coordinated.settled;
+      await projection.file(coordinated.value.filings, cursor);
+      objective = coordinated.value.objective;
+      support = coordinated.value.support;
+      if (coordinated.value.verify === undefined) continue;
 
-  return {
-    config,
-    notes: notesAt(cursor),
-    phase: {
-      kind: "turn-limit",
-      turns: config.settings.maxExplorerTurns,
-      notes: notesAt(cursor),
-    },
-  };
+      const filed = await projection.at(cursor);
+      const note = pick(filed, coordinated.value.verify.note);
+      const verifierRequest = verifierInput.parse({
+        task: config.task,
+        note,
+        support: note.support.map((id) => pick(filed, id)),
+      });
+      const first = firstCall(
+        records,
+        cursor,
+        verifierCall(verifierNames[0], verifierRequest),
+      );
+      if (first === undefined) {
+        return {
+          config,
+          notes: filed,
+          phase: { kind: "verifier", input: verifierRequest },
+        };
+      }
+      const candidate = first.candidate;
+      if (candidate === undefined) {
+        throw new Error(
+          `verifier call ${first.seq} is not bound to a candidate`,
+        );
+      }
+      for (const name of verifierNames) {
+        const recorded = verdicts.find(
+          (entry) =>
+            entry.seq > cursor &&
+            entry.candidate === candidate &&
+            entry.verdict.verifier === name,
+        );
+        if (recorded === undefined) {
+          return {
+            config,
+            notes: filed,
+            phase: { kind: "verifier", input: verifierRequest, candidate },
+          };
+        }
+        cursor = recorded.seq;
+        if (recorded.verdict.verdict !== "PASS") break;
+      }
+      if (deriveCandidateStatus(records, candidate).verified) {
+        const accepted = await projection.at(cursor);
+        return {
+          config,
+          notes: accepted,
+          phase: {
+            kind: "accepted",
+            turns: turn,
+            note: pick(accepted, note.id),
+            notes: accepted,
+            candidate,
+            closure: await projection.closure(note.id),
+          },
+        };
+      }
+    }
+    const ended = await projection.at(cursor);
+    return {
+      config,
+      notes: ended,
+      phase: {
+        kind: "turn-limit",
+        turns: config.settings.maxExplorerTurns,
+        notes: ended,
+      },
+    };
+  } finally {
+    projection.close();
+  }
 }
 
 export function workflowResult(phase: WorkflowTerminal): WorkflowResult {
   if (phase.kind === "accepted") {
-    const { kind, ...result } = phase;
+    const { kind, closure, ...result } = phase;
     return { ...result, outcome: kind };
   }
   const { kind, ...result } = phase;
@@ -295,7 +304,7 @@ export async function runWorkflow(
   dependencies: WorkflowDependencies = {},
 ): Promise<WorkflowPhase> {
   for (;;) {
-    const phase = deriveWorkflow(campaign).phase;
+    const phase = (await deriveWorkflow(campaign)).phase;
     if (phase.kind === "accepted" || phase.kind === "turn-limit") {
       return phase;
     }

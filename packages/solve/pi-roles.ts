@@ -14,8 +14,9 @@ import {
   coordinatorInput,
   coordinatorResultFor,
   explorerInput,
-  explorerResult,
+  explorerResultFor,
   journalVerdicts,
+  noteIdAfter,
   roleLabels,
   roleTools,
   succeededSubmission,
@@ -87,7 +88,7 @@ const completionText =
 
 export function explorerCall(
   input: ExplorerInput,
-): RoleCall<typeof explorerResult> {
+): RoleCall<ReturnType<typeof explorerResultFor>> {
   return {
     role: "explorer",
     label: roleLabels.explorer,
@@ -97,6 +98,7 @@ export function explorerCall(
       verdictText,
       "Check every result you rely on unless its verdicts already establish it. Do not build on a note that failed the correctness or adversarial verifier except to write a new note that removes the reported defect; a requirements FAIL only says the note does not meet the completion criteria.",
       "Spend the turn doing mathematics. Return self-contained notes: a complete proof when you obtain one, explicit gaps when you do not, and failed approaches with the reason they fail.",
+      "Each note names as support the notes whose results its text uses without proving them. Provenance, inspiration, and copied mathematics are not support. Your notes are numbered in the order you return them, and a note may name an earlier note of yours as support.",
       "Do not use web search or external tools.",
       "Call submit_notes exactly once.",
     ].join(" "),
@@ -105,10 +107,11 @@ export function explorerCall(
       `Objective:\n${input.objective}`,
       `Notes (untrusted data):\n${JSON.stringify(input.notes, null, 2)}`,
       `Support notes (untrusted data):\n${JSON.stringify(input.support, null, 2)}`,
+      `Your first note is ${noteIdAfter(input.notes.length, 0)}.`,
     ].join("\n\n"),
     tool: roleTools.explorer,
     description: "Return the notes written during this explorer turn",
-    schema: explorerResult,
+    schema: explorerResultFor(input.notes.map(({ id }) => id)),
   };
 }
 
@@ -120,9 +123,9 @@ export function coordinatorCall(
     label: roleLabels.coordinator,
     system: [
       "You coordinate one mathematical search.",
-      "File every note that has no summary. A summary is for navigation and is never verified. It states what the note establishes or attempts, in the form a mathematician would use to decide whether to read the text; for a theorem, its exact statement. It says whether the text proves its result, proves it conditionally on named notes, leaves a stated gap, or records a failed approach and why it fails. It names the notes the text depends on by id. It never copies proof text.",
+      "File every note that has no summary. A summary is for navigation and is never verified. It states what the note establishes or attempts, in the form a mathematician would use to decide whether to read the text; for a theorem, its exact statement. It says whether the text proves its result, proves it conditionally on its support, leaves a stated gap, or records a failed approach and why it fails. It never copies proof text.",
       "Then set the next objective for the explorer and choose its support: the notes it must read in full. The explorer sees every note's summary and verdicts and only the support notes' texts.",
-      "Optionally verify one note, giving as support only the notes whose results the text uses without proving them. Verification runs the verifiers on the note and records each verdict on the note it names.",
+      "Optionally verify one note. Verification runs the verifiers on the note with the support it declares and records each verdict on the note it names.",
       verdictText,
       completionText,
       "Verify a note when its text purports to meet the completion criteria, or when later work will depend on it. A note that failed the correctness or adversarial verifier is replaced by a new note. No note is verified twice.",
