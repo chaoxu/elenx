@@ -1,13 +1,13 @@
-import type { Campaign, Entry, EntryId, Reader } from "elenx";
-import { piRequest } from "elenx/pi";
+import type { Campaign, Entry, EntryId, Json, Reader } from "elenx";
 import { z } from "zod";
 
 import { Projection } from "./projection";
 import {
   coordinatorCall,
   explorerCall,
+  sameRequest,
   solveSettings,
-  verifierCall,
+  sourceCall,
   type RoleCall,
 } from "./pi-roles";
 import {
@@ -15,6 +15,7 @@ import {
   coordinatorInput,
   explorerInput,
   journalVerdicts,
+  jsonSnapshot,
   judgedBy,
   noteIdAfter,
   pick,
@@ -23,17 +24,17 @@ import {
   task,
   verificationComplete,
   verifierInput,
-  verifierNames,
   type CoordinatorInput,
   type ExplorerInput,
   type Note,
+  type RoleName,
   type Roles,
   type Task,
   type Verification,
   type VerifierInput,
 } from "./roles";
 
-export const workflowSchemaVersion = 11;
+export const workflowSchemaVersion = 12;
 export const workflowConfig = z.strictObject({
   kind: z.literal("workflow"),
   schemaVersion: z.literal(workflowSchemaVersion),
@@ -97,24 +98,21 @@ type CallEntry = Extract<Entry, { readonly kind: "call" }>;
 function firstCall(
   records: readonly Entry[],
   after: EntryId,
-  roleCall: RoleCall<z.ZodType>,
+  role: RoleName,
+  label: string,
+  request: Json | RoleCall<z.ZodType>,
 ): CallEntry | undefined {
   const call = records.find(
     (entry): entry is CallEntry =>
       entry.kind === "call" &&
       entry.seq > after &&
-      entry.label === roleCall.label &&
-      entry.role === roleCall.role,
+      entry.label === label &&
+      entry.role === role,
   );
   if (call === undefined) return undefined;
-  const request = piRequest.safeParse(call.request);
-  if (
-    !request.success ||
-    request.data.system !== roleCall.system ||
-    request.data.prompt !== roleCall.prompt
-  ) {
+  if (!sameRequest(call.request, request)) {
     throw new Error(
-      `call ${call.seq} does not match the derived ${roleCall.role} request`,
+      `call ${call.seq} does not match the derived ${role} request`,
     );
   }
   return call;
@@ -126,9 +124,15 @@ function settledCall<S extends z.ZodType>(
   roleCall: RoleCall<S>,
 ): { readonly settled: EntryId; readonly value: z.output<S> } | undefined {
   for (
-    let call = firstCall(records, after, roleCall);
+    let call = firstCall(
+      records,
+      after,
+      roleCall.role,
+      roleCall.label,
+      roleCall,
+    );
     call !== undefined;
-    call = firstCall(records, call.seq, roleCall)
+    call = firstCall(records, call.seq, roleCall.role, roleCall.label, roleCall)
   ) {
     const submission = succeededSubmission(records, call.seq, roleCall.tool);
     if (submission === undefined) continue;
@@ -245,14 +249,17 @@ export async function deriveWorkflow(
         notes: listed,
         support: supportOf(listed).map((id) => pick(filed, id)),
       });
+      const source = sourceCall(
+        config.settings.source,
+        verifierRequest,
+        judgedBy(verifierRequest, [], "source"),
+      );
       const first = firstCall(
         records,
         cursor,
-        verifierCall(
-          verifierNames[0],
-          verifierRequest,
-          judgedBy(verifierRequest, [], verifierNames[0]),
-        ),
+        "verifier",
+        source.label,
+        jsonSnapshot(source.request),
       );
       if (first === undefined) {
         return {

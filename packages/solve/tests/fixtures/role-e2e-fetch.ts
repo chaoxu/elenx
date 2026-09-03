@@ -88,8 +88,8 @@ function submissionFor(tool: string, request: string): unknown {
         {
           note,
           verifiers: [
-            "correctness",
             "source",
+            "correctness",
             "requirements",
             "reconstruction",
           ],

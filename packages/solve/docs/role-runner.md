@@ -14,7 +14,7 @@ A note is `id`, `summary`, `text`, `support`, `verdicts`, `verified`, and `dead`
 
 The fold builds the projection on every derivation: an in-memory Cozo database of notes, summaries, and verdicts, each carrying the journal sequence that produced it, and support edges. Which notes exist at a journal sequence, which are verified, dead, or accepted, and a note's closure, are queries against the projection. Nothing is persisted there; the journal is the only source of truth.
 
-A verdict names the verifier that produced it, the note it is about, `PASS`, `FAIL`, or `INCONCLUSIVE`, and a report. It always names a note under verification: support is established and not under review. Verdicts accumulate on the note they name, so a reader can weigh a note by the verdicts it carries. A note is verified when one verification passed correctness and source and it is not dead. A note is dead when correctness, source, or reconstruction failed it or a note in its support is dead. A note is accepted when one verification passed all four verifiers.
+A verdict names the verifier that produced it, the note it is about, `PASS`, `FAIL`, or `INCONCLUSIVE`, and a report. It always names a note under verification: support is established and not under review. Verdicts accumulate on the note they name, so a reader can weigh a note by the verdicts it carries. A note is verified when one verification passed source and correctness and it is not dead. A note is dead when correctness, source, or reconstruction failed it or a note in its support is dead. A note is accepted when one verification passed all four verifiers.
 
 ## Explorer
 
@@ -22,7 +22,7 @@ A verdict names the verifier that produced it, the note it is about, `PASS`, `FA
 
 ## Coordinator
 
-`CoordinatorInput` contains the task and every note, including the new notes that have no summary yet and the dead notes with their verdicts. `CoordinatorResult` files each new note with a summary, sets the next objective and the support notes the explorer reads in full, and lists in `verify` the notes to verify in priority order, each with the verifiers to run, a nonempty prefix of correctness, source, requirements, reconstruction. A note may be listed only when it is not dead and every note in its support is verified or listed earlier with the source verifier, so an accepted note's closure is verified by induction.
+`CoordinatorInput` contains the task and every note, including the new notes that have no summary yet and the dead notes with their verdicts. `CoordinatorResult` files each new note with a summary, sets the next objective and the support notes the explorer reads in full, and lists in `verify` the notes to verify in priority order, each with the verifiers to run, a nonempty prefix of source, correctness, requirements, reconstruction. A note may be listed only when it is not dead and every note in its support is verified or listed earlier with the correctness verifier, so an accepted note's closure is verified by induction. The coordinator never asks the explorer to check, polish, or restate a verified note.
 
 A summary is for navigation and is never verified. It states what the note establishes or attempts and whether the text proves it, leaves a gap, or says it meets the completion criteria. The coordinator has no correctness authority.
 
@@ -40,7 +40,7 @@ A verification interrupted after some calls resumes on the same candidate and ma
 
 ## Replay and terminal results
 
-Every role call is one model call: Pi for every role but the source verifier, which is one Codex call. Its prompt is a deterministic function of the role input, its structured result is its submission, a submit tool call or the source verifier's final JSON message, and its transcript sits on the same call, with telemetry and spend for Pi calls. The workflow fold starts from the declared task, derives each role input, and matches the explorer, coordinator, and correctness call of each verification by their prompt bytes; the remaining verifier calls are found by the candidate they bind to. A call whose bytes differ means the journal was written by other prompts, and the fold refuses it rather than running the role again.
+Every role call is one model call: Pi for every role but the source verifier, which is one Codex call. Its prompt is a deterministic function of the role input, its structured result is its submission, a submit tool call or the source verifier's final JSON message, and its transcript sits on the same call, with telemetry and spend for Pi calls. The workflow fold starts from the declared task, derives each role input, and matches the explorer and coordinator calls by their prompt bytes and the source call that opens each verification by its exact Codex request; the remaining verifier calls are found by the candidate they bind to. A call whose bytes differ means the journal was written by other prompts, and the fold refuses it rather than running the role again.
 
 The fold replays settled calls in order:
 

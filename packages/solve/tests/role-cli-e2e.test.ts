@@ -61,6 +61,7 @@ test("run starts, resumes, inspects, and exports one workflow", async () => {
     "explorer",
     "coordinator",
     "verifier",
+    "verifier",
     "explorer",
     "coordinator",
     "verifier",
@@ -77,11 +78,12 @@ test("run starts, resumes, inspects, and exports one workflow", async () => {
   ).toEqual([
     null,
     null,
-    "correctness",
-    null,
-    null,
-    "correctness",
     "source",
+    "correctness",
+    null,
+    null,
+    "source",
+    "correctness",
     "requirements",
     "reconstruction",
     "reconstruction",
@@ -100,7 +102,7 @@ test("run starts, resumes, inspects, and exports one workflow", async () => {
       }) => [id, verdicts.length, dead],
     ),
   ).toEqual([
-    ["n1", 1, true],
+    ["n1", 2, true],
     ["n2", 4, false],
   ]);
 
@@ -129,7 +131,7 @@ test("a provider failure leaves no verdict", async () => {
   const settings = await writeSettings(directory);
   const input = await writeJson(directory, "verifier.json", {
     task: { problem: "Prove P.", completionCriteria: "Give a proof." },
-    verify: [{ note: "n1", verifiers: ["correctness", "source"] }],
+    verify: [{ note: "n1", verifiers: ["source", "correctness"] }],
     notes: [
       {
         id: "n1",
@@ -150,8 +152,9 @@ test("a provider failure leaves no verdict", async () => {
   const inspection = JSON.parse(
     (await cli(directory, "inspect", campaign)).stdout,
   );
-  expect(inspection.calls).toHaveLength(1);
-  expect(inspection.calls[0]).not.toHaveProperty("submission");
+  expect(inspection.calls).toHaveLength(2);
+  expect(inspection.calls[0]).toMatchObject({ verifier: "source" });
+  expect(inspection.calls[1]).not.toHaveProperty("submission");
   expect(inspection.spend.requestErrors).toBeGreaterThanOrEqual(1);
 });
 

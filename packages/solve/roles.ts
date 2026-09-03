@@ -17,8 +17,8 @@ export const roleNames = ["explorer", "coordinator", "verifier"] as const;
 export type RoleName = (typeof roleNames)[number];
 /** The verifiers in the order they run; the coordinator asks for a prefix of this order. */
 export const verifierNames = [
-  "correctness",
   "source",
+  "correctness",
   "requirements",
   "reconstruction",
 ] as const;
@@ -29,8 +29,8 @@ export const roleLabels = {
   verifier: `${applicationId}/verifier`,
 } as const satisfies Readonly<Record<RoleName, string>>;
 export const verifierLabels = {
-  correctness: `${roleLabels.verifier}/correctness`,
   source: `${roleLabels.verifier}/source`,
+  correctness: `${roleLabels.verifier}/correctness`,
   requirements: `${roleLabels.verifier}/requirements`,
   reconstruction: `${roleLabels.verifier}/reconstruction`,
 } as const satisfies Readonly<Record<VerifierName, string>>;
@@ -100,8 +100,8 @@ const distinctSupport = [
 ];
 const passOrFail = z.enum(["PASS", "FAIL"]);
 // The projection derives the two flags from the verdict rows and the support
-// edges. A note is verified when one verification passed correctness and
-// source and it is not dead, so its result can be built on; it is dead when
+// edges. A note is verified when one verification passed source and
+// correctness and it is not dead, so its result can be built on; it is dead when
 // correctness, source, or reconstruction failed it or a note in its support
 // is dead, so it can never be verified. A note is accepted when one
 // verification passed every verifier.
@@ -251,9 +251,9 @@ export function coordinatorResultFor(
       ["verify"],
     );
     // A note is verified only over verified support: every note in its
-    // support is verified already or listed earlier with the source
+    // support is verified already or listed earlier with the correctness
     // verifier, so it is verified in the same verification first.
-    const listedWithSource = new Set<string>();
+    const listedWithCorrectness = new Set<string>();
     for (const [index, entry] of value.verify.entries()) {
       const target = notes.find(({ id }) => id === entry.note);
       if (target === undefined) continue;
@@ -266,17 +266,19 @@ export function coordinatorResultFor(
       }
       if (
         target.support.some(
-          (id) => !verified.has(id) && !listedWithSource.has(id),
+          (id) => !verified.has(id) && !listedWithCorrectness.has(id),
         )
       ) {
         ctx.addIssue({
           code: "custom",
           message:
-            "a note is verified only after every note in its support is verified or listed earlier with the source verifier",
+            "a note is verified only after every note in its support is verified or listed earlier with the correctness verifier",
           path: ["verify", index, "note"],
         });
       }
-      if (entry.verifiers.includes("source")) listedWithSource.add(entry.note);
+      if (entry.verifiers.includes("correctness")) {
+        listedWithCorrectness.add(entry.note);
+      }
     }
   });
 }

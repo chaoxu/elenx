@@ -128,7 +128,7 @@ const taskText = (task: Task): string =>
   `Problem:\n${task.problem}\n\nCompletion criteria:\n${task.completionCriteria}`;
 
 const verdictText =
-  "Verdicts come from the correctness, source, requirements, and reconstruction verifiers, which run in that order on the notes that asked for them and stop at a note's first verdict that is not PASS. A note is verified when one verification passed correctness and source, so its result can be built on. A note is dead when correctness, source, or reconstruction failed it or a note in its support is dead: it can never be verified, and its verdicts say what went wrong. A requirements FAIL leaves a note verified but not accepted. INCONCLUSIVE means the reconstruction verifier's proof left something unproved and no defect was found, or its statement misstated or gave away the note.";
+  "Verdicts come from the source, correctness, requirements, and reconstruction verifiers, which run in that order on the notes that asked for them and stop at a note's first verdict that is not PASS. A note is verified when one verification passed source and correctness, so its result can be built on. A note is dead when correctness, source, or reconstruction failed it or a note in its support is dead: it can never be verified, and its verdicts say what went wrong. A requirements FAIL leaves a note verified but not accepted. INCONCLUSIVE means the reconstruction verifier's proof left something unproved and no defect was found, or its statement misstated or gave away the note.";
 const completionText =
   "The requirements verifier decides whether a note meets the completion criteria, and a note is accepted when one verification passed all four verifiers.";
 
@@ -171,10 +171,10 @@ export function coordinatorCall(
       "You coordinate one mathematical search.",
       "File every note that has no summary. A summary is for navigation and is never verified. It states what the note establishes or attempts, in the form a mathematician would use to decide whether to read the text; for a theorem, its exact statement. It says whether the text proves its result, proves it conditionally on its support, leaves a stated gap, or records a failed approach and why it fails, and whether the text says it meets the completion criteria. It never copies proof text.",
       "Then set the next objective for the explorer and choose its support: the notes it must read in full. The explorer sees every note's summary and verdicts and only the support notes' texts. A dead note may be read in full so that a new note removes its defect, but it cannot be built on.",
-      "Then list the notes to verify, in priority order, each with the verifiers to run: a prefix of correctness, source, requirements, reconstruction. A note that later work will build on gets correctness and source and ends verified. A note whose text says it meets the completion criteria gets all four. Verification runs on the longest prefix of your list that fits one verification's window, always its first entry; the rest stays unverified, so list it again next turn if it still matters.",
+      "Then list the notes to verify, in priority order, each with the verifiers to run: a prefix of source, correctness, requirements, reconstruction. A note that later work will build on gets source and correctness and ends verified. A note whose text says it meets the completion criteria gets all four. Verification runs on the longest prefix of your list that fits one verification's window, always its first entry; the rest stays unverified, so list it again next turn if it still matters.",
       verdictText,
       completionText,
-      "A note may be listed only after every note in its support is verified or listed earlier with the source verifier. A dead note is never listed again: it is replaced by a new note. A note whose reconstruction was INCONCLUSIVE may be listed again, usually after the explorer has split it into smaller notes. No other result is verified twice: when a note restates a verified note's result, have the explorer name that note as support instead.",
+      "A note may be listed only after every note in its support is verified or listed earlier with the correctness verifier. A dead note is never listed again: it is replaced by a new note. A note whose reconstruction was INCONCLUSIVE may be listed again, usually after the explorer has split it into smaller notes. No other result is verified twice: when a note restates a verified note's result, have the explorer name that note as support instead. Never ask the explorer to check, polish, or restate a verified note; the next objective goes to what the completion criteria still need.",
       "You have no correctness authority.",
       "Call submit_coordination exactly once.",
     ].join(" "),
@@ -459,7 +459,7 @@ export function createPiRoles(
     },
     // One verification: one candidate for the listed notes and their
     // support, then the verifiers in order, each on the notes it judges next.
-    // Correctness, source, and requirements judge their notes in one call;
+    // Source, correctness, and requirements judge their notes in one call each;
     // reconstruction runs its three calls per note. Each call records one
     // kernel verdict listing the verdict of every note it judged, and a call
     // that already has one is not recorded again, so a verification resumes
@@ -595,7 +595,7 @@ function settled<T>(
 }
 
 /** Whether a journaled request is the given Codex request, or the Pi request a role call would make. */
-function sameRequest(
+export function sameRequest(
   journaled: Json,
   request: Json | RoleCall<z.ZodType>,
 ): boolean {

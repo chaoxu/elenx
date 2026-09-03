@@ -39,7 +39,7 @@ const relations = [
 // Verified, dead, and accepted are derived from the verdict rows and the
 // support edges alone. A note is dead when correctness, source, or
 // reconstruction failed it or a note in its support is dead; verified when
-// one candidate passed correctness and source and it is not dead; accepted
+// one candidate passed source and correctness and it is not dead; accepted
 // when one candidate passed every verifier.
 const derivedRules = `passed[candidate, note, verifier] := *verdict{seq, candidate, verifier, note, verdict: "PASS"}, seq <= $seq
 dead[note] := *verdict{seq, verifier, note, verdict: "FAIL"}, seq <= $seq, verifier != "requirements"
