@@ -11,11 +11,25 @@ import {
 } from "./pi";
 import { deriveCandidateStatuses } from "./verification";
 import type { CandidateStatus, Entry, EntryId, Json, Reader } from "./types";
+import { z } from "zod";
 
 type CallEntry = Extract<Entry, { kind: "call" }>;
 type CallResultEntry = Extract<Entry, { kind: "call-result" }>;
 type ToolCallEntry = Extract<Entry, { kind: "tool-call" }>;
 type CandidateEntry = Extract<Entry, { kind: "candidate" }>;
+
+export interface PiUsageBreakdownV1 {
+  readonly freshInputTokens: number;
+  readonly cachedInputTokens: number;
+  readonly reasoningOutputTokens: number;
+  readonly nonReasoningOutputTokens: number;
+  readonly estimatedReasoningCostUsd?: number;
+  readonly reasoningCostShareOfMeasuredCost?: number;
+}
+
+export type PiObservationSpendV1 = PiSpendSummary & {
+  readonly breakdown?: PiUsageBreakdownV1;
+};
 
 export interface CoreCampaignObservationV1 {
   readonly schema: "elenx.core-observation/v1";
@@ -26,7 +40,7 @@ export interface CoreCampaignObservationV1 {
   readonly lastAtMs: number;
   readonly calls: readonly CoreCallObservationV1[];
   readonly candidates: readonly CoreCandidateObservationV1[];
-  readonly spend: PiSpendSummary & {
+  readonly spend: PiObservationSpendV1 & {
     readonly unsupportedCalls: readonly EntryId[];
     readonly unaccountedCalls: readonly EntryId[];
   };
@@ -45,7 +59,7 @@ export interface CoreCampaignSummaryV1 {
   };
   readonly candidateCount: number;
   readonly verifiedCandidateCount: number;
-  readonly spend: PiSpendSummary & {
+  readonly spend: PiObservationSpendV1 & {
     readonly unsupportedCalls: number;
     readonly unaccountedCalls: number;
   };
@@ -82,7 +96,7 @@ export type PiAccountingObservationV1 =
   | {
       readonly state: "available";
       readonly operations: readonly PiSpendOperation[];
-      readonly spend: PiSpendSummary;
+      readonly spend: PiObservationSpendV1;
     }
   | { readonly state: "unaccounted" }
   | { readonly state: "unsupported" };
@@ -127,9 +141,137 @@ interface RecordIndex {
 
 interface AccountingIndex {
   readonly byCall: ReadonlyMap<EntryId, PiAccountingObservationV1>;
-  readonly spend: PiSpendSummary;
+  readonly spend: PiObservationSpendV1;
   readonly unsupportedCalls: readonly EntryId[];
   readonly unaccountedCalls: readonly EntryId[];
+}
+
+const nonnegative = z.number().finite().nonnegative();
+const assistantUsage = z.object({
+  role: z.literal("assistant"),
+  usage: z.object({
+    input: nonnegative,
+    output: nonnegative,
+    cacheRead: nonnegative,
+    cacheWrite: nonnegative,
+    totalTokens: nonnegative,
+    reasoning: nonnegative.optional(),
+    cost: z.object({
+      input: nonnegative,
+      output: nonnegative,
+      cacheRead: nonnegative,
+      cacheWrite: nonnegative,
+      total: nonnegative,
+    }),
+  }),
+});
+
+function closeEnough(left: number, right: number): boolean {
+  return (
+    Math.abs(left - right) <=
+    1e-9 * Math.max(1, Math.abs(left), Math.abs(right))
+  );
+}
+
+function reasoningCost(
+  transcript: readonly Json[],
+  usage: Extract<PiSpendSummary, { measuredUsage: unknown }>["measuredUsage"],
+): number | undefined {
+  const messages = transcript.filter(
+    (value): value is { readonly [key: string]: Json } => {
+      if (typeof value !== "object" || value === null || Array.isArray(value))
+        return false;
+      return (
+        (value as { readonly [key: string]: Json })["role"] === "assistant"
+      );
+    },
+  );
+  const parsed = messages.map((message) => assistantUsage.safeParse(message));
+  if (parsed.some((result) => !result.success)) return undefined;
+  const measured = parsed.map((result) => result.data!.usage);
+  const sum = (select: (value: (typeof measured)[number]) => number): number =>
+    measured.reduce((total, value) => total + select(value), 0);
+  const completeReasoning = measured.every(
+    (value) =>
+      value.reasoning !== undefined ||
+      (value.output === 0 && value.cost.output === 0),
+  );
+  if (!completeReasoning) return undefined;
+  const reasoning = sum((value) => value.reasoning ?? 0);
+  if (
+    measured.some((value) => (value.reasoning ?? 0) > value.output) ||
+    measured.some(
+      (value) =>
+        !closeEnough(
+          value.cost.total,
+          value.cost.input +
+            value.cost.output +
+            value.cost.cacheRead +
+            value.cost.cacheWrite,
+        ) ||
+        (value.cost.output > value.cost.total &&
+          !closeEnough(value.cost.output, value.cost.total)),
+    ) ||
+    sum((value) => value.input) !== usage.input ||
+    sum((value) => value.output) !== usage.output ||
+    sum((value) => value.cacheRead) !== usage.cacheRead ||
+    sum((value) => value.cacheWrite) !== usage.cacheWrite ||
+    sum((value) => value.totalTokens) !== usage.totalTokens ||
+    reasoning !== usage.reasoning ||
+    !closeEnough(
+      sum((value) => value.cost.total),
+      usage.estimatedCostUsd,
+    )
+  ) {
+    return undefined;
+  }
+  const cost = sum((value) =>
+    value.output === 0
+      ? 0
+      : value.cost.output * ((value.reasoning ?? 0) / value.output),
+  );
+  return cost > usage.estimatedCostUsd &&
+    !closeEnough(cost, usage.estimatedCostUsd)
+    ? undefined
+    : cost;
+}
+
+function observedSpend(
+  spend: PiSpendSummary,
+  transcript: readonly Json[],
+): PiObservationSpendV1 {
+  if (!("measuredUsage" in spend)) return spend;
+  const usage = spend.measuredUsage;
+  const reasoning = usage.reasoning;
+  if (
+    reasoning === undefined ||
+    reasoning > usage.output ||
+    usage.input + usage.cacheRead + usage.cacheWrite + usage.output !==
+      usage.totalTokens
+  ) {
+    return spend;
+  }
+  const estimatedReasoningCostUsd = reasoningCost(transcript, usage);
+  return {
+    ...spend,
+    breakdown: {
+      freshInputTokens: usage.input + usage.cacheWrite,
+      cachedInputTokens: usage.cacheRead,
+      reasoningOutputTokens: reasoning,
+      nonReasoningOutputTokens: usage.output - reasoning,
+      ...(estimatedReasoningCostUsd === undefined
+        ? {}
+        : {
+            estimatedReasoningCostUsd,
+            ...(usage.estimatedCostUsd === 0
+              ? {}
+              : {
+                  reasoningCostShareOfMeasuredCost:
+                    estimatedReasoningCostUsd / usage.estimatedCostUsd,
+                }),
+          }),
+    },
+  };
 }
 
 export function inspectCoreCampaign(path: string): CoreCampaignObservationV1 {
@@ -269,6 +411,7 @@ function indexRecords(records: readonly Entry[]): RecordIndex {
 function indexAccounting(index: RecordIndex): AccountingIndex {
   const byCall = new Map<EntryId, PiAccountingObservationV1>();
   const understoodOperations: PiSpendOperation[] = [];
+  const understoodTranscript: Json[] = [];
   const unsupportedCalls: EntryId[] = [];
   const unaccountedCalls: EntryId[] = [];
   for (const call of index.calls) {
@@ -280,13 +423,19 @@ function indexAccounting(index: RecordIndex): AccountingIndex {
       continue;
     }
     try {
+      const stored = piStoredResult.parse(result.output);
       const projected = derivePiSpend(piEntries(index, call));
       const row = projected.calls.find(({ call: id }) => id === call.seq);
       if (row === undefined)
         throw new Error("settled Pi call was not accounted");
       const { operations, call: _, ...spend } = row;
       understoodOperations.push(...operations);
-      byCall.set(call.seq, { state: "available", operations, spend });
+      understoodTranscript.push(...stored.transcript);
+      byCall.set(call.seq, {
+        state: "available",
+        operations,
+        spend: observedSpend(spend, stored.transcript),
+      });
     } catch {
       byCall.set(call.seq, { state: "unsupported" });
       unsupportedCalls.push(call.seq);
@@ -294,7 +443,10 @@ function indexAccounting(index: RecordIndex): AccountingIndex {
   }
   return {
     byCall,
-    spend: summarizePiSpend(understoodOperations),
+    spend: observedSpend(
+      summarizePiSpend(understoodOperations),
+      understoodTranscript,
+    ),
     unsupportedCalls,
     unaccountedCalls,
   };

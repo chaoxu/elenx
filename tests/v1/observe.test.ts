@@ -33,11 +33,18 @@ function piRequest() {
   };
 }
 
-function piResult(attributes: Record<string, string | number | boolean>) {
+function piResult(
+  attributes: Record<string, string | number | boolean>,
+  transcript: readonly unknown[] = [],
+  additionalOperations: readonly Record<
+    string,
+    string | number | boolean
+  >[] = [],
+) {
   return {
     state: "succeeded" as const,
     text: "done",
-    transcript: [],
+    transcript,
     telemetry: {
       schemaVersions: PI_TELEMETRY_SCHEMA_VERSIONS,
       spans: [
@@ -50,19 +57,110 @@ function piResult(attributes: Record<string, string | number | boolean>) {
           status: { status: "ok" as const },
           settled: true,
         },
-        {
-          id: 2,
+        ...[attributes, ...additionalOperations].map((operation, at) => ({
+          id: at + 2,
           parentId: 1,
           name: "pi.ai.request",
-          attributes,
+          attributes: operation,
           events: [],
           status: { status: "ok" as const },
           settled: true,
-        },
+        })),
       ],
     },
   };
 }
+
+const firstUsage = {
+  input: 8,
+  output: 5,
+  cacheRead: 2,
+  cacheWrite: 1,
+  reasoning: 3,
+  totalTokens: 16,
+  cost: { input: 1, output: 8, cacheRead: 0.5, cacheWrite: 0.5, total: 10 },
+};
+const secondUsage = {
+  input: 0,
+  output: 5,
+  cacheRead: 0,
+  cacheWrite: 0,
+  reasoning: 0,
+  totalTokens: 5,
+  cost: { input: 0, output: 10, cacheRead: 0, cacheWrite: 0, total: 10 },
+};
+const attributes = (usage: typeof firstUsage) => ({
+  "pi.ai.provider": "provider",
+  "pi.ai.model": "model",
+  "pi.ai.api": "responses",
+  "pi.ai.usage.input_tokens": usage.input,
+  "pi.ai.usage.output_tokens": usage.output,
+  "pi.ai.usage.cache_read_tokens": usage.cacheRead,
+  "pi.ai.usage.cache_write_tokens": usage.cacheWrite,
+  "pi.ai.usage.reasoning_tokens": usage.reasoning,
+  "pi.ai.usage.total_tokens": usage.totalTokens,
+  "pi.ai.usage.cost": usage.cost.total,
+});
+const message = (usage: typeof firstUsage) => ({ role: "assistant", usage });
+
+test("derives token buckets and prices reasoning per response", async () => {
+  const path = campaignPath();
+  const campaign = createCampaign(path, "changing-workflow", null);
+  try {
+    await campaign.call(
+      { label: "workflow/measured", request: piRequest() },
+      async () =>
+        piResult(
+          attributes(firstUsage),
+          [message(firstUsage), message(secondUsage)],
+          [attributes(secondUsage)],
+        ),
+    );
+  } finally {
+    campaign.close();
+  }
+
+  const expected = {
+    freshInputTokens: 9,
+    cachedInputTokens: 2,
+    reasoningOutputTokens: 3,
+    nonReasoningOutputTokens: 7,
+    estimatedReasoningCostUsd: 4.8,
+    reasoningCostShareOfMeasuredCost: 0.24,
+  };
+  const observation = inspectCoreCampaign(path);
+  expect(observation.spend.breakdown).toEqual(expected);
+  expect(observation.calls[0]!.pi?.accounting).toMatchObject({
+    state: "available",
+    spend: { breakdown: expected },
+  });
+  expect(inspectCoreCampaignSummary(path).spend.breakdown).toEqual(expected);
+});
+
+test("omits reasoning cost when measured retry usage is absent from transcript", async () => {
+  const path = campaignPath();
+  const campaign = createCampaign(path, "changing-workflow", null);
+  try {
+    await campaign.call(
+      { label: "workflow/measured", request: piRequest() },
+      async () =>
+        piResult(
+          attributes(firstUsage),
+          [message(firstUsage)],
+          [attributes(secondUsage)],
+        ),
+    );
+  } finally {
+    campaign.close();
+  }
+
+  expect(inspectCoreCampaign(path).spend.breakdown).toEqual({
+    freshInputTokens: 9,
+    cachedInputTokens: 2,
+    reasoningOutputTokens: 3,
+    nonReasoningOutputTokens: 7,
+  });
+});
 
 test("projects opaque application data, calls, candidates, and verdicts", async () => {
   const path = campaignPath();
