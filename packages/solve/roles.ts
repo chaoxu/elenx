@@ -162,7 +162,13 @@ export function noteIdAfter(count: number, position: number): string {
   return `n${count + position + 1}`;
 }
 
-/** Support names a live note the explorer received or an earlier note of the same turn. */
+/**
+ * Support names a live note the explorer received or an earlier note of the
+ * same turn. A text that names such a note by id names it as support too, so
+ * a result a text spells out is never left undeclared; ids that cannot be
+ * support, the note's own, a later note's, or a dead note's, are provenance
+ * and pass.
+ */
 export function explorerResultFor(notes: readonly Pick<Note, "id" | "dead">[]) {
   return explorerResult.superRefine((value, ctx) => {
     const allowed = new Set(
@@ -176,6 +182,16 @@ export function explorerResultFor(notes: readonly Pick<Note, "id" | "dead">[]) {
         ["notes", position, "support"],
         "support must name distinct notes that are not dead",
       );
+      const named = [
+        ...new Set(entry.text.match(/\bn[1-9][0-9]*\b/gu) ?? []),
+      ].filter((id) => allowed.has(id) && !entry.support.includes(id));
+      if (named.length > 0) {
+        ctx.addIssue({
+          code: "custom",
+          message: `the text names ${named.join(", ")} but its support does not: name the note as support if the text uses its result, or drop the id if it does not`,
+          path: ["notes", position, "text"],
+        });
+      }
       allowed.add(noteIdAfter(notes.length, position));
     }
   });

@@ -701,6 +701,42 @@ test("explorer notes name only live earlier notes as support", () => {
       ],
     }).success,
   ).toBe(false);
+  expect(
+    schema.safeParse({
+      notes: [{ text: "By the case analysis of n1, P.", support: ["n1"] }],
+    }).success,
+  ).toBe(true);
+  expect(
+    schema.safeParse({
+      notes: [{ text: "By the case analysis of n1, P.", support: [] }],
+    }).success,
+  ).toBe(false);
+  expect(
+    schema.safeParse({
+      notes: [{ text: "This replaces the dead n2.", support: ["n1"] }],
+    }).success,
+  ).toBe(true);
+  expect(
+    schema.safeParse({
+      notes: [
+        { text: "First note n3; the rest is in n4.", support: [] },
+        { text: "Second note n4, after n3.", support: ["n3"] },
+      ],
+    }).success,
+  ).toBe(true);
+  expect(
+    schema.safeParse({
+      notes: [
+        { text: "First note n3.", support: [] },
+        { text: "Uses the case from n3.", support: [] },
+      ],
+    }).success,
+  ).toBe(false);
+  expect(
+    schema.safeParse({
+      notes: [{ text: "Let $n_1$ be the count; see (n1).", support: ["n1"] }],
+    }).success,
+  ).toBe(true);
 });
 
 test("coordination files every note without a summary and lists live notes over verified or earlier-listed support", () => {
