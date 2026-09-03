@@ -1,0 +1,38 @@
+# Verification proposal
+
+This records the verification design agreed on 2026-09-02 after the three changes that landed the same day (declared support with the projection, the source verifier, the reconstruction verifier) and the independent review that followed them. The part marked landed is in the tree at commit 2f00efa. The rest is proposed and lands as one change. Every word below is from [`terms.md`](terms.md); the design adds no term.
+
+## The unit is the note
+
+Verification acts on notes in the journal, never on the explorer's output in flight. A note exists the moment the explorer's call settles, the coordinator files its summary, and a verifier reads it from the journal with the support it declares. Exploration and verification share data and nothing else. The fold sequences them today, one verification in the gap between two explorer turns, but that is a sequencing choice: the coordinator may verify any note from any earlier turn, and verification could run beside exploration later without touching the roles.
+
+Two rules make this sound, and both landed:
+
+- **A note is verified when one verification passed every verifier but requirements.** Requirements only says whether the note meets the completion criteria, so a lemma ends verified and not accepted, which is what a lemma should be.
+- **A note is verified only over verified support.** The coordinator may verify a note only after every note in its support is verified, and its result schema enforces it. By induction the closure of an accepted note is verified, so nothing two levels down is ever accepted unread.
+
+## Proposed changes
+
+**One correctness verifier.** The adversarial obligation folds into the correctness obligation: check every inference and search for counterexamples and missing cases. The two were one call each to the same model on the same prefix and agreed in every run, so the second was not an independent opinion. Independence now comes from the reconstruction verifier, whose proof is written without the text. The order becomes correctness, source, reconstruction, requirements, stopping at the first verdict that is not PASS. Requirements stays last because it is the only verifier that fails a sound lemma by design, and a lemma must collect its other verdicts before that.
+
+**A profile per verifier.** Settings name a profile for each verifier instead of one shared verifier profile. With correctness on a cheap model first and reconstruction on the expensive one last, a defective note costs one cheap call and only sound notes reach the expensive calls. Profile is an existing term; nothing else is added.
+
+**Verified support is handed over as statements.** A verified note has a certified statement: its reconstruction verdict passed only because the text establishes that statement and an independent proof matched it. So a verifier of a dependent note receives each support note as its id, its statement, and its verdicts, is told those results are established and not under review, and judges the note's text over them. `statement` becomes a field of the note, present once it is verified, beside the summary, which stays navigation. Three things follow. A FAIL can only name the note under verification, so the verdict schema shrinks to the note itself. The reconstruction statement call states only the note, since the support statements exist. And no lemma is verified twice: the coordinator has a restated lemma cite the verified note instead, the explorer uses a verified note as support instead of reproving it, and the statement is what makes the same lemma in other words recognizable.
+
+**Batches sized by the window.** The coordinator's `verify` becomes an ordered list. The fold takes the longest prefix whose notes and closure texts fit under a window setting and verifies that prefix as one batch, since a verdict call costs its reading and the verdict is short. Notes that share lemmas get those statements read once. The candidate becomes the batch, its material every note in it with its support. Every verdict names its note, and the projection already computes `verified` per note from the verdict rows, so acceptance moves to the same query: a note is accepted when every verifier passed it on one candidate. The kernel's candidate status remains journal evidence and decides nothing. Notes listed after their lemma are verified in the same batch once the lemma passes; a note whose support failed in the batch is skipped and reported. The proof stays one call per note, written from one statement, because one call writing several independent proofs would not be independent, so the expensive part keeps its shape.
+
+**Capacity without a queue.** Whatever the prefix leaves is simply still unverified. The coordinator's next turn sees exactly which notes are verified, failed, or unreached and re-lists what still matters in its current order. Carrying a pending list across turns would be a second store that has to agree with the journal. A batch stopped by a pause or a failure resumes at the exact verification it stopped in, because each verification is matched by its calls on its candidate.
+
+**Dead notes.** A note is dead when a verifier other than requirements failed it, or when any note in its support is dead, since it can never be verified over that support. The explorer never receives a dead note, not even its summary, and cannot name one as support. The coordinator still sees dead notes with their verdicts, because it writes the next objective and is the cheap role, so a failure reaches the explorer once, as an objective, and then the note is gone for good. Inspect and export show everything and the journal keeps every byte. Death is a Datalog query over the failing verdict rows and the support closure; nothing is stored. INCONCLUSIVE and a requirements FAIL are not death.
+
+## Why this is a good way to handle verification
+
+- **Soundness is by construction, not by prompt.** Verified support, statements as premises, and acceptance over a verified closure are schema and fold rules. The prompts can be wrong about a lemma and the accepted proof is still checked to the bottom.
+- **Cost tracks reading, and reading is shared.** A batch reads each statement once, a proof is written once per note, and the cheap verifiers run first. A verified note costs roughly its own text plus one proof, whatever the size of the lemmas beneath it.
+- **The explorer sees only what it can build on.** Live notes with summaries, statements, and verdicts; dead notes are gone; verified notes need no rechecking. Its context shrinks as the campaign matures instead of growing.
+- **Every decision has one owner.** The explorer writes mathematics, the coordinator routes and orders, the verifiers judge, the requirements verifier alone decides completion, and the projection alone derives verified, dead, and accepted from the journal.
+- **Nothing new is named.** Verifier, profile, verify, verified, statement, proof, candidate, closure, and verdict already exist. The change is what they are used for.
+
+## What stays open
+
+The batch verdict calls judge several notes per call; if a run shows verdict quality falling with batch size, the window setting is the lever, not a new mechanism. The statement is certified by the reconstruction verdict, so a note verified before that verdict existed has no statement and is handed over as text until it is verified again. Recognizing a restated lemma is the coordinator's judgment, checked by nothing but the next verification. Concurrency between exploration and verification is possible on this design and is not part of the change.
