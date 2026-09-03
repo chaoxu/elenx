@@ -54,6 +54,7 @@ test("prompt bytes are frozen with the workflow schema version", () => {
       support: [note],
     }),
     coordinatorCall({ task, notes: [note, second] }),
+    verifierCall("source", verification, ["n2"]),
     verifierCall("correctness", verification, ["n2"]),
     verifierCall("requirements", verification, ["n2"]),
   ];
@@ -90,8 +91,8 @@ test("prompt bytes are frozen with the workflow schema version", () => {
   // Changing any role prompt changes the bytes the workflow fold matches
   // against journals, so bump workflowSchemaVersion and update this digest
   // in the same change.
-  expect(workflowSchemaVersion).toBe(12);
+  expect(workflowSchemaVersion).toBe(13);
   expect(digest.digest("hex")).toBe(
-    "bb5719dabde14b3d351e66a62e665f9783249064febc59983f71f725d4f0e724",
+    "cba1aff2ab422c4539599a9e963a8dca28aa3a2347fadc8c8f10a7f83222a051",
   );
 });

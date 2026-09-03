@@ -628,6 +628,49 @@ test("a source PASS that confirms sources without searching is an operational er
   campaign.close();
 });
 
+test("a Pi source profile runs the source verifier as a Pi call without web search", async () => {
+  const path = campaignPath();
+  const settings = roleSettings();
+  const workflow = workflowConfiguration({
+    task,
+    settings: { ...settings, maxExplorerTurns: 1, source: settings.explorer },
+  });
+  let campaign = createCampaign(path, applicationId, workflow);
+  const drive = dependencies([
+    { submission: { notes: [good] } },
+    {
+      submission: coordination("n1", {
+        verify: [{ note: "n1", verifiers: lemma }],
+      }),
+    },
+    verdictsOf("source", ["n1"]),
+    verdictsOf("correctness", ["n1"]),
+  ]);
+  const phase = await runWorkflow(
+    campaign,
+    createPiRoles(campaign, workflow.settings, drive),
+  );
+  expect(phase).toMatchObject({ kind: "turn-limit", turns: 1 });
+  if (phase.kind !== "turn-limit") throw new Error("expected turn limit");
+  expect(phase.notes[0]).toMatchObject({ verified: true, dead: false });
+  expect(drive.codexCalls).toHaveLength(0);
+  expect(drive.calls.map(({ label }) => label)).toEqual([
+    "elenx-solve/explorer",
+    "elenx-solve/coordinator",
+    "elenx-solve/verifier/source",
+    "elenx-solve/verifier/correctness",
+  ]);
+  expect(drive.calls[2]?.prompt).toContain("Verifier:\nsource");
+  expect(drive.calls[2]?.prompt).toContain(
+    "Pass a note only when its text invokes no external result",
+  );
+  expect(drive.calls[2]?.system).toContain("Do not use web search");
+  campaign.close();
+  campaign = openCampaign(path);
+  expect((await phaseOf(campaign)).kind).toBe("turn-limit");
+  campaign.close();
+});
+
 test("explorer notes name only live earlier notes as support", () => {
   const schema = explorerResultFor([
     { id: "n1", dead: false },
@@ -953,7 +996,12 @@ test("a source profile without search runs the source verifier offline", async (
     settings: {
       ...settings,
       maxExplorerTurns: 1,
-      source: { ...settings.source, search: false },
+      source: {
+        provider: "codex",
+        model: "codex-model",
+        reasoning: "low",
+        search: false,
+      },
     },
   });
   const campaign = createCampaign(path, applicationId, workflow);

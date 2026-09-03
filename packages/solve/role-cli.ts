@@ -15,7 +15,7 @@ import { z } from "zod";
 import { executionReport } from "./execution-contract";
 import {
   createPiRoles,
-  piProfileNames,
+  piProviders,
   solveSettings,
   type SolveSettings,
 } from "./pi-roles";
@@ -45,7 +45,7 @@ import {
   withCampaignLock,
 } from "./runtime";
 import { withSerialToolCalls } from "./serial-tools";
-import { codexSubmission } from "./source";
+import { codexRequest, codexSubmission } from "./source";
 import { deriveWorkflow, workflowConfig, workflowResult } from "./workflow";
 
 const callsConfig = z.strictObject({ kind: z.literal("calls") });
@@ -97,7 +97,7 @@ function visibleSubmission(
 ): Json | undefined {
   const verifier = verifierFromLabel(call.label);
   try {
-    if (verifier === "source") {
+    if (verifier === "source" && codexRequest.safeParse(call.request).success) {
       const submission = codexSubmission(records, call.seq);
       if (submission === undefined) return undefined;
       return {
@@ -252,16 +252,7 @@ export async function runRoleCommand(
   const runtime = await ModelRuntime.create({
     modelsPath: modelRegistryPath(process.env),
   });
-  await requireCredentials(
-    runtime,
-    piProfileNames
-      .filter((name) =>
-        command === "verifier"
-          ? name !== "explorer" && name !== "coordinator"
-          : name === command,
-      )
-      .map((name) => settings[name].provider),
-  );
+  await requireCredentials(runtime, piProviders(settings, command));
   const models = withSerialToolCalls(runtime);
   const controller = new AbortController();
   const stop = () => controller.abort();

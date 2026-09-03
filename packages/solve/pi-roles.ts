@@ -85,6 +85,21 @@ const codexProfile = z.strictObject({
   // must not touch the internet; an external result then fails as unconfirmed.
   search: z.boolean().default(true),
 });
+// Any other provider runs the source verifier as a Pi call without web
+// search, for a task that must not reach the internet and a worker without a
+// Codex credential; the provider name codex always means the Codex profile.
+const sourceProfile = z.union([
+  codexProfile,
+  piRoleProfile.refine((profile) => profile.provider !== "codex", {
+    message: "the codex provider takes the Codex profile",
+    path: ["provider"],
+  }),
+]);
+export function codexSource(
+  profile: z.output<typeof sourceProfile>,
+): profile is z.output<typeof codexProfile> {
+  return profile.provider === "codex";
+}
 // The window caps the characters of note and support texts one verification
 // reads; the fold verifies the longest prefix of the coordinator's verify
 // list that fits, and always its first entry.
@@ -92,13 +107,35 @@ export const solveSettings = z.strictObject({
   explorer: piRoleProfile,
   coordinator: piRoleProfile,
   correctness: piRoleProfile,
-  source: codexProfile,
+  source: sourceProfile,
   requirements: piRoleProfile,
   reconstruction: piRoleProfile,
   maxExplorerTurns: z.number().int().positive().default(10),
   window: z.number().int().positive().default(100_000),
 });
 export type SolveSettings = z.output<typeof solveSettings>;
+
+/** The Pi providers a run or one role command needs a credential for. */
+export function piProviders(
+  settings: SolveSettings,
+  role?: RoleName,
+): string[] {
+  const names = piProfileNames.filter((name) =>
+    role === undefined
+      ? true
+      : role === "verifier"
+        ? name !== "explorer" && name !== "coordinator"
+        : name === role,
+  );
+  const providers = names.map((name) => settings[name].provider);
+  if (
+    (role === undefined || role === "verifier") &&
+    !codexSource(settings.source)
+  ) {
+    providers.push(settings.source.provider);
+  }
+  return [...new Set(providers)];
+}
 
 export interface PiRoleDependencies {
   readonly models: SolveModels;
@@ -248,7 +285,7 @@ function verifierPrompt(
 // can cache that prefix across them; only the verifier name and obligation
 // at the end differ.
 export function verifierCall(
-  name: Exclude<VerifierName, "source" | "reconstruction">,
+  name: Exclude<VerifierName, "reconstruction">,
   input: VerifierInput,
   judged: readonly string[],
 ): RoleCall<ReturnType<typeof verdictsFor>> {
@@ -256,7 +293,12 @@ export function verifierCall(
     role: "verifier",
     label: verifierLabels[name],
     system: verdictSystem,
-    prompt: verifierPrompt(name, input, judged),
+    prompt: verifierPrompt(
+      name,
+      input,
+      judged,
+      name === "source" ? sourceObligationWithoutSearch : undefined,
+    ),
     tool: roleTools.verifier,
     description:
       "Return this verifier's verdict on each note under verification",
@@ -524,25 +566,27 @@ export function createPiRoles(
         const have = recorded();
         const judged = judgedBy(input, have, name);
         if (missing(have, name, judged).length === 0) continue;
+        const codex =
+          name === "source" && codexSource(profiles.source)
+            ? profiles.source
+            : undefined;
         const { call, value } =
-          name === "source"
+          codex !== undefined
             ? (settled(
                 campaign.records(),
                 candidate,
                 verifierLabels.source,
-                jsonSnapshot(
-                  sourceCall(profiles.source, input, judged).request,
-                ),
+                jsonSnapshot(sourceCall(codex, input, judged).request),
                 (call) =>
                   sourceVerdictsOf(
                     sourceVerdictsFor(judged),
                     codexSubmission(campaign.records(), call),
-                    profiles.source.search,
+                    codex.search,
                   ),
               ) ??
               (await runSource(
                 campaign,
-                profiles.source,
+                codex,
                 input,
                 judged,
                 dependencies,
@@ -550,7 +594,9 @@ export function createPiRoles(
               )))
             : await settledOrRun(
                 campaign,
-                profiles[name],
+                name === "source"
+                  ? (profiles.source as PiRoleProfile)
+                  : profiles[name],
                 verifierCall(name, input, judged),
                 dependencies,
                 candidate,
