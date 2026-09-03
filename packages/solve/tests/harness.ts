@@ -8,7 +8,9 @@ import type { PiResult, PiRunOptions } from "elenx/pi";
 
 import type { SolveSettings } from "../pi-roles";
 import type { SolveModels } from "../runtime";
+import type { CodexRequest, CodexResult } from "../source";
 import { fakePiRequest, fakePiTelemetry } from "./fake-pi";
+import { codexStdout } from "./fixtures/codex-stdout";
 
 const model = {
   id: "model-v1",
@@ -27,6 +29,9 @@ export interface Reply {
   readonly submission?: Json;
   readonly state?: "succeeded" | "failed" | "cancelled";
   readonly error?: string;
+  /** A source verifier answer, delivered through the fake Codex instead of Pi. */
+  readonly codex?: Json;
+  readonly searched?: boolean;
 }
 
 const directories: string[] = [];
@@ -54,12 +59,14 @@ export function roleSettings(): SolveSettings {
     explorer: profile,
     coordinator: profile,
     verifier: profile,
+    source: { provider: "codex", model: "codex-model", reasoning: "low" },
   };
 }
 
 export function dependencies(replies: readonly Reply[]) {
   const queue = [...replies];
   const calls: PiRunOptions[] = [];
+  const codexCalls: CodexRequest[] = [];
   const models: SolveModels = {
     getModel(provider, id) {
       return provider === model.provider && id === model.id ? model : undefined;
@@ -71,13 +78,38 @@ export function dependencies(replies: readonly Reply[]) {
   return {
     models,
     calls,
+    codexCalls,
     async run(campaign: Campaign, options: PiRunOptions): Promise<PiResult> {
       calls.push(options);
       const reply = queue.shift();
       if (reply === undefined) throw new Error(`no reply for ${options.label}`);
+      if (reply.codex !== undefined) {
+        throw new Error(`expected a Codex call, got ${options.label}`);
+      }
       expect(options.stopAfterToolResult).toBe(true);
       expect(options.transport).toBe("sse");
       return respond(campaign, options, reply);
+    },
+    async codex(request: CodexRequest): Promise<CodexResult> {
+      codexCalls.push(request);
+      const reply = queue.shift();
+      if (reply?.codex === undefined) {
+        throw new Error("expected a Pi call, got the source verifier");
+      }
+      if (reply.state === "failed") {
+        return {
+          state: "failed",
+          stdout: "",
+          stderr: "",
+          error: reply.error ?? "failed",
+        };
+      }
+      return {
+        state: "succeeded",
+        codexVersion: "fake",
+        stdout: codexStdout(reply.codex, reply.searched ?? true),
+        stderr: "",
+      };
     },
   };
 }

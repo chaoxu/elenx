@@ -8,7 +8,7 @@ coordinator(task, notes)                   -> filings, objective, support, verif
 verifier(task, note, support)              -> verdicts
 ```
 
-The explorer writes notes, each naming as support the notes whose results its text uses without proving them. The coordinator files every new note with a summary, sets the next objective with the support notes the explorer must read in full, and may verify one note against the support it declares. Verification runs the correctness, adversarial, and requirements verifiers on the note in that order and stops at the first `FAIL`. Each verifier returns one verdict, `PASS` or `FAIL`, with a report and the id of the note it is about. A verdict is recorded on the note it names. The explorer and coordinator see every note's summary and verdicts; the verifier sees the note and its support. The workflow ends when all three verifiers pass one note.
+The explorer writes notes, each naming as support the notes whose results its text uses without proving them. The coordinator files every new note with a summary, sets the next objective with the support notes the explorer must read in full, and may verify one note against the support it declares. Verification runs the correctness, adversarial, source, and requirements verifiers on the note in that order and stops at the first `FAIL`. The source verifier is a Codex call with web search that confirms every external result the text invokes against its source. Each verifier returns one verdict, `PASS` or `FAIL`, with a report and the id of the note it is about. A verdict is recorded on the note it names. The explorer and coordinator see every note's summary and verdicts; the verifier sees the note and its support. The workflow ends when all four verifiers pass one note.
 
 Every role call is one model call recorded in the Elenx journal with its prompt, transcript, tool submission, and telemetry. Notes, verdicts, and the workflow phase are derived from those records. Repeating `run` rebuilds the phase and executes the first missing role call. Candidates, verdicts, telemetry, and spend remain append-only evidence.
 
@@ -23,7 +23,7 @@ The task file has one schema. The completion criteria are the only statement of 
 }
 ```
 
-Settings select one model profile per role and cap explorer turns:
+Settings select one model profile per role, one for the source verifier, and cap explorer turns:
 
 ```json
 {
@@ -42,11 +42,16 @@ Settings select one model profile per role and cap explorer turns:
     "provider": "codex-lb",
     "model": "gpt-5.6-sol",
     "reasoning": "max"
+  },
+  "source": {
+    "provider": "codex",
+    "model": "gpt-5.6-sol",
+    "reasoning": "high"
   }
 }
 ```
 
-The verifier profile backs all three verifiers. A verification makes one to three verifier requests.
+The verifier profile backs the correctness, adversarial, and requirements verifiers through Pi. The source verifier runs the Codex CLI on its native credential, the only path that provides web search, so its provider is `codex`. `ELENX_CODEX_COMMAND` names the binary, default `codex`. A verification makes one to four verifier calls. Spend covers the Pi calls; the source verifier's usage is on its submission.
 
 ## Run
 
@@ -59,7 +64,7 @@ bun packages/solve/solve.ts inspect --include-requests campaign.db
 bun packages/solve/solve.ts export campaign.db
 ```
 
-`run` creates a campaign or resumes the existing campaign after matching the exact task and settings against its declaration. A second process cannot drive the same database. `contract` reports execution-contract schema 4 with application `elenx-solve`, protocol `workflow`, and arguments `task`, `campaign`, and `settings`.
+`run` creates a campaign or resumes the existing campaign after matching the exact task and settings against its declaration. A second process cannot drive the same database. `contract` reports execution-contract schema 5 with application `elenx-solve`, protocol `workflow`, and arguments `task`, `campaign`, and `settings`.
 
 `inspect` is the read authority. It derives the task, current phase, notes with their verdicts, role calls with their submissions, and spend from the append-only journal. Terminal campaigns also contain `result` with outcome `accepted` or `turn-limit`. `paused`, `call-failure`, and `interrupted` are run outcomes that leave the campaign resumable. `export` emits the accepted note preceded by its closure, in id order.
 

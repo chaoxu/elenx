@@ -33,9 +33,18 @@ const task = {
 const good = { text: "Complete proof of P.", support: [] };
 
 function passes(note: string): readonly Reply[] {
-  return verifierNames.map((name) => ({
-    submission: { note, verdict: "PASS", report: `${name} passed.` },
-  }));
+  return verifierNames.map((name) =>
+    name === "source"
+      ? {
+          codex: {
+            note,
+            verdict: "PASS",
+            report: "source passed.",
+            sources: [],
+          },
+        }
+      : { submission: { note, verdict: "PASS", report: `${name} passed.` } },
+  );
 }
 
 function config(maxExplorerTurns = 4) {
@@ -91,6 +100,11 @@ test("the durable workflow accepts a verified note", async () => {
     "elenx-solve/verifier/adversarial",
     "elenx-solve/verifier/requirements",
   ]);
+  expect(drive.codexCalls).toHaveLength(1);
+  expect(drive.codexCalls[0]?.prompt).toContain("Verifier:\nsource");
+  expect(drive.codexCalls[0]?.prompt.split("\n\nVerifier:")[0]).toBe(
+    drive.calls[2]!.prompt.split("\n\nVerifier:")[0],
+  );
   expect(drive.calls[0]?.prompt).toContain(`Objective:\n${task.problem}`);
   expect(drive.calls[0]?.prompt).toContain("Your first note is n1.");
   const correctness = drive.calls[2]!;
@@ -106,6 +120,7 @@ test("the durable workflow accepts a verified note", async () => {
   );
   expect((await runWorkflow(campaign, roles)).kind).toBe("accepted");
   expect(drive.calls).toHaveLength(5);
+  expect(drive.codexCalls).toHaveLength(1);
   campaign.close();
 
   const inspection = (await inspectCampaign(path)) as {
@@ -124,13 +139,14 @@ test("the durable workflow accepts a verified note", async () => {
     }[];
   };
   expect(inspection.phase).toBe("accepted");
-  expect(inspection.result.schemaVersion).toBe(4);
+  expect(inspection.result.schemaVersion).toBe(5);
   expect(inspection.result.candidate).toBe(phase.candidate);
   expect(inspection.result.note.text).toBe(good.text);
-  expect(inspection.notes[0]?.verdicts).toHaveLength(3);
+  expect(inspection.notes[0]?.verdicts).toHaveLength(4);
   expect(inspection.calls.map(({ role }) => role)).toEqual([
     "explorer",
     "coordinator",
+    "verifier",
     "verifier",
     "verifier",
     "verifier",
@@ -140,6 +156,11 @@ test("the durable workflow accepts a verified note", async () => {
     verifier: "adversarial",
     candidate: phase.candidate,
     submission: { verdict: "PASS" },
+  });
+  expect(inspection.calls[4]).toMatchObject({
+    verifier: "source",
+    candidate: phase.candidate,
+    submission: { verdict: "PASS", sources: [], usage: { input: 10 } },
   });
   expect(new TextDecoder().decode(await exportCandidate(path))).toBe(
     `--- n1 ---\n\n${good.text}`,
@@ -155,6 +176,14 @@ test("verdicts accumulate on the notes they name and stop at the first FAIL", as
     { submission: coordination("n1", { read: [] }) },
     { submission: { note: "n1", verdict: "PASS", report: "L holds." } },
     { submission: { note: "n1", verdict: "PASS", report: "No gap." } },
+    {
+      codex: {
+        note: "n1",
+        verdict: "PASS",
+        report: "Nothing cited.",
+        sources: [],
+      },
+    },
     { submission: { note: "n1", verdict: "FAIL", report: "L is not P." } },
     {
       submission: {
@@ -183,13 +212,20 @@ test("verdicts accumulate on the notes they name and stop at the first FAIL", as
     n1: [
       "correctness:PASS",
       "adversarial:PASS",
+      "source:PASS",
       "requirements:FAIL",
       "correctness:FAIL",
     ],
     n2: [],
-    n3: ["correctness:PASS", "adversarial:PASS", "requirements:PASS"],
+    n3: [
+      "correctness:PASS",
+      "adversarial:PASS",
+      "source:PASS",
+      "requirements:PASS",
+    ],
   });
   expect(drive.calls).toHaveLength(13);
+  expect(drive.codexCalls).toHaveLength(2);
   expect(drive.calls[5]?.prompt).toContain("L is not P.");
   expect(drive.calls[5]?.prompt).toContain(`Objective:\nContinue from n1.`);
   expect(drive.calls[5]?.prompt).not.toContain(`"text": "Lemma L."`);
@@ -262,9 +298,11 @@ test("a verification that fails mid-way resumes on the same candidate", async ()
     "elenx-solve/verifier/adversarial",
     "elenx-solve/verifier/requirements",
   ]);
+  expect(rest.codexCalls).toHaveLength(1);
   expect(phase.note.verdicts.map(({ report }) => report)).toEqual([
     "sound",
     "adversarial passed.",
+    "source passed.",
     "requirements passed.",
   ]);
   campaign.close();
@@ -304,6 +342,71 @@ test("the turn limit ends a workflow without a verified note", async () => {
     ),
   );
   expect(phase).toMatchObject({ kind: "turn-limit", turns: 1 });
+  campaign.close();
+});
+
+test("a source FAIL stops the verification and names the note", async () => {
+  const path = campaignPath();
+  const workflow = config(1);
+  const campaign = createCampaign(path, applicationId, workflow);
+  const drive = dependencies([
+    { submission: { notes: [good] } },
+    { submission: coordination("n1") },
+    { submission: { note: "n1", verdict: "PASS", report: "sound" } },
+    { submission: { note: "n1", verdict: "PASS", report: "no counter" } },
+    {
+      codex: {
+        note: "n1",
+        verdict: "FAIL",
+        report: "Smith 2020 states the bound for n > 2 only.",
+        sources: [],
+      },
+    },
+  ]);
+  const phase = await runWorkflow(
+    campaign,
+    createPiRoles(campaign, workflow.settings, drive),
+  );
+  expect(phase).toMatchObject({ kind: "turn-limit", turns: 1 });
+  if (phase.kind !== "turn-limit") throw new Error("expected turn limit");
+  expect(
+    phase.notes[0]?.verdicts.map(
+      ({ verifier, verdict }) => `${verifier}:${verdict}`,
+    ),
+  ).toEqual(["correctness:PASS", "adversarial:PASS", "source:FAIL"]);
+  expect(drive.calls).toHaveLength(4);
+  campaign.close();
+});
+
+test("a source PASS that confirms sources without searching is an operational error", async () => {
+  const path = campaignPath();
+  const workflow = config(1);
+  const campaign = createCampaign(path, applicationId, workflow);
+  const drive = dependencies([
+    { submission: { notes: [good] } },
+    { submission: coordination("n1") },
+    { submission: { note: "n1", verdict: "PASS", report: "sound" } },
+    { submission: { note: "n1", verdict: "PASS", report: "no counter" } },
+    {
+      codex: {
+        note: "n1",
+        verdict: "PASS",
+        report: "confirmed",
+        sources: [
+          {
+            result: "Every X is Y.",
+            source: "Smith 2020",
+            url: "https://example.org/smith",
+          },
+        ],
+      },
+      searched: false,
+    },
+  ]);
+  await expect(
+    runWorkflow(campaign, createPiRoles(campaign, workflow.settings, drive)),
+  ).rejects.toThrow("without a search");
+  expect((await phaseOf(campaign)).kind).toBe("verifier");
   campaign.close();
 });
 

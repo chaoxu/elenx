@@ -30,7 +30,7 @@ test("run starts, resumes, inspects, and exports one workflow", async () => {
   const first = await cli(directory, "run", task, campaign, settings);
   expect(first.code).toBe(0);
   expect(JSON.parse(first.stdout)).toMatchObject({
-    schemaVersion: 4,
+    schemaVersion: 5,
     application: "elenx-solve",
     protocol: "workflow",
     outcome: "accepted",
@@ -66,6 +66,7 @@ test("run starts, resumes, inspects, and exports one workflow", async () => {
     "verifier",
     "verifier",
     "verifier",
+    "verifier",
   ]);
   expect(
     inspection.calls.map(
@@ -79,6 +80,7 @@ test("run starts, resumes, inspects, and exports one workflow", async () => {
     null,
     "correctness",
     "adversarial",
+    "source",
     "requirements",
   ]);
   expect(
@@ -90,7 +92,7 @@ test("run starts, resumes, inspects, and exports one workflow", async () => {
     ),
   ).toEqual([
     ["n1", 1],
-    ["n2", 3],
+    ["n2", 4],
   ]);
 
   const exported = await cli(directory, "export", campaign);
@@ -183,6 +185,7 @@ async function writeSettings(directory: string): Promise<string> {
     explorer: { provider: "e2e", model: "e2e-model", reasoning: "low" },
     coordinator: { provider: "e2e", model: "e2e-model", reasoning: "low" },
     verifier: { provider: "e2e", model: "e2e-model", reasoning: "low" },
+    source: { provider: "codex", model: "e2e-model", reasoning: "low" },
   });
 }
 
@@ -211,11 +214,14 @@ async function cli(
     {
       cwd: join(import.meta.dir, ".."),
       env: {
+        PATH: process.env["PATH"] ?? "",
         HOME: directory,
         TMPDIR: directory,
         ELENX_MODELS_PATH: join(directory, "models.json"),
         PI_CODING_AGENT_DIR: directory,
         ELENX_E2E_REQUEST_LOG: join(directory, "requests.jsonl"),
+        ELENX_CODEX_COMMAND: join(import.meta.dir, "fixtures/fake-codex.ts"),
+        FAKE_CODEX_CAPTURE: join(directory, "codex.jsonl"),
       },
       stdout: "pipe",
       stderr: "pipe",

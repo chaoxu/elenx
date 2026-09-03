@@ -12,16 +12,16 @@ This is the vocabulary of Elenx and its solver. Work in this repository uses the
 | entry | One journal record: campaign, candidate, verdict, call, tool-call, call-result, tool-result. |
 | call | One journaled invocation: label, optional role, optional candidate, exact request, declared tools. |
 | settled | A call whose call-result is written. `inspect` reports `settledAtMs`, `elapsedMs`, and the call-result state. |
-| state | The state of a call-result, `returned` or `threw`, or of a Pi call, `succeeded`, `failed`, or `cancelled`. Never the workflow phase. |
+| state | The state of a call-result, `returned` or `threw`, or of a Pi or Codex call, `succeeded`, `failed`, or `cancelled`. Never the workflow phase. |
 | label | The string naming a call. |
 | role | The category of a call: explorer, coordinator, verifier. |
-| request | The exact JSON input of a call. For a Pi call it holds the model, the system prompt, and the prompt. |
-| tool, submission | A model-callable tool, and the structured value the model passed to it. The solver's submit tools are `submit_notes`, `submit_coordination`, and `submit_verdict`. |
+| request | The exact JSON input of a call. For a Pi call it holds the model, the system prompt, and the prompt. For a Codex call it holds the model, reasoning, developer instructions, prompt, and output schema. |
+| tool, submission | A model-callable tool, and the structured value the model passed to it. The solver's submit tools are `submit_notes`, `submit_coordination`, and `submit_verdict`. The source verifier has no submit tool; its submission is its final JSON message. |
 | candidate | An entry holding material and the labels of its required verifiers. |
 | material | The bytes attached to a candidate. |
 | verdict | `PASS`, `FAIL`, or `INCONCLUSIVE` with evidence, recorded against a call bound to a candidate. The solver records only `PASS` and `FAIL`. |
 | verified | The candidate status in which every required verifier recorded `PASS` and none recorded `FAIL`. |
-| telemetry, spend | Provider request observation, and the summary derived from it: request counts, request errors, measured usage in tokens, and estimated cost. |
+| telemetry, spend | Provider request observation of Pi calls, and the summary derived from it: request counts, request errors, measured usage in tokens, and estimated cost. A Codex call's usage is on its submission. |
 
 ## Solver
 
@@ -29,7 +29,7 @@ This is the vocabulary of Elenx and its solver. Work in this repository uses the
 | --- | --- |
 | workflow | The solver's one protocol: the turn loop from a task to `accepted` or `turn-limit`. It is the declaration kind `workflow` and the contract's `protocol`. Standalone role commands write the declaration kind `calls` and are not a second workflow. |
 | task | `problem` and `completionCriteria`. Fixed for a campaign. |
-| completion criteria | The task's statement of what an accepted note must do. The requirements verifier alone checks a note against them; a note is accepted when all three verifiers pass, so a task that would accept a disproof says so here. |
+| completion criteria | The task's statement of what an accepted note must do. The requirements verifier alone checks a note against them; a note is accepted when all four verifiers pass, so a task that would accept a disproof says so here. |
 | note | `id`, `summary`, `text`, `support`, `verdicts`. Immutable: a change is a new note. Numbered `n1`, `n2`, and so on in the order the explorer wrote them. |
 | summary | The coordinator's navigation text for a note. Never verified. |
 | text | The explorer's mathematics in a note. |
@@ -42,7 +42,8 @@ This is the vocabulary of Elenx and its solver. Work in this repository uses the
 | closure | A note's transitive support: its support, their support, and so on, in id order. `export` emits it before the accepted note. |
 | filing | The coordinator's pairing of a note id with a summary. |
 | verify | The coordinator's choice to verify one note against the support it declares. |
-| verifier | The role, and each of `correctness`, `adversarial`, `requirements`, which run in that order and stop at the first `FAIL`. |
+| verifier | The role, and each of `correctness`, `adversarial`, `source`, `requirements`, which run in that order and stop at the first `FAIL`. The source verifier is a Codex call with web search; the others are Pi calls. |
+| sources | The source verifier's evidence: one entry per external result the text invokes, a result attributed to the literature or a named source and proved neither in the text nor in a support note. `result` is the result as the source states it, `source` is where it is stated, `url` is the page opened. |
 | obligation | The fixed instruction of one verifier. |
 | verdict | `verifier`, `note`, `PASS` or `FAIL`, `report`, recorded on the note it names. A `PASS` names the note under verification; a `FAIL` names the note the report is about. |
 | report | The text of a verdict. Qualified as execution report: a run's result with `schemaVersion`, `application`, and `protocol`, as `run` and `inspect` emit it. |
@@ -54,8 +55,8 @@ This is the vocabulary of Elenx and its solver. Work in this repository uses the
 | projection | `Projection`: the fold's in-memory Cozo database of notes, summaries, support, and verdicts, rebuilt from the journal on every derivation and never persisted. |
 | schema version | The declaration's version moves with every role prompt or journal shape change. The contract's version moves only with the contract or report shape. |
 | contract | The output of `elenx-solve contract`: command, arguments, outcomes, and the execution report schema. |
-| settings | One profile per role plus `maxExplorerTurns`. |
-| profile | One role's provider, model, and reasoning level. |
+| settings | One profile per role, one for the source verifier, and `maxExplorerTurns`. |
+| profile | A provider, model, and reasoning level. The source verifier's provider is `codex`, the Codex CLI on its native credential. |
 | run, inspect, export | The commands that start or resume a campaign, derive its phase and result, and emit the accepted note with its transitive support. |
 
 The Lab's own terms, such as experiment, arm, replicate, attempt, and generation, live in the `elenx-lab` repository.

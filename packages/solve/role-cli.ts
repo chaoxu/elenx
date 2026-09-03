@@ -24,6 +24,7 @@ import {
   roleFromLabel,
   roleNames,
   roleTools,
+  sourceVerdict,
   succeededSubmission,
   verdict,
   verifierFromLabel,
@@ -36,6 +37,7 @@ import {
   withCampaignLock,
 } from "./runtime";
 import { withSerialToolCalls } from "./serial-tools";
+import { codexSubmission } from "./source";
 import { deriveWorkflow, workflowConfig, workflowResult } from "./workflow";
 
 const callsConfig = z.strictObject({ kind: z.literal("calls") });
@@ -86,9 +88,18 @@ function visibleSubmission(
   role: RoleName,
 ): Json | undefined {
   const verifier = verifierFromLabel(call.label);
-  const submission = succeededSubmission(records, call.seq, roleTools[role]);
-  if (submission === undefined) return undefined;
   try {
+    if (verifier === "source") {
+      const submission = codexSubmission(records, call.seq);
+      if (submission === undefined) return undefined;
+      return {
+        verifier,
+        ...sourceVerdict.parse(submission.input),
+        usage: submission.usage,
+      };
+    }
+    const submission = succeededSubmission(records, call.seq, roleTools[role]);
+    if (submission === undefined) return undefined;
     if (role === "explorer") return explorerResult.parse(submission.input);
     if (role === "coordinator") {
       return jsonSnapshot(coordinatorResult.parse(submission.input));

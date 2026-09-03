@@ -18,6 +18,7 @@ export type RoleName = (typeof roleNames)[number];
 export const verifierNames = [
   "correctness",
   "adversarial",
+  "source",
   "requirements",
 ] as const;
 export type VerifierName = (typeof verifierNames)[number];
@@ -29,6 +30,7 @@ export const roleLabels = {
 export const verifierLabels = {
   correctness: `${roleLabels.verifier}/correctness`,
   adversarial: `${roleLabels.verifier}/adversarial`,
+  source: `${roleLabels.verifier}/source`,
   requirements: `${roleLabels.verifier}/requirements`,
 } as const satisfies Readonly<Record<VerifierName, string>>;
 export const roleTools = {
@@ -207,18 +209,46 @@ export const verifierInput = z
   );
 export type VerifierInput = z.output<typeof verifierInput>;
 
-export function verdictFor(input: VerifierInput) {
+/** Binds a verdict schema to one verification: a PASS names the note, a FAIL may name a support note. */
+function noteBound<T extends z.ZodRawShape>(
+  schema: z.ZodObject<T>,
+  input: VerifierInput,
+) {
   const ids = [input.note.id, ...input.support.map(({ id }) => id)] as [
     string,
     ...string[],
   ];
-  return verdict
-    .omit({ verifier: true })
-    .extend({ note: z.enum(ids) })
-    .refine(
-      (value) => value.verdict === "FAIL" || value.note === input.note.id,
-      { message: "PASS names the note, not a support note", path: ["note"] },
-    );
+  return schema.extend({ note: z.enum(ids) }).refine(
+    (value) => {
+      const bound = value as {
+        readonly verdict: string;
+        readonly note: string;
+      };
+      return bound.verdict === "FAIL" || bound.note === input.note.id;
+    },
+    { message: "PASS names the note, not a support note", path: ["note"] },
+  );
+}
+
+export function verdictFor(input: VerifierInput) {
+  return noteBound(verdict.omit({ verifier: true }), input);
+}
+
+/** What the source verifier confirmed: one entry per external result the text invokes. */
+// A plain string in the schema because the provider's structured output
+// rejects the JSON Schema "uri" format; the shape is checked after parsing.
+export const sources = z.array(
+  z.strictObject({
+    result: nonblank,
+    source: nonblank,
+    url: z.string().refine((value) => URL.canParse(value), "must be a URL"),
+  }),
+);
+export const sourceVerdict = verdict
+  .omit({ verifier: true })
+  .extend({ sources });
+export function sourceVerdictFor(input: VerifierInput) {
+  return noteBound(sourceVerdict, input);
 }
 
 export type VerifierResult = readonly Verdict[];
@@ -270,28 +300,36 @@ export function journalVerdicts(
   return verdicts;
 }
 
+/** The returned call-result of a call, if it settled by returning. */
+export function returnedOutput(
+  records: readonly Entry[],
+  call: EntryId,
+): { readonly settled: EntryId; readonly output: Json } | undefined {
+  const result = records.find(
+    (entry) => entry.kind === "call-result" && entry.parent === call,
+  );
+  return result?.kind === "call-result" && result.state === "returned"
+    ? { settled: result.seq, output: result.output }
+    : undefined;
+}
+
 export function succeededSubmission(
   records: readonly Entry[],
   call: EntryId,
   tool: string,
 ): { readonly settled: EntryId; readonly input: Json } | undefined {
-  const result = records.find(
-    (entry) => entry.kind === "call-result" && entry.parent === call,
-  );
-  if (result?.kind !== "call-result" || result.state !== "returned") {
-    return undefined;
-  }
-  const output = result.output;
+  const returned = returnedOutput(records, call);
   if (
-    typeof output !== "object" ||
-    output === null ||
-    (output as { readonly state?: Json }).state !== "succeeded"
+    returned === undefined ||
+    typeof returned.output !== "object" ||
+    returned.output === null ||
+    (returned.output as { readonly state?: Json }).state !== "succeeded"
   ) {
     return undefined;
   }
   try {
     return {
-      settled: result.seq,
+      settled: returned.settled,
       input: returnedToolSubmission(records, call, tool).input,
     };
   } catch {

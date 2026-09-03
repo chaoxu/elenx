@@ -9,6 +9,10 @@ export type SolveModels = Pick<
   "getModel" | "streamSimple"
 >;
 
+export function codexCommand(environment: NodeJS.ProcessEnv): string {
+  return environment["ELENX_CODEX_COMMAND"] ?? "codex";
+}
+
 export function modelRegistryPath(
   environment: NodeJS.ProcessEnv,
 ): string | null {

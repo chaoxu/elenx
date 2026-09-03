@@ -26,4 +26,5 @@ test("the all-max example uses one profile per public role", () => {
     expect(value[role].model).toBe("gpt-5.6-sol");
     expect(value[role].reasoning).toBe("max");
   }
+  expect(value.source.provider).toBe("codex");
 });

@@ -1,7 +1,12 @@
 import { expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 
-import { coordinatorCall, explorerCall, verifierCall } from "../pi-roles";
+import {
+  coordinatorCall,
+  explorerCall,
+  sourceCall,
+  verifierCall,
+} from "../pi-roles";
 import { verifierNames } from "../roles";
 import { workflowSchemaVersion } from "../workflow";
 
@@ -34,23 +39,32 @@ test("prompt bytes are frozen with the workflow schema version", () => {
       task,
       notes: [note, { id: "n2", text, support: ["n1"], verdicts: [] }],
     }),
-    ...verifierNames.map((name) =>
-      verifierCall(name, {
-        task,
-        note: { ...note, id: "n2", support: ["n1"] },
-        support: [note],
-      }),
-    ),
+    ...verifierNames
+      .filter((name) => name !== "source")
+      .map((name) =>
+        verifierCall(name, {
+          task,
+          note: { ...note, id: "n2", support: ["n1"] },
+          support: [note],
+        }),
+      ),
   ];
+  const source = sourceCall(
+    { provider: "codex", model: "codex-model", reasoning: "low" },
+    { task, note: { ...note, id: "n2", support: ["n1"] }, support: [note] },
+  );
   const digest = createHash("sha256");
   for (const call of calls) {
     digest.update(`${call.label}\n${call.system}\n${call.prompt}\n`);
   }
+  digest.update(
+    `${source.label}\n${source.request.developerInstructions}\n${source.request.prompt}\n`,
+  );
   // Changing any role prompt changes the bytes the workflow fold matches
   // against journals, so bump workflowSchemaVersion and update this digest
   // in the same change.
-  expect(workflowSchemaVersion).toBe(6);
+  expect(workflowSchemaVersion).toBe(7);
   expect(digest.digest("hex")).toBe(
-    "bcf2552097fdae3314be1e4dc2e1db333999ca08a22d368266a340729000e5f4",
+    "6790117e6ad9c51e3366a7a14ed251675d99b775309a8946eda6d1251d87da4a",
   );
 });
