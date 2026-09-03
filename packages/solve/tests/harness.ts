@@ -56,10 +56,13 @@ export function roleSettings(): SolveSettings {
   };
   return {
     maxExplorerTurns: 4,
+    window: 100_000,
     explorer: profile,
     coordinator: profile,
-    verifier: profile,
+    correctness: profile,
     source: { provider: "codex", model: "codex-model", reasoning: "low" },
+    requirements: profile,
+    reconstruction: profile,
   };
 }
 

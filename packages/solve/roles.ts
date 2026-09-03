@@ -15,12 +15,12 @@ export const applicationId = "elenx-solve";
 export const workflowProtocol = "workflow";
 export const roleNames = ["explorer", "coordinator", "verifier"] as const;
 export type RoleName = (typeof roleNames)[number];
+/** The verifiers in the order they run; the coordinator asks for a prefix of this order. */
 export const verifierNames = [
   "correctness",
-  "adversarial",
   "source",
-  "reconstruction",
   "requirements",
+  "reconstruction",
 ] as const;
 export type VerifierName = (typeof verifierNames)[number];
 export const roleLabels = {
@@ -30,10 +30,9 @@ export const roleLabels = {
 } as const satisfies Readonly<Record<RoleName, string>>;
 export const verifierLabels = {
   correctness: `${roleLabels.verifier}/correctness`,
-  adversarial: `${roleLabels.verifier}/adversarial`,
   source: `${roleLabels.verifier}/source`,
-  reconstruction: `${roleLabels.verifier}/reconstruction`,
   requirements: `${roleLabels.verifier}/requirements`,
+  reconstruction: `${roleLabels.verifier}/reconstruction`,
 } as const satisfies Readonly<Record<VerifierName, string>>;
 /** The reconstruction verifier's two calls before its verdict: their labels and submit tools. */
 export const reconstructionCalls = {
@@ -69,6 +68,10 @@ export function jsonSnapshot(value: unknown): Json {
   return JSON.parse(JSON.stringify(value)) as Json;
 }
 
+/** Note ids in numeric order. */
+export const byId = (left: string, right: string): number =>
+  Number(left.slice(1)) - Number(right.slice(1));
+
 export const task = z.strictObject({
   problem: nonblank,
   completionCriteria: nonblank,
@@ -76,8 +79,9 @@ export const task = z.strictObject({
 export type Task = z.output<typeof task>;
 
 // INCONCLUSIVE is the reconstruction verifier's third verdict: the
-// independent text left something unproved and no defect was found. It
-// blocks acceptance without marking the note defective.
+// independent proof left something unproved and no defect was found, or the
+// statement misstated or gave away the note. It blocks acceptance without
+// marking the note defective.
 export const verdict = z.strictObject({
   verifier: z.enum(verifierNames),
   note: noteId,
@@ -95,9 +99,12 @@ const distinctSupport = [
   { message: string; path: string[] },
 ];
 const passOrFail = z.enum(["PASS", "FAIL"]);
-// A note is verified when one verification passed every verifier but
-// requirements, so its result can be built on; the candidate is accepted
-// when requirements passed as well.
+// The projection derives the two flags from the verdict rows and the support
+// edges. A note is verified when one verification passed correctness and
+// source and it is not dead, so its result can be built on; it is dead when
+// correctness, source, or reconstruction failed it or a note in its support
+// is dead, so it can never be verified. A note is accepted when one
+// verification passed every verifier.
 const noteFields = z.strictObject({
   id: noteId,
   summary: nonblank.optional(),
@@ -105,6 +112,7 @@ const noteFields = z.strictObject({
   support: z.array(noteId),
   verdicts: z.array(verdict),
   verified: z.boolean(),
+  dead: z.boolean(),
 });
 export const note = noteFields.refine(...distinctSupport);
 export type Note = z.output<typeof note>;
@@ -114,15 +122,12 @@ function distinctKnown(
   ids: readonly string[],
   ctx: z.RefinementCtx,
   path: readonly (string | number)[],
+  message = "references must name distinct known notes",
 ): void {
   const seen = new Set<string>();
   for (const id of ids) {
     if (!known.has(id) || seen.has(id)) {
-      ctx.addIssue({
-        code: "custom",
-        message: "references must name distinct known notes",
-        path: [...path],
-      });
+      ctx.addIssue({ code: "custom", message, path: [...path] });
     }
     seen.add(id);
   }
@@ -157,16 +162,21 @@ export function noteIdAfter(count: number, position: number): string {
   return `n${count + position + 1}`;
 }
 
-export function explorerResultFor(known: readonly string[]) {
+/** Support names a live note the explorer received or an earlier note of the same turn. */
+export function explorerResultFor(notes: readonly Pick<Note, "id" | "dead">[]) {
   return explorerResult.superRefine((value, ctx) => {
-    const allowed = new Set(known);
+    const allowed = new Set(
+      notes.filter(({ dead }) => !dead).map(({ id }) => id),
+    );
     for (const [position, entry] of value.notes.entries()) {
-      distinctKnown(allowed, entry.support, ctx, [
-        "notes",
-        position,
-        "support",
-      ]);
-      allowed.add(noteIdAfter(known.length, position));
+      distinctKnown(
+        allowed,
+        entry.support,
+        ctx,
+        ["notes", position, "support"],
+        "support must name distinct notes that are not dead",
+      );
+      allowed.add(noteIdAfter(notes.length, position));
     }
   });
 }
@@ -177,16 +187,35 @@ export const coordinatorInput = z.strictObject({
 });
 export type CoordinatorInput = z.output<typeof coordinatorInput>;
 
+/** One entry of a verify list: a note and the verifiers to run on it, a prefix of the verifier order. */
+const verification = z
+  .strictObject({
+    note: noteId,
+    verifiers: z.array(z.enum(verifierNames)).min(1),
+  })
+  .refine(
+    (value) =>
+      value.verifiers.every((name, index) => name === verifierNames[index]),
+    {
+      message: `verifiers must be a prefix of ${verifierNames.join(", ")}`,
+      path: ["verifiers"],
+    },
+  );
+export type Verification = z.output<typeof verification>;
+
 export const coordinatorResult = z.strictObject({
   filings: z.array(z.strictObject({ note: noteId, summary: nonblank })),
   objective: nonblank,
   support: z.array(noteId),
-  verify: z.strictObject({ note: noteId }).optional(),
+  verify: z.array(verification),
 });
 export type CoordinatorResult = z.output<typeof coordinatorResult>;
 
 export function coordinatorResultFor(
-  notes: readonly Pick<Note, "id" | "summary" | "support" | "verified">[],
+  notes: readonly Pick<
+    Note,
+    "id" | "summary" | "support" | "verified" | "dead"
+  >[],
 ) {
   const known = new Set(notes.map(({ id }) => id));
   const withoutSummary = new Set(
@@ -196,16 +225,6 @@ export function coordinatorResultFor(
     notes.filter(({ verified }) => verified).map(({ id }) => id),
   );
   return coordinatorResult.superRefine((value, ctx) => {
-    if (value.verify !== undefined) {
-      const note = notes.find(({ id }) => id === value.verify?.note);
-      if (note?.support.some((id) => !verified.has(id)) === true) {
-        ctx.addIssue({
-          code: "custom",
-          message: "a note is verified only after every note in its support is",
-          path: ["verify", "note"],
-        });
-      }
-    }
     const filed = new Set<string>();
     for (const [index, filing] of value.filings.entries()) {
       if (!withoutSummary.has(filing.note) || filed.has(filing.note)) {
@@ -225,76 +244,214 @@ export function coordinatorResultFor(
       });
     }
     distinctKnown(known, value.support, ctx, ["support"]);
-    if (value.verify === undefined) return;
-    distinctKnown(known, [value.verify.note], ctx, ["verify", "note"]);
+    distinctKnown(
+      known,
+      value.verify.map(({ note }) => note),
+      ctx,
+      ["verify"],
+    );
+    // A note is verified only over verified support: every note in its
+    // support is verified already or listed earlier with the source
+    // verifier, so it is verified in the same verification first.
+    const listedWithSource = new Set<string>();
+    for (const [index, entry] of value.verify.entries()) {
+      const target = notes.find(({ id }) => id === entry.note);
+      if (target === undefined) continue;
+      if (target.dead) {
+        ctx.addIssue({
+          code: "custom",
+          message: "a dead note is not verified again",
+          path: ["verify", index, "note"],
+        });
+      }
+      if (
+        target.support.some(
+          (id) => !verified.has(id) && !listedWithSource.has(id),
+        )
+      ) {
+        ctx.addIssue({
+          code: "custom",
+          message:
+            "a note is verified only after every note in its support is verified or listed earlier with the source verifier",
+          path: ["verify", index, "note"],
+        });
+      }
+      if (entry.verifiers.includes("source")) listedWithSource.add(entry.note);
+    }
   });
+}
+
+/** The distinct support of `notes` outside them, in id order. */
+export function supportOf(
+  notes: readonly Pick<Note, "id" | "support">[],
+): string[] {
+  const own = new Set(notes.map(({ id }) => id));
+  return [...new Set(notes.flatMap(({ support }) => support))]
+    .filter((id) => !own.has(id))
+    .sort(byId);
 }
 
 export const verifierInput = z
   .strictObject({
     task,
-    note,
+    verify: z.array(verification).min(1),
+    notes: z.array(note),
     support: z.array(note),
   })
-  .refine(
-    (value) =>
-      value.support.map(({ id }) => id).join(",") ===
-      value.note.support.join(","),
-    {
-      message: "support must be the notes the note declares, in order",
-      path: ["support"],
-    },
-  );
+  .superRefine((value, ctx) => {
+    const listed = value.verify.map(({ note }) => note);
+    if (new Set(listed).size !== listed.length) {
+      ctx.addIssue({
+        code: "custom",
+        message: "verify must list distinct notes",
+        path: ["verify"],
+      });
+    }
+    if (value.notes.map(({ id }) => id).join(",") !== listed.join(",")) {
+      ctx.addIssue({
+        code: "custom",
+        message: "notes must be the notes listed in verify, in order",
+        path: ["notes"],
+      });
+    }
+    if (
+      value.support.map(({ id }) => id).join(",") !==
+      supportOf(value.notes).join(",")
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message:
+          "support must be the support of the notes outside them, in id order",
+        path: ["support"],
+      });
+    }
+  });
 export type VerifierInput = z.output<typeof verifierInput>;
 
-/** Binds a verdict schema to one verification: a PASS names the note, a FAIL may name a support note. */
-function noteBound<T extends z.ZodRawShape>(
-  schema: z.ZodObject<T>,
-  input: VerifierInput,
+export function pick<T extends { readonly id: string }>(
+  notes: readonly T[],
+  id: string,
+): T {
+  const found = notes.find((entry) => entry.id === id);
+  if (found === undefined) throw new Error(`unknown note ${id}`);
+  return found;
+}
+
+const verifierIndex = (name: VerifierName): number =>
+  verifierNames.indexOf(name);
+
+/**
+ * The notes one verifier judges in a verification, in the order listed,
+ * given the verdicts recorded on its candidate: the notes that asked for it,
+ * passed every verifier before it, and are not dead in the verification. A
+ * note is dead in the verification when correctness, source, or
+ * reconstruction failed it or a note in its support, listed or handed over in
+ * full, is dead. The
+ * verifiers that judge their notes in one call judge from the verdicts of the
+ * verifiers before them; reconstruction judges one note at a time, also from
+ * the reconstruction verdicts of the notes listed before it.
+ */
+export function judgedBy(
+  input: Pick<VerifierInput, "verify" | "notes" | "support">,
+  recorded: readonly Verdict[],
+  verifier: VerifierName,
+): string[] {
+  const position = new Map(
+    input.verify.map(({ note }, index) => [note, index]),
+  );
+  const known = [...input.notes, ...input.support];
+  const judged: string[] = [];
+  for (const [index, entry] of input.verify.entries()) {
+    if (!entry.verifiers.includes(verifier)) continue;
+    const prior = recorded.filter(
+      (value) =>
+        verifierIndex(value.verifier) < verifierIndex(verifier) ||
+        (verifier === "reconstruction" &&
+          value.verifier === "reconstruction" &&
+          (position.get(value.note) ?? Number.POSITIVE_INFINITY) < index),
+    );
+    const passed = (id: string, name: VerifierName): boolean =>
+      prior.some(
+        (value) =>
+          value.note === id &&
+          value.verifier === name &&
+          value.verdict === "PASS",
+      );
+    const dead = (id: string): boolean =>
+      prior.some(
+        (value) =>
+          value.note === id &&
+          value.verifier !== "requirements" &&
+          value.verdict === "FAIL",
+      ) || (known.find((note) => note.id === id)?.support ?? []).some(dead);
+    if (
+      verifierNames
+        .slice(0, verifierIndex(verifier))
+        .every((name) => passed(entry.note, name)) &&
+      !dead(entry.note)
+    ) {
+      judged.push(entry.note);
+    }
+  }
+  return judged;
+}
+
+/** Whether every verdict the verification calls for is recorded. */
+export function verificationComplete(
+  input: Pick<VerifierInput, "verify" | "notes" | "support">,
+  recorded: readonly Verdict[],
+): boolean {
+  return verifierNames.every((name) =>
+    judgedBy(input, recorded, name).every((id) =>
+      recorded.some((value) => value.verifier === name && value.note === id),
+    ),
+  );
+}
+
+/** Binds a verdict list to the notes one call judges: one verdict per note under verification. */
+function verdictsOver<T extends z.ZodRawShape>(
+  entry: z.ZodObject<T>,
+  judged: readonly string[],
 ) {
-  const ids = [input.note.id, ...input.support.map(({ id }) => id)] as [
-    string,
-    ...string[],
-  ];
-  return schema.extend({ note: z.enum(ids) }).refine(
-    (value) => {
-      const bound = value as {
-        readonly verdict: string;
-        readonly note: string;
-      };
-      return bound.verdict === "FAIL" || bound.note === input.note.id;
-    },
-    { message: "PASS names the note, not a support note", path: ["note"] },
-  );
+  const ids = [...judged] as [string, ...string[]];
+  const expected = [...judged].sort(byId).join(",");
+  return z
+    .strictObject({ verdicts: z.array(entry.extend({ note: z.enum(ids) })) })
+    .refine(
+      (value) =>
+        (
+          value as { readonly verdicts: readonly { readonly note: string }[] }
+        ).verdicts
+          .map(({ note }) => note)
+          .sort(byId)
+          .join(",") === expected,
+      {
+        message: "one verdict per note under verification",
+        path: ["verdicts"],
+      },
+    );
 }
 
-export function verdictFor(input: VerifierInput) {
-  return noteBound(
-    verdict.omit({ verifier: true }).extend({ verdict: passOrFail }),
-    input,
-  );
-}
-
-export function reconstructionVerdictFor(input: VerifierInput) {
-  return noteBound(verdict.omit({ verifier: true }), input);
-}
-
-/** What a text establishes, with nothing of how: the reconstruction verifier states it for the note and each support note. */
-export const statement = z.strictObject({
-  statement: nonblank,
-  support: z.array(z.strictObject({ note: noteId, statement: nonblank })),
+/** The verdicts of one correctness or requirements call. */
+export const verdicts = z.strictObject({
+  verdicts: z.array(verdict.omit({ verifier: true })),
 });
-export type Statement = z.output<typeof statement>;
-export function statementFor(input: VerifierInput) {
-  return statement.refine(
-    (value) =>
-      value.support.map(({ note }) => note).join(",") ===
-      input.note.support.join(","),
-    { message: "one statement per support note, in order", path: ["support"] },
+export function verdictsFor(judged: readonly string[]) {
+  return verdictsOver(
+    verdict.omit({ verifier: true }).extend({ verdict: passOrFail }),
+    judged,
   );
 }
 
-/** The proof the reconstruction verifier writes from the statement and support statements alone. */
+export function reconstructionVerdictFor(noteId: string) {
+  return verdictsOver(verdict.omit({ verifier: true }), [noteId]);
+}
+
+/** What a text establishes, with nothing of how: one or several propositions. */
+export const statement = z.strictObject({ statement: nonblank });
+export type Statement = z.output<typeof statement>;
+
+/** The proof the reconstruction verifier writes from the statement and the support notes alone. */
 export const proof = z.strictObject({ proof: nonblank });
 
 /** What the source verifier confirmed: one entry per external result the text invokes. */
@@ -307,19 +464,23 @@ export const sources = z.array(
     url: z.string().refine((value) => URL.canParse(value), "must be a URL"),
   }),
 );
-export const sourceVerdict = verdict
+const sourceVerdict = verdict
   .omit({ verifier: true })
   .extend({ verdict: passOrFail, sources });
-export function sourceVerdictFor(input: VerifierInput) {
-  return noteBound(sourceVerdict, input);
+/** The verdicts of one source call. */
+export const sourceVerdicts = z.strictObject({
+  verdicts: z.array(sourceVerdict),
+});
+export function sourceVerdictsFor(judged: readonly string[]) {
+  return verdictsOver(sourceVerdict, judged);
 }
 
 export type VerifierResult = readonly Verdict[];
 
 export function candidateMaterial(input: VerifierInput): Uint8Array {
-  const text = [input.note.text, ...input.support.map(({ text }) => text)].join(
-    "\n\n--- SUPPORT ---\n\n",
-  );
+  const text = [...input.notes, ...input.support]
+    .map(({ id, text }) => `--- ${id} ---\n\n${text}`)
+    .join("\n\n");
   return new TextEncoder().encode(text);
 }
 
@@ -327,6 +488,22 @@ export interface JournalVerdict {
   readonly seq: EntryId;
   readonly candidate: EntryId;
   readonly verdict: Verdict;
+}
+
+// The kernel records one verdict per call, on the candidate. A verifier call
+// judges one or several notes, so its kernel verdict is the verdict on the
+// candidate, PASS only when every note it judged passed, and its evidence
+// lists the verdict of each note. The projection reads the evidence.
+const verdictEvidence = verdicts.extend({
+  verdicts: verdicts.shape.verdicts.min(1),
+});
+export function candidateVerdict(
+  values: readonly Pick<Verdict, "verdict">[],
+): Verdict["verdict"] {
+  if (values.every(({ verdict }) => verdict === "PASS")) return "PASS";
+  return values.some(({ verdict }) => verdict === "FAIL")
+    ? "FAIL"
+    : "INCONCLUSIVE";
 }
 
 export function journalVerdicts(
@@ -344,21 +521,21 @@ export function journalVerdicts(
     const verifier =
       call?.kind === "call" ? verifierFromLabel(call.label) : undefined;
     if (call?.kind !== "call" || verifier === undefined) continue;
-    const parsed = verdict.safeParse({
-      verifier,
-      verdict: entry.verdict,
-      ...(typeof entry.evidence === "object" && entry.evidence !== null
-        ? entry.evidence
-        : {}),
-    });
-    if (!parsed.success || call.candidate === undefined) {
+    const parsed = verdictEvidence.safeParse(entry.evidence);
+    if (
+      !parsed.success ||
+      call.candidate === undefined ||
+      candidateVerdict(parsed.data.verdicts) !== entry.verdict
+    ) {
       throw new Error(`malformed verdict ${entry.seq}`);
     }
-    verdicts.push({
-      seq: entry.seq,
-      candidate: call.candidate,
-      verdict: parsed.data,
-    });
+    for (const value of parsed.data.verdicts) {
+      verdicts.push({
+        seq: entry.seq,
+        candidate: call.candidate,
+        verdict: { verifier, ...value },
+      });
+    }
   }
   return verdicts;
 }

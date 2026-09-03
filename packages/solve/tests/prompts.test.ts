@@ -20,6 +20,7 @@ const note = {
   text: "Proof of P.",
   support: [],
   verified: true,
+  dead: false,
   verdicts: [
     {
       verifier: "correctness" as const,
@@ -32,6 +33,19 @@ const note = {
 
 test("prompt bytes are frozen with the workflow schema version", () => {
   const { text, ...heading } = note;
+  const second = {
+    ...note,
+    id: "n2",
+    support: ["n1"],
+    verified: false,
+    verdicts: [],
+  };
+  const verification = {
+    task,
+    verify: [{ note: "n2", verifiers: [...verifierNames] }],
+    notes: [second],
+    support: [note],
+  };
   const calls: { label: string; system: string; prompt: string }[] = [
     explorerCall({
       task,
@@ -39,40 +53,20 @@ test("prompt bytes are frozen with the workflow schema version", () => {
       notes: [heading],
       support: [note],
     }),
-    coordinatorCall({
-      task,
-      notes: [
-        note,
-        { id: "n2", text, support: ["n1"], verdicts: [], verified: false },
-      ],
-    }),
-    ...verifierNames
-      .filter((name) => name !== "source" && name !== "reconstruction")
-      .map((name) =>
-        verifierCall(name, {
-          task,
-          note: { ...note, id: "n2", support: ["n1"] },
-          support: [note],
-        }),
-      ),
+    coordinatorCall({ task, notes: [note, second] }),
+    verifierCall("correctness", verification, ["n2"]),
+    verifierCall("requirements", verification, ["n2"]),
   ];
-  const verification = {
-    task,
-    note: { ...note, id: "n2", support: ["n1"] },
-    support: [note],
-  };
-  const stated = {
-    statement: "P holds.",
-    support: [{ note: "n1", statement: "P holds." }],
-  };
+  const stated = { statement: "P holds." };
   calls.push(
-    statementCall(verification),
-    proofCall(verification, stated),
-    reconstructionCall(verification, stated, "Independent proof of P."),
+    statementCall(verification, second),
+    proofCall(verification, second, stated),
+    reconstructionCall(verification, second, stated, "Independent proof of P."),
   );
   const source = sourceCall(
     { provider: "codex", model: "codex-model", reasoning: "low" },
-    { task, note: { ...note, id: "n2", support: ["n1"] }, support: [note] },
+    verification,
+    ["n2"],
   );
   const digest = createHash("sha256");
   for (const call of calls) {
@@ -84,8 +78,8 @@ test("prompt bytes are frozen with the workflow schema version", () => {
   // Changing any role prompt changes the bytes the workflow fold matches
   // against journals, so bump workflowSchemaVersion and update this digest
   // in the same change.
-  expect(workflowSchemaVersion).toBe(9);
+  expect(workflowSchemaVersion).toBe(10);
   expect(digest.digest("hex")).toBe(
-    "4dfa3f591c7a1beab0d37b0c2185866f068d9414e5e44e1d07562c19524def9f",
+    "edb7669502949ac86caf1b77406f0064d56142da5f031d9670b9c6ea4dbee987",
   );
 });

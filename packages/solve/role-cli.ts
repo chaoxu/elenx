@@ -13,7 +13,12 @@ import { derivePiSpend } from "elenx/pi";
 import { z } from "zod";
 
 import { executionReport } from "./execution-contract";
-import { createPiRoles, solveSettings, type SolveSettings } from "./pi-roles";
+import {
+  createPiRoles,
+  piProfileNames,
+  solveSettings,
+  type SolveSettings,
+} from "./pi-roles";
 import {
   applicationId,
   coordinatorInput,
@@ -26,10 +31,10 @@ import {
   proof,
   reconstructionCalls,
   roleTools,
-  sourceVerdict,
+  sourceVerdicts,
   statement,
   succeededSubmission,
-  verdict,
+  verdicts,
   verifierFromLabel,
   verifierInput,
   type RoleName,
@@ -97,7 +102,7 @@ function visibleSubmission(
       if (submission === undefined) return undefined;
       return {
         verifier,
-        ...sourceVerdict.parse(submission.input),
+        ...sourceVerdicts.parse(submission.input),
         usage: submission.usage,
       };
     }
@@ -121,7 +126,8 @@ function visibleSubmission(
     if (role === "coordinator") {
       return jsonSnapshot(coordinatorResult.parse(submission.input));
     }
-    return verdict.parse({ verifier, ...(submission.input as object) });
+    if (verifier === undefined) return undefined;
+    return { verifier, ...verdicts.parse(submission.input) };
   } catch {
     return undefined;
   }
@@ -246,7 +252,16 @@ export async function runRoleCommand(
   const runtime = await ModelRuntime.create({
     modelsPath: modelRegistryPath(process.env),
   });
-  await requireCredentials(runtime, [settings[command].provider]);
+  await requireCredentials(
+    runtime,
+    piProfileNames
+      .filter((name) =>
+        command === "verifier"
+          ? name !== "explorer" && name !== "coordinator"
+          : name === command,
+      )
+      .map((name) => settings[name].provider),
+  );
   const models = withSerialToolCalls(runtime);
   const controller = new AbortController();
   const stop = () => controller.abort();

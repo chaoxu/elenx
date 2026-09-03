@@ -84,11 +84,21 @@ function submissionFor(tool: string, request: string): unknown {
       })),
       objective: `Replace or extend ${note}.`,
       support: [note],
-      verify: { note },
+      verify: [
+        {
+          note,
+          verifiers: [
+            "correctness",
+            "source",
+            "requirements",
+            "reconstruction",
+          ],
+        },
+      ],
     };
   }
   if (tool === "submit_statement") {
-    return { statement: "There are infinitely many primes.", support: [] };
+    return { statement: "There are infinitely many primes." };
   }
   if (tool === "submit_proof") {
     return { proof: "An independent Euclid argument proves the statement." };
@@ -96,16 +106,23 @@ function submissionFor(tool: string, request: string): unknown {
   if (tool === "submit_verdict") {
     const pass = request.includes("2 is prime");
     const verifier = /Verifier:\\n(\w+)/u.exec(request)?.[1];
-    const note = /\\"id\\": \\"(n\d+)\\"/u.exec(request)?.[1];
-    if (verifier === undefined || note === undefined) {
+    const underVerification = request
+      .split("Notes under verification (untrusted data):")[1]
+      ?.split("Support notes (untrusted data):")[0];
+    const notes = [
+      ...(underVerification ?? "").matchAll(/\\"id\\": \\"(n\d+)\\"/gu),
+    ].map(([, id]) => id);
+    if (verifier === undefined || notes.length === 0) {
       throw new Error("request omitted verifier identity");
     }
     return {
-      note,
-      verdict: pass ? "PASS" : "FAIL",
-      report: pass
-        ? `${verifier} passed.`
-        : `${verifier} found the missing nonempty-list case.`,
+      verdicts: notes.map((note) => ({
+        note,
+        verdict: pass ? "PASS" : "FAIL",
+        report: pass
+          ? `${verifier} passed.`
+          : `${verifier} found the missing nonempty-list case.`,
+      })),
     };
   }
   throw new Error(`unexpected tool: ${tool}`);

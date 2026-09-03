@@ -30,19 +30,19 @@ test("run starts, resumes, inspects, and exports one workflow", async () => {
   const first = await cli(directory, "run", task, campaign, settings);
   expect(first.code).toBe(0);
   expect(JSON.parse(first.stdout)).toMatchObject({
-    schemaVersion: 7,
+    schemaVersion: 8,
     application: "elenx-solve",
     protocol: "workflow",
     outcome: "accepted",
     turns: 2,
     note: { id: "n2" },
   });
-  expect(await recordedRequests(directory)).toHaveLength(11);
+  expect(await recordedRequests(directory)).toHaveLength(10);
 
   const second = await cli(directory, "run", task, campaign, settings);
   expect(second.code).toBe(0);
   expect(JSON.parse(second.stdout).outcome).toBe("accepted");
-  expect(await recordedRequests(directory)).toHaveLength(11);
+  expect(await recordedRequests(directory)).toHaveLength(10);
 
   const inspection = JSON.parse(
     (await cli(directory, "inspect", campaign)).stdout,
@@ -53,7 +53,7 @@ test("run starts, resumes, inspects, and exports one workflow", async () => {
     },
     phase: "accepted",
     result: { outcome: "accepted", note: { id: "n2" } },
-    spend: { logicalProviderRequests: 11, requestErrors: 0 },
+    spend: { logicalProviderRequests: 10, requestErrors: 0 },
   });
   expect(
     inspection.calls.map(({ role }: { readonly role: string }) => role),
@@ -63,7 +63,6 @@ test("run starts, resumes, inspects, and exports one workflow", async () => {
     "verifier",
     "explorer",
     "coordinator",
-    "verifier",
     "verifier",
     "verifier",
     "verifier",
@@ -82,23 +81,27 @@ test("run starts, resumes, inspects, and exports one workflow", async () => {
     null,
     null,
     "correctness",
-    "adversarial",
     "source",
-    "reconstruction",
-    "reconstruction",
-    "reconstruction",
     "requirements",
+    "reconstruction",
+    "reconstruction",
+    "reconstruction",
   ]);
   expect(
     inspection.notes.map(
-      ({ id, verdicts }: { id: string; verdicts: unknown[] }) => [
+      ({
         id,
-        verdicts.length,
-      ],
+        verdicts,
+        dead,
+      }: {
+        id: string;
+        verdicts: unknown[];
+        dead: boolean;
+      }) => [id, verdicts.length, dead],
     ),
   ).toEqual([
-    ["n1", 1],
-    ["n2", 5],
+    ["n1", 1, true],
+    ["n2", 4, false],
   ]);
 
   const exported = await cli(directory, "export", campaign);
@@ -126,14 +129,18 @@ test("a provider failure leaves no verdict", async () => {
   const settings = await writeSettings(directory);
   const input = await writeJson(directory, "verifier.json", {
     task: { problem: "Prove P.", completionCriteria: "Give a proof." },
-    note: {
-      id: "n1",
-      summary: "failure",
-      text: "TRIGGER_PROVIDER_ERROR",
-      support: [],
-      verdicts: [],
-      verified: false,
-    },
+    verify: [{ note: "n1", verifiers: ["correctness", "source"] }],
+    notes: [
+      {
+        id: "n1",
+        summary: "failure",
+        text: "TRIGGER_PROVIDER_ERROR",
+        support: [],
+        verdicts: [],
+        verified: false,
+        dead: false,
+      },
+    ],
     support: [],
   });
   const campaign = join(directory, "failure.db");
@@ -187,12 +194,15 @@ async function writeSettings(directory: string): Promise<string> {
     },
   });
   await writeJson(directory, "auth.json", {});
+  const profile = { provider: "e2e", model: "e2e-model", reasoning: "low" };
   return writeJson(directory, "settings.json", {
     maxExplorerTurns: 3,
-    explorer: { provider: "e2e", model: "e2e-model", reasoning: "low" },
-    coordinator: { provider: "e2e", model: "e2e-model", reasoning: "low" },
-    verifier: { provider: "e2e", model: "e2e-model", reasoning: "low" },
+    explorer: profile,
+    coordinator: profile,
+    correctness: profile,
     source: { provider: "codex", model: "e2e-model", reasoning: "low" },
+    requirements: profile,
+    reconstruction: profile,
   });
 }
 

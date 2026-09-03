@@ -1,10 +1,4 @@
-import {
-  deriveCandidateStatus,
-  type Campaign,
-  type Entry,
-  type EntryId,
-  type Reader,
-} from "elenx";
+import type { Campaign, Entry, EntryId, Reader } from "elenx";
 import { piRequest } from "elenx/pi";
 import { z } from "zod";
 
@@ -21,9 +15,13 @@ import {
   coordinatorInput,
   explorerInput,
   journalVerdicts,
+  judgedBy,
   noteIdAfter,
+  pick,
   succeededSubmission,
+  supportOf,
   task,
+  verificationComplete,
   verifierInput,
   verifierNames,
   type CoordinatorInput,
@@ -31,10 +29,11 @@ import {
   type Note,
   type Roles,
   type Task,
+  type Verification,
   type VerifierInput,
 } from "./roles";
 
-export const workflowSchemaVersion = 9;
+export const workflowSchemaVersion = 10;
 export const workflowConfig = z.strictObject({
   kind: z.literal("workflow"),
   schemaVersion: z.literal(workflowSchemaVersion),
@@ -144,10 +143,32 @@ function settledCall<S extends z.ZodType>(
   return undefined;
 }
 
-function pick(notes: readonly Note[], id: string): Note {
-  const found = notes.find((entry) => entry.id === id);
-  if (found === undefined) throw new Error(`unknown note ${id}`);
-  return found;
+/**
+ * The longest prefix of the coordinator's verify list whose note and support
+ * texts fit the window, and always its first entry. Texts shared by several
+ * notes are read once, so they count once.
+ */
+export function verificationPrefix(
+  verify: readonly Verification[],
+  notes: readonly Note[],
+  window: number,
+): Verification[] {
+  const read = new Set<string>();
+  let reading = 0;
+  let taken = 0;
+  for (const entry of verify) {
+    const note = pick(notes, entry.note);
+    const added = [note.id, ...note.support].filter((id) => !read.has(id));
+    const cost = added.reduce(
+      (sum, id) => sum + pick(notes, id).text.length,
+      0,
+    );
+    if (taken > 0 && reading + cost > window) break;
+    for (const id of added) read.add(id);
+    reading += cost;
+    taken += 1;
+  }
+  return verify.slice(0, taken);
 }
 
 export async function deriveWorkflow(
@@ -209,19 +230,29 @@ export async function deriveWorkflow(
       await projection.file(coordinated.value.filings, cursor);
       objective = coordinated.value.objective;
       support = coordinated.value.support;
-      if (coordinated.value.verify === undefined) continue;
+      if (coordinated.value.verify.length === 0) continue;
 
       const filed = await projection.at(cursor);
-      const note = pick(filed, coordinated.value.verify.note);
+      const verify = verificationPrefix(
+        coordinated.value.verify,
+        filed,
+        config.settings.window,
+      );
+      const listed = verify.map(({ note }) => pick(filed, note));
       const verifierRequest = verifierInput.parse({
         task: config.task,
-        note,
-        support: note.support.map((id) => pick(filed, id)),
+        verify,
+        notes: listed,
+        support: supportOf(listed).map((id) => pick(filed, id)),
       });
       const first = firstCall(
         records,
         cursor,
-        verifierCall(verifierNames[0], verifierRequest),
+        verifierCall(
+          verifierNames[0],
+          verifierRequest,
+          judgedBy(verifierRequest, [], verifierNames[0]),
+        ),
       );
       if (first === undefined) {
         return {
@@ -236,30 +267,38 @@ export async function deriveWorkflow(
           `verifier call ${first.seq} is not bound to a candidate`,
         );
       }
-      for (const name of verifierNames) {
-        const recorded = await projection.verdictAfter(cursor, candidate, name);
-        if (recorded === undefined) {
-          return {
-            config,
-            notes: filed,
-            phase: { kind: "verifier", input: verifierRequest, candidate },
-          };
-        }
-        cursor = recorded.seq;
-        if (recorded.verdict.verdict !== "PASS") break;
-      }
-      if (deriveCandidateStatus(records, candidate).verified) {
-        const accepted = await projection.at(cursor);
+      const recorded = verdicts.filter(
+        (entry) => entry.candidate === candidate,
+      );
+      if (
+        !verificationComplete(
+          verifierRequest,
+          recorded.map(({ verdict }) => verdict),
+        )
+      ) {
         return {
           config,
-          notes: accepted,
+          notes: filed,
+          phase: { kind: "verifier", input: verifierRequest, candidate },
+        };
+      }
+      cursor = Math.max(cursor, ...recorded.map(({ seq }) => seq));
+      const accepted = await projection.accepted(cursor);
+      const acceptedId = verify
+        .map(({ note }) => note)
+        .find((id) => accepted.includes(id));
+      if (acceptedId !== undefined) {
+        const notes = await projection.at(cursor);
+        return {
+          config,
+          notes,
           phase: {
             kind: "accepted",
             turns: turn,
-            note: pick(accepted, note.id),
-            notes: accepted,
+            note: pick(notes, acceptedId),
+            notes,
             candidate,
-            closure: await projection.closure(note.id),
+            closure: await projection.closure(acceptedId),
           },
         };
       }

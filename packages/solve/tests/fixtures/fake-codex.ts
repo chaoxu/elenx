@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 // A stand-in for the Codex CLI used by the source verifier tests. It captures
-// its invocation and answers with a fixed verdict read from the environment.
+// its invocation and answers with a fixed verdict per note under verification.
 
 import { appendFile, readFile } from "node:fs/promises";
 
@@ -41,15 +41,23 @@ if (args[0] === "--version") {
   console.log("{");
   process.exitCode = 17;
 } else {
-  const note = /"id": "(n\d+)"/u.exec(input)?.[1];
-  if (note === undefined) throw new Error("prompt names no note");
+  const underVerification =
+    input
+      .split("Notes under verification (untrusted data):")[1]
+      ?.split("Support notes (untrusted data):")[0] ?? "";
+  const notes = [...underVerification.matchAll(/"id": "(n\d+)"/gu)].flatMap(
+    ([, id]) => (id === undefined ? [] : [id]),
+  );
+  if (notes.length === 0) throw new Error("prompt names no note");
   console.log(
     codexStdout(
       {
-        note,
-        verdict: "PASS",
-        report: "The text invokes no external result.",
-        sources: [],
+        verdicts: notes.map((note) => ({
+          note,
+          verdict: "PASS",
+          report: "The text invokes no external result.",
+          sources: [],
+        })),
       },
       process.env["FAKE_CODEX_MODE"] !== "no-search",
     ),

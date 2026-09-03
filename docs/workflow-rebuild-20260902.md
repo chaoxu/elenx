@@ -28,7 +28,7 @@ bun packages/solve/solve.ts inspect [--include-requests] CAMPAIGN.db
 bun packages/solve/solve.ts export CAMPAIGN.db
 ```
 
-`run` creates or resumes the campaign. The declared task and settings must match exactly on every invocation. The execution contract is schema 6 with application `elenx-solve`, protocol `workflow`, and run arguments `task`, `campaign`, and `settings`.
+`run` creates or resumes the campaign. The declared task and settings must match exactly on every invocation. The execution contract is schema 8 with application `elenx-solve`, protocol `workflow`, and run arguments `task`, `campaign`, and `settings`.
 
 The explorer, coordinator, and verifier commands remain available for isolated boundary tests. They use the same role schemas and journal machinery and are not a second workflow.
 
@@ -62,6 +62,16 @@ Independent review of the three changes found that acceptance covered a note rel
 
 The live smokes for these three changes all ran the primes task on Luna-low Pi profiles with the Codex CLI on gpt-5.6-sol at low reasoning: declared support accepted in one turn with five Pi requests; the source verifier accepted in one turn after a first attempt whose Codex call was rejected for a schema format and resumed on the same candidate; reconstruction accepted in one turn with eight Pi requests and one Codex call at about a third of a cent, after one run in which the reconstruction verifier failed the first note for an omitted routine fact and the second note passed. The artifacts are under `runs/support-primes-smoke-20260902-*`, `runs/source-primes-smoke-20260902-*`, and `runs/reconstruction-primes-smoke-20260902-*`.
 
+## Verification proposal
+
+The design recorded in [`verification-proposal-20260902.md`](verification-proposal-20260902.md) landed the same evening as one change. The adversarial verifier folded into the correctness obligation, which now includes the search for counterexamples and missing cases. Reconstruction became self-contained: the statement call reads the full note and returns what it establishes, the proof call receives that statement and the support notes in full and never the note's text, and the verdict call compares; the statement stays a journal submission and no note field was added. The coordinator's `verify` became an ordered list of notes, each with the verifiers to run as a prefix of correctness, source, requirements, reconstruction, and its schema admits a note only when it is not dead and every note in its support is verified or listed earlier with the source verifier. Settings name a profile per verifier and gained `window`; one verification takes the longest prefix of the list whose note and support texts fit it, always the first entry, submits one candidate for those notes and their support, and runs the verifiers in order on the notes that asked for them: correctness, source, and requirements judge their notes in one call each, reconstruction runs three calls per note, a note stops at its first verdict that is not `PASS`, and a note whose support failed in the same verification is skipped. Support is handed to every verifier as established and not under review, so a verdict names only a note under verification.
+
+The kernel records one verdict per call, which its specification states as a uniqueness constraint, so a call that judged several notes records one kernel verdict on the candidate, `PASS` only when every note passed, whose evidence lists the verdict of each note; the projection reads that evidence, and the kernel's candidate status decides nothing. Verified, dead, and accepted are Datalog rules over the verdict rows and the support edges: a note is dead when correctness, source, or reconstruction failed it or a note in its support is dead, verified when one candidate passed correctness and source and it is not dead, and accepted when one candidate passed all four verifiers. Acceptance is the projection's query, and the fold ends the workflow on the first accepted note of the verification.
+
+Chao amended the proposal's treatment of dead notes before it landed: a wrong direction is worth knowing, so the explorer sees every dead note with its summary and the verdicts that killed it, cannot name one as support, and may read its text in full when the coordinator hands it over so that a new note removes the defect; the coordinator cannot list a dead note for verification again. The note gained `dead`, the verdict lost the adversarial verifier, and the settings changed shape, so the contract moved to schema 8; the prompts and the journal shape changed, so the declaration moved to schema 10.
+
+The live smoke ran the primes task on Luna-low profiles for every Pi call and the Codex CLI on gpt-5.6-sol at low reasoning. The explorer wrote one note whose text says it meets the completion criteria, the coordinator listed it with all four verifiers, and the verification accepted it in one turn: seven Pi requests, one Codex call, 6,829 tokens, no request errors, and estimated cost $0.0029228. The artifacts are under `runs/verification-primes-smoke-20260902-1`. A verification of several notes in one call has run only against the fake provider in the tests.
+
 ## Lab workflow
 
 Lab accepts one experiment shape: tasks, settings arms, replicates, and one concurrency value. Freezing validates each task, requires clean Elenx checkouts, requires all arms to share one Elenx revision and execution contract, hashes each task and settings file, and writes frozen manifest schema 1.
@@ -92,8 +102,8 @@ Run these gates after the implementation and documentation land together:
 
 1. Run `bun run check:all` in Elenx. Confirm formatting, strict TypeScript, kernel tests, solver tests, package checks, consumer compilation, and CLI help.
 2. Run `bun run e2e:roles`. Confirm a fresh run, zero-call repeated run, a failed verification followed by a new note, terminal inspection, export, campaign locking, and provider failure without a verdict.
-3. Inspect `elenx-solve contract`. Confirm schema 6, application `elenx-solve`, protocol `workflow`, and the three run arguments.
-4. Run `bun run check` in Elenx Lab. Confirm the single author manifest, schema-6 contract freeze, old-shape rejection, task-based debug, inspection-derived worker results, recovery, immutable attempt validation, Nomad HCL validation, and CLI help.
+3. Inspect `elenx-solve contract`. Confirm schema 8, application `elenx-solve`, protocol `workflow`, and the three run arguments.
+4. Run `bun run check` in Elenx Lab. Confirm the single author manifest, schema-8 contract freeze, old-shape rejection, task-based debug, inspection-derived worker results, recovery, immutable attempt validation, Nomad HCL validation, and CLI help.
 5. Build a worker image from clean committed Elenx and Lab revisions. Run one small Nomad experiment, wait for the allocation to settle, and inspect the campaign database. Confirm that the mathematical fields in `attempt.json.report` match `inspect.result` and that the report identity matches the frozen contract.
 
 ## Live smoke evidence

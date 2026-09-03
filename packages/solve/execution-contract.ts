@@ -10,14 +10,14 @@ export const workflowOutcomes = [
 ] as const;
 
 export const executionContract = {
-  schemaVersion: 7,
+  schemaVersion: 8,
   application: applicationId,
   protocol: workflowProtocol,
   run: {
     command: "run",
     arguments: ["task", "campaign", "settings"],
     report: {
-      schemaVersion: 7,
+      schemaVersion: 8,
       outcomes: workflowOutcomes,
       terminalOutcomes: ["accepted", "turn-limit"],
     },

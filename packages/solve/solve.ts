@@ -11,6 +11,7 @@ import {
   readSettings,
   runRoleCommand,
 } from "./role-cli";
+import { piProfileNames } from "./pi-roles";
 import { run, settings, type RunDependencies, type Settings } from "./runner";
 import { task } from "./roles";
 import {
@@ -109,11 +110,10 @@ async function main(args: readonly string[]): Promise<void> {
   const workflowSettings = await readSettings(settingsPath);
   const { ModelRuntime } = await import("@earendil-works/pi-coding-agent");
   const runtime = await ModelRuntime.create(modelRuntimeOptions(process.env));
-  await requireCredentials(runtime, [
-    workflowSettings.explorer.provider,
-    workflowSettings.coordinator.provider,
-    workflowSettings.verifier.provider,
-  ]);
+  await requireCredentials(
+    runtime,
+    piProfileNames.map((name) => workflowSettings[name].provider),
+  );
   const controller = new AbortController();
   let pauseRequested = false;
   const stop = () => {

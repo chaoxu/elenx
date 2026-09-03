@@ -1,5 +1,6 @@
 {
   "maxExplorerTurns": 10,
+  "window": 100000,
   "explorer": {
     "provider": "codex-lb",
     "model": "gpt-5.6-sol",
@@ -10,7 +11,7 @@
     "model": "gpt-5.6-sol",
     "reasoning": "max"
   },
-  "verifier": {
+  "correctness": {
     "provider": "codex-lb",
     "model": "gpt-5.6-sol",
     "reasoning": "max"
@@ -19,5 +20,15 @@
     "provider": "codex",
     "model": "gpt-5.6-sol",
     "reasoning": "high"
+  },
+  "requirements": {
+    "provider": "codex-lb",
+    "model": "gpt-5.6-sol",
+    "reasoning": "max"
+  },
+  "reconstruction": {
+    "provider": "codex-lb",
+    "model": "gpt-5.6-sol",
+    "reasoning": "max"
   }
 }

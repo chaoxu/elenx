@@ -3,11 +3,10 @@ import { createRequire } from "node:module";
 import type { EntryId } from "elenx";
 
 import {
+  byId,
   note as noteSchema,
-  verifierNames,
   type JournalVerdict,
   type Note,
-  type Verdict,
 } from "./roles";
 
 const require = createRequire(import.meta.url);
@@ -34,11 +33,19 @@ const relations = [
   ":create note {id: String => seq: Int, text: String}",
   ":create summary {note: String => seq: Int, summary: String}",
   ":create support {note: String, support: String}",
-  ":create verdict {seq: Int => candidate: Int, verifier: String, note: String, verdict: String, report: String}",
+  ":create verdict {seq: Int, note: String => candidate: Int, verifier: String, verdict: String, report: String}",
 ];
 
-const byId = (left: string, right: string): number =>
-  Number(left.slice(1)) - Number(right.slice(1));
+// Verified, dead, and accepted are derived from the verdict rows and the
+// support edges alone. A note is dead when correctness, source, or
+// reconstruction failed it or a note in its support is dead; verified when
+// one candidate passed correctness and source and it is not dead; accepted
+// when one candidate passed every verifier.
+const derivedRules = `passed[candidate, note, verifier] := *verdict{seq, candidate, verifier, note, verdict: "PASS"}, seq <= $seq
+dead[note] := *verdict{seq, verifier, note, verdict: "FAIL"}, seq <= $seq, verifier != "requirements"
+dead[note] := *support{note, support}, dead[support]
+verified[note] := passed[candidate, note, "correctness"], passed[candidate, note, "source"], not dead[note]
+accepted[note] := passed[candidate, note, "correctness"], passed[candidate, note, "source"], passed[candidate, note, "requirements"], passed[candidate, note, "reconstruction"], not dead[note]`;
 
 export class Projection {
   private constructor(private readonly db: InstanceType<typeof CozoDb>) {}
@@ -49,13 +56,13 @@ export class Projection {
       for (const relation of relations) await projection.db.run(relation);
       if (verdicts.length > 0) {
         await projection.db.run(
-          "?[seq, candidate, verifier, note, verdict, report] <- $rows :put verdict {seq => candidate, verifier, note, verdict, report}",
+          "?[seq, note, candidate, verifier, verdict, report] <- $rows :put verdict {seq, note => candidate, verifier, verdict, report}",
           {
             rows: verdicts.map(({ seq, candidate, verdict }) => [
               seq,
+              verdict.note,
               candidate,
               verdict.verifier,
-              verdict.note,
               verdict.verdict,
               verdict.report,
             ]),
@@ -104,9 +111,9 @@ export class Projection {
     );
   }
 
-  /** Every note that exists at `seq`, with the summary and verdicts recorded by then, in id order. */
+  /** Every note that exists at `seq`, with the summary, verdicts, and flags derived by then, in id order. */
   async at(seq: EntryId): Promise<Note[]> {
-    const [notes, summaries, support, verdicts, verified] = await Promise.all([
+    const [notes, summaries, support, verdicts, flags] = await Promise.all([
       this.db.run("?[id, text] := *note{id, seq, text}, seq <= $seq", { seq }),
       this.db.run(
         "?[note, summary] := *summary{note, seq, summary}, seq <= $seq",
@@ -114,20 +121,22 @@ export class Projection {
       ),
       this.db.run("?[note, support] := *support{note, support}"),
       this.db.run(
-        "?[seq, verifier, note, verdict, report] := *verdict{seq, verifier, note, verdict, report}, seq <= $seq :order seq",
+        "?[seq, verifier, note, verdict, report] := *verdict{seq, note, verifier, verdict, report}, seq <= $seq :order seq, note",
         { seq },
       ),
-      // Verified: one candidate passed every verifier but requirements.
       this.db.run(
-        `passed[candidate, note, verifier] := *verdict{seq, candidate, verifier, note, verdict: "PASS"}, seq <= $seq
-?[note] := ${verifierNames
-          .filter((name) => name !== "requirements")
-          .map((name) => `passed[candidate, note, "${name}"]`)
-          .join(", ")}`,
+        `${derivedRules}
+?[note, flag] := verified[note], flag = "verified"
+?[note, flag] := dead[note], flag = "dead"`,
         { seq },
       ),
     ]);
-    const verifiedNotes = new Set(verified.rows.map(([note]) => note));
+    const flagged = (flag: string): Set<unknown> =>
+      new Set(
+        flags.rows.filter(([, value]) => value === flag).map(([note]) => note),
+      );
+    const verifiedNotes = flagged("verified");
+    const deadNotes = flagged("dead");
     const summaryOf = new Map(
       summaries.rows.map(([note, summary]) => [note, summary]),
     );
@@ -150,28 +159,20 @@ export class Projection {
               report,
             })),
           verified: verifiedNotes.has(id),
+          dead: deadNotes.has(id),
         }),
       )
       .sort((left, right) => byId(left.id, right.id));
   }
 
-  /** The first verdict of one verifier on one candidate recorded after `after`. */
-  async verdictAfter(
-    after: EntryId,
-    candidate: EntryId,
-    verifier: string,
-  ): Promise<{ readonly seq: EntryId; readonly verdict: Verdict } | undefined> {
+  /** The notes accepted at `seq`: every verifier passed them on one candidate, in id order. */
+  async accepted(seq: EntryId): Promise<string[]> {
     const result = await this.db.run(
-      "?[seq, note, verdict, report] := *verdict{seq, candidate, verifier, note, verdict, report}, seq > $after, candidate == $candidate, verifier == $verifier :order seq :limit 1",
-      { after, candidate, verifier },
+      `${derivedRules}
+?[note] := accepted[note]`,
+      { seq },
     );
-    const row = result.rows[0];
-    if (row === undefined) return undefined;
-    const [seq, note, verdict, report] = row;
-    return {
-      seq: seq as EntryId,
-      verdict: { verifier, note, verdict, report } as Verdict,
-    };
+    return result.rows.map(([note]) => note as string).sort(byId);
   }
 
   /** The transitive support of a note, in id order. */
