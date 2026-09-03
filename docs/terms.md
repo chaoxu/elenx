@@ -15,7 +15,7 @@ This is the vocabulary of Elenx and its solver. Work in this repository uses the
 | state | The state of a call-result, `returned` or `threw`, or of a Pi or Codex call, `succeeded`, `failed`, or `cancelled`. Never the workflow phase. |
 | label | The string naming a call. |
 | role | The category of a call: explorer, coordinator, verifier. |
-| request | The exact JSON input of a call. For a Pi call it holds the model, the system prompt, and the prompt. For a Codex call it holds the model, reasoning, developer instructions, prompt, and output schema. |
+| request | The exact JSON input of a call. For a Pi call it holds the model, the system prompt, and the prompt. For a Codex call it holds the model, reasoning, search, developer instructions, prompt, and output schema. |
 | tool, submission | A model-callable tool, and the structured value the model passed to it. The solver's submit tools are `submit_notes`, `submit_coordination`, `submit_verdict`, `submit_statement`, and `submit_proof`. The source verifier has no submit tool; its submission is its final JSON message. |
 | candidate | An entry holding material and the labels of its required verifiers. The solver submits one per verification, for the notes it verifies and their support. |
 | material | The bytes attached to a candidate. |
@@ -62,7 +62,7 @@ This is the vocabulary of Elenx and its solver. Work in this repository uses the
 | schema version | The declaration's version moves with every role prompt or journal shape change. The contract's version moves only with the contract or report shape. |
 | contract | The output of `elenx-solve contract`: command, arguments, outcomes, and the execution report schema. |
 | settings | One profile for the explorer, one for the coordinator, one per verifier, `maxExplorerTurns`, and `window`. |
-| profile | A provider, model, and reasoning level. The source verifier's provider is `codex`, the Codex CLI on its native credential. |
+| profile | A provider, model, and reasoning level. The source verifier's provider is `codex`, the Codex CLI on its native credential, and its `search` decides whether that call has web search, true by default; without it the call can confirm no external result. |
 | run, inspect, export | The commands that start or resume a campaign, derive its phase and result, and emit the accepted note with its transitive support. |
 
 The Lab's own terms, such as experiment, arm, replicate, attempt, and generation, live in the `elenx-lab` repository.

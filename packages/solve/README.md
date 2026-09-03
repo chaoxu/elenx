@@ -51,7 +51,8 @@ Settings select one model profile for the explorer, one for the coordinator, one
   "source": {
     "provider": "codex",
     "model": "gpt-5.6-sol",
-    "reasoning": "high"
+    "reasoning": "high",
+    "search": true
   },
   "requirements": {
     "provider": "codex-lb",
@@ -66,7 +67,7 @@ Settings select one model profile for the explorer, one for the coordinator, one
 }
 ```
 
-The correctness, requirements, and reconstruction verifiers run through Pi on their own profiles, so a defective note costs one cheap call and only sound notes reach the expensive ones. The source verifier runs the Codex CLI on its native credential, the only path that provides web search, so its provider is `codex`. `ELENX_CODEX_COMMAND` names the binary, default `codex`. `window` is a character count over the note and support texts one verification reads, default 100000. A verification of one note makes one to six calls: the reconstruction verifier is three. Spend covers the Pi calls; the source verifier's usage is on its submission.
+The correctness, requirements, and reconstruction verifiers run through Pi on their own profiles, so a defective note costs one cheap call and only sound notes reach the expensive ones. The source verifier runs the Codex CLI on its native credential, the only path that provides web search, so its provider is `codex`. Its `search` is true by default; `false` runs that call without web search, for a task that must not reach the internet, and a note then passes only when its text invokes no external result. `ELENX_CODEX_COMMAND` names the binary, default `codex`. `window` is a character count over the note and support texts one verification reads, default 100000. A verification of one note makes one to six calls: the reconstruction verifier is three. Spend covers the Pi calls; the source verifier's usage is on its submission.
 
 ## Run
 

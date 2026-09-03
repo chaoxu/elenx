@@ -944,3 +944,40 @@ test("a verification takes the longest prefix that fits the window, counting sha
   ]);
   expect(verificationPrefix([], notes, 5)).toEqual([]);
 });
+
+test("a source profile without search runs the source verifier offline", async () => {
+  const path = campaignPath();
+  const settings = roleSettings();
+  const workflow = workflowConfiguration({
+    task,
+    settings: {
+      ...settings,
+      maxExplorerTurns: 1,
+      source: { ...settings.source, search: false },
+    },
+  });
+  const campaign = createCampaign(path, applicationId, workflow);
+  const drive = dependencies([
+    { submission: { notes: [good] } },
+    {
+      submission: coordination("n1", {
+        verify: [{ note: "n1", verifiers: lemma }],
+      }),
+    },
+    verdictsOf("correctness", ["n1"]),
+    { ...sourceOf(["n1"]), searched: false },
+  ]);
+  const phase = await runWorkflow(
+    campaign,
+    createPiRoles(campaign, workflow.settings, drive),
+  );
+  expect(phase).toMatchObject({ kind: "turn-limit", turns: 1 });
+  if (phase.kind !== "turn-limit") throw new Error("expected turn limit");
+  expect(phase.notes[0]).toMatchObject({ verified: true, dead: false });
+  expect(drive.codexCalls[0]).toMatchObject({ search: false });
+  expect(drive.codexCalls[0]?.developerInstructions).toContain("no web search");
+  expect(drive.codexCalls[0]?.prompt).toContain(
+    "Pass a note only when its text invokes no external result",
+  );
+  campaign.close();
+});

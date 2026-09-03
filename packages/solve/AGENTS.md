@@ -10,6 +10,8 @@ Keep execution-contract schema version 8 while the contract and report shapes re
 
 Remove retired branches instead of preserving them behind compatibility schemas, aliases, adapters, or mode flags. Do not restore split problem and criteria arguments, separate `trial` or solver `resume` commands, legacy workflow protocols, or alternate result projections. Preserve old campaign databases as historical artifacts and open them only with their matching revision.
 
+Spend reasoning generously and never reason again over what was already reasoned, so no result is verified or derived twice; efficiency work waits for measured spend from real runs.
+
 Use one bounded completion loop for implementation work:
 
 1. Collect known blockers and define the observable success condition before editing.

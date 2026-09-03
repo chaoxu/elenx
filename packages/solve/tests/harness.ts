@@ -60,7 +60,12 @@ export function roleSettings(): SolveSettings {
     explorer: profile,
     coordinator: profile,
     correctness: profile,
-    source: { provider: "codex", model: "codex-model", reasoning: "low" },
+    source: {
+      provider: "codex",
+      model: "codex-model",
+      reasoning: "low",
+      search: true,
+    },
     requirements: profile,
     reconstruction: profile,
   };

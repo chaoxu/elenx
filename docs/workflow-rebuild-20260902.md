@@ -72,6 +72,8 @@ Chao amended the proposal's treatment of dead notes before it landed: a wrong di
 
 The live smoke ran the primes task on Luna-low profiles for every Pi call and the Codex CLI on gpt-5.6-sol at low reasoning. The explorer wrote one note whose text says it meets the completion criteria, the coordinator listed it with all four verifiers, and the verification accepted it in one turn: seven Pi requests, one Codex call, 6,829 tokens, no request errors, and estimated cost $0.0029228. The artifacts are under `runs/verification-primes-smoke-20260902-1`. A verification of several notes in one call has run only against the fake provider in the tests.
 
+The source profile then gained `search`, a boolean defaulting to true whose `false` runs the Codex call without web search and under an obligation that can confirm no external result, so a note passes only when its text invokes none, for a task that must not reach the internet; the journaled Codex request gained the field, so the declaration moved to schema 11 and the contract stayed at 8.
+
 ## Lab workflow
 
 Lab accepts one experiment shape: tasks, settings arms, replicates, and one concurrency value. Freezing validates each task, requires clean Elenx checkouts, requires all arms to share one Elenx revision and execution contract, hashes each task and settings file, and writes frozen manifest schema 1.

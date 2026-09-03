@@ -64,7 +64,7 @@ test("prompt bytes are frozen with the workflow schema version", () => {
     reconstructionCall(verification, second, stated, "Independent proof of P."),
   );
   const source = sourceCall(
-    { provider: "codex", model: "codex-model", reasoning: "low" },
+    { provider: "codex", model: "codex-model", reasoning: "low", search: true },
     verification,
     ["n2"],
   );
@@ -72,14 +72,26 @@ test("prompt bytes are frozen with the workflow schema version", () => {
   for (const call of calls) {
     digest.update(`${call.label}\n${call.system}\n${call.prompt}\n`);
   }
-  digest.update(
-    `${source.label}\n${source.request.developerInstructions}\n${source.request.prompt}\n`,
+  const offline = sourceCall(
+    {
+      provider: "codex",
+      model: "codex-model",
+      reasoning: "low",
+      search: false,
+    },
+    verification,
+    ["n2"],
   );
+  for (const call of [source, offline]) {
+    digest.update(
+      `${call.label}\n${call.request.developerInstructions}\n${call.request.prompt}\n`,
+    );
+  }
   // Changing any role prompt changes the bytes the workflow fold matches
   // against journals, so bump workflowSchemaVersion and update this digest
   // in the same change.
-  expect(workflowSchemaVersion).toBe(10);
+  expect(workflowSchemaVersion).toBe(11);
   expect(digest.digest("hex")).toBe(
-    "edb7669502949ac86caf1b77406f0064d56142da5f031d9670b9c6ea4dbee987",
+    "d413dbb76d31b21eba428e8ad2824c9a0d71d0364f1ecedc91d1c00011d07590",
   );
 });

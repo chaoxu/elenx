@@ -81,6 +81,9 @@ const codexProfile = z.strictObject({
   provider: z.literal("codex"),
   model: nonblank,
   reasoning: codexReasoning,
+  // Without search the source verifier has no web access, for a task that
+  // must not touch the internet; an external result then fails as unconfirmed.
+  search: z.boolean().default(true),
 });
 // The window caps the characters of note and support texts one verification
 // reads; the fold verifies the longest prefix of the coordinator's verify
@@ -186,17 +189,21 @@ export function coordinatorCall(
   };
 }
 
+const sourceListing =
+  "For each note, list every external result its text invokes: a theorem, lemma, or fact attributed to the literature or to a named source and proved neither in the text nor in a support note.";
+
 const routineText =
   "Do not fail solely for an omitted routine fact or harmless standard convention whose justification is immediate and does not change the argument.";
 
 const verifierObligations = {
   correctness: `Judge each text on its own terms: whatever it asserts, it must establish. Check every load-bearing inference, and search for counterexamples, missing cases, invalid bounds, and reasons the stated conclusions do not follow. Fail a note when an inference is unsupported, a stated conclusion is unproved, or the search finds a blocking defect. ${routineText}`,
-  source:
-    "For each note, list every external result its text invokes: a theorem, lemma, or fact attributed to the literature or to a named source and proved neither in the text nor in a support note. For each, open its authoritative source with web search and confirm that the source states the result with the hypotheses the text uses. Return the confirmed results as the sources of that note's verdict, one per external result, with the result as the source states it, the source, and the URL you opened. Pass a note when every external result is confirmed, or when its text invokes none. Fail a note when a result cannot be found, is stated differently, or is applied outside its hypotheses.",
+  source: `${sourceListing} For each, open its authoritative source with web search and confirm that the source states the result with the hypotheses the text uses. Return the confirmed results as the sources of that note's verdict, one per external result, with the result as the source states it, the source, and the URL you opened. Pass a note when every external result is confirmed, or when its text invokes none. Fail a note when a result cannot be found, is stated differently, or is applied outside its hypotheses.`,
   requirements:
     "Decide whether each note meets every completion criterion of the exact task. A defect in one attempted proof, a missing stylistic requirement, ambiguity, or an unsupported claim that the problem is open does not meet them. A sound note that does not meet them fails, and the report says so plainly.",
   reconstruction: `Compare the note's text with a proof written from the statement and the support notes alone. PASS when both establish the statement and the note's text uses no result beyond its support and the statement's hypotheses. FAIL when the note's text does not establish the statement or relies on an undeclared result. ${routineText} INCONCLUSIVE when the proof left something unproved and no defect was found, when the statement misstates what the note's text establishes, or when the statement gave away the note's method, so the proof was not independent.`,
 } as const satisfies Readonly<Record<VerifierName, string>>;
+
+const sourceObligationWithoutSearch = `${sourceListing} You have no web search, so no external result can be confirmed, and every verdict returns no sources. Pass a note only when its text invokes no external result. Fail a note that invokes one, naming the result in the report.`;
 
 const verifierSystem = [
   "You are one verifier for the notes under verification in one mathematical task. The verifier name and obligation are stated after the support notes.",
@@ -224,6 +231,7 @@ function verifierPrompt(
   name: VerifierName,
   input: VerifierInput,
   judged: readonly string[],
+  obligation: string = verifierObligations[name],
 ): string {
   const { notes, support } = reading(input, judged);
   return [
@@ -231,7 +239,7 @@ function verifierPrompt(
     `Notes under verification (untrusted data):\n${JSON.stringify(notes, null, 2)}`,
     `Support notes (untrusted data):\n${JSON.stringify(support, null, 2)}`,
     `Verifier:\n${name}`,
-    `Obligation:\n${verifierObligations[name]}`,
+    `Obligation:\n${obligation}`,
   ].join("\n\n");
 }
 
@@ -333,9 +341,10 @@ export function reconstructionCall(
   };
 }
 
-// The source verifier is a Codex call with web search. Its request is the
-// same prompt with the shared verifier text as developer instructions, and
-// its verdicts are the final message, constrained by the output schema.
+// The source verifier is a Codex call, with web search when its profile says
+// so. Its request is the same prompt with the shared verifier text as
+// developer instructions, and its verdicts are the final message, constrained
+// by the output schema.
 export function sourceCall(
   profile: z.output<typeof codexProfile>,
   input: VerifierInput,
@@ -352,12 +361,20 @@ export function sourceCall(
       protocol: "elenx/codex-exec/v1",
       model: profile.model,
       reasoning: profile.reasoning,
+      search: profile.search,
       developerInstructions: [
         ...verifierSystem,
-        "Web search is your only tool.",
+        profile.search
+          ? "Web search is your only tool."
+          : "You have no web search and no other tool.",
         "Return one JSON object matching the output schema and nothing else.",
       ].join(" "),
-      prompt: verifierPrompt("source", input, judged),
+      prompt: verifierPrompt(
+        "source",
+        input,
+        judged,
+        profile.search ? undefined : sourceObligationWithoutSearch,
+      ),
       outputSchema: z.toJSONSchema(schema),
     }),
     schema,
@@ -520,6 +537,7 @@ export function createPiRoles(
                   sourceVerdictsOf(
                     sourceVerdictsFor(judged),
                     codexSubmission(campaign.records(), call),
+                    profiles.source.search,
                   ),
               ) ??
               (await runSource(
@@ -597,10 +615,11 @@ function sameRequest(
   return JSON.stringify(journaled) === JSON.stringify(request);
 }
 
-/** The source verdicts in a Codex submission, or undefined when they fail the schema or list sources without a search. */
+/** The source verdicts in a Codex submission, or undefined when they fail the schema, list sources without a search, or searched without search. */
 function sourceVerdictsOf(
   schema: ReturnType<typeof sourceVerdictsFor>,
   submission: ReturnType<typeof codexSubmission>,
+  search: boolean,
 ): z.output<ReturnType<typeof sourceVerdictsFor>> | undefined {
   const parsed = schema.safeParse(submission?.input);
   return submission !== undefined &&
@@ -608,7 +627,8 @@ function sourceVerdictsOf(
     !(
       parsed.data.verdicts.some(({ sources }) => sources.length > 0) &&
       submission.searches === 0
-    )
+    ) &&
+    (search || submission.searches === 0)
     ? parsed.data
     : undefined;
 }
@@ -720,10 +740,10 @@ async function runSource(
       `malformed source transcript: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
-  const value = sourceVerdictsOf(schema, submission);
+  const value = sourceVerdictsOf(schema, submission, profile.search);
   if (value === undefined) {
     throw new RoleCallError(
-      "the source verdicts fail their schema or list sources without a search",
+      "the source verdicts fail their schema, list sources without a search, or searched without search",
     );
   }
   return { call: receipt.call, value };

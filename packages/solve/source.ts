@@ -15,9 +15,10 @@ import { z } from "zod";
 
 import { returnedOutput } from "./roles";
 
-// The source verifier runs Codex with web search, isolated in a fresh
-// CODEX_HOME that holds only the inherited OAuth credential, with every other
-// Codex feature disabled. Its request and stdout are journaled like any call.
+// The source verifier runs Codex, with web search only when the request asks
+// for it, isolated in a fresh CODEX_HOME that holds only the inherited OAuth
+// credential, with every other Codex feature disabled. Its request and stdout
+// are journaled like any call.
 
 const nonblank = z.string().refine((value) => value.trim().length > 0, {
   message: "must contain non-whitespace text",
@@ -36,6 +37,7 @@ export const codexRequest = z.strictObject({
   protocol: z.literal("elenx/codex-exec/v1"),
   model: nonblank,
   reasoning: codexReasoning,
+  search: z.boolean(),
   developerInstructions: nonblank,
   prompt: nonblank,
   outputSchema: z.json(),
@@ -310,7 +312,7 @@ export function codexExec(
       const run = await runCommand(
         command,
         [
-          "--search",
+          ...(request.search ? ["--search"] : []),
           "-m",
           request.model,
           ...disabledFeatures.flatMap((feature) => ["--disable", feature]),
