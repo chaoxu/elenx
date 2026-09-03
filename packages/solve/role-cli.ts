@@ -23,8 +23,11 @@ import {
   jsonSnapshot,
   roleFromLabel,
   roleNames,
+  proof,
+  reconstructionCalls,
   roleTools,
   sourceVerdict,
+  statement,
   succeededSubmission,
   verdict,
   verifierFromLabel,
@@ -98,6 +101,20 @@ function visibleSubmission(
         usage: submission.usage,
       };
     }
+    for (const [name, schema] of [
+      ["statement", statement],
+      ["proof", proof],
+    ] as const) {
+      if (call.label !== reconstructionCalls[name].label) continue;
+      const submission = succeededSubmission(
+        records,
+        call.seq,
+        reconstructionCalls[name].tool,
+      );
+      return submission === undefined
+        ? undefined
+        : schema.parse(submission.input);
+    }
     const submission = succeededSubmission(records, call.seq, roleTools[role]);
     if (submission === undefined) return undefined;
     if (role === "explorer") return explorerResult.parse(submission.input);
@@ -139,6 +156,7 @@ export async function inspectCampaign(
         return {
           call: entry.seq,
           role,
+          label: entry.label,
           ...(verifier === undefined ? {} : { verifier }),
           ...(entry.candidate === undefined
             ? {}

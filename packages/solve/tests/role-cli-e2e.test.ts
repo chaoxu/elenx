@@ -30,19 +30,19 @@ test("run starts, resumes, inspects, and exports one workflow", async () => {
   const first = await cli(directory, "run", task, campaign, settings);
   expect(first.code).toBe(0);
   expect(JSON.parse(first.stdout)).toMatchObject({
-    schemaVersion: 5,
+    schemaVersion: 6,
     application: "elenx-solve",
     protocol: "workflow",
     outcome: "accepted",
     turns: 2,
     note: { id: "n2" },
   });
-  expect(await recordedRequests(directory)).toHaveLength(8);
+  expect(await recordedRequests(directory)).toHaveLength(11);
 
   const second = await cli(directory, "run", task, campaign, settings);
   expect(second.code).toBe(0);
   expect(JSON.parse(second.stdout).outcome).toBe("accepted");
-  expect(await recordedRequests(directory)).toHaveLength(8);
+  expect(await recordedRequests(directory)).toHaveLength(11);
 
   const inspection = JSON.parse(
     (await cli(directory, "inspect", campaign)).stdout,
@@ -53,7 +53,7 @@ test("run starts, resumes, inspects, and exports one workflow", async () => {
     },
     phase: "accepted",
     result: { outcome: "accepted", note: { id: "n2" } },
-    spend: { logicalProviderRequests: 8, requestErrors: 0 },
+    spend: { logicalProviderRequests: 11, requestErrors: 0 },
   });
   expect(
     inspection.calls.map(({ role }: { readonly role: string }) => role),
@@ -63,6 +63,9 @@ test("run starts, resumes, inspects, and exports one workflow", async () => {
     "verifier",
     "explorer",
     "coordinator",
+    "verifier",
+    "verifier",
+    "verifier",
     "verifier",
     "verifier",
     "verifier",
@@ -81,6 +84,9 @@ test("run starts, resumes, inspects, and exports one workflow", async () => {
     "correctness",
     "adversarial",
     "source",
+    "reconstruction",
+    "reconstruction",
+    "reconstruction",
     "requirements",
   ]);
   expect(
@@ -92,7 +98,7 @@ test("run starts, resumes, inspects, and exports one workflow", async () => {
     ),
   ).toEqual([
     ["n1", 1],
-    ["n2", 4],
+    ["n2", 5],
   ]);
 
   const exported = await cli(directory, "export", campaign);

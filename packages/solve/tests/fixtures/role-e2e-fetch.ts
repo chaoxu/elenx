@@ -87,6 +87,12 @@ function submissionFor(tool: string, request: string): unknown {
       verify: { note },
     };
   }
+  if (tool === "submit_statement") {
+    return { statement: "There are infinitely many primes.", support: [] };
+  }
+  if (tool === "submit_proof") {
+    return { proof: "An independent Euclid argument proves the statement." };
+  }
   if (tool === "submit_verdict") {
     const pass = request.includes("2 is prime");
     const verifier = /Verifier:\\n(\w+)/u.exec(request)?.[1];

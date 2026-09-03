@@ -19,6 +19,7 @@ export const verifierNames = [
   "correctness",
   "adversarial",
   "source",
+  "reconstruction",
   "requirements",
 ] as const;
 export type VerifierName = (typeof verifierNames)[number];
@@ -31,8 +32,20 @@ export const verifierLabels = {
   correctness: `${roleLabels.verifier}/correctness`,
   adversarial: `${roleLabels.verifier}/adversarial`,
   source: `${roleLabels.verifier}/source`,
+  reconstruction: `${roleLabels.verifier}/reconstruction`,
   requirements: `${roleLabels.verifier}/requirements`,
 } as const satisfies Readonly<Record<VerifierName, string>>;
+/** The reconstruction verifier's two calls before its verdict: their labels and submit tools. */
+export const reconstructionCalls = {
+  statement: {
+    label: `${verifierLabels.reconstruction}/statement`,
+    tool: "submit_statement",
+  },
+  proof: {
+    label: `${verifierLabels.reconstruction}/proof`,
+    tool: "submit_proof",
+  },
+} as const;
 export const roleTools = {
   explorer: "submit_notes",
   coordinator: "submit_coordination",
@@ -40,7 +53,11 @@ export const roleTools = {
 } as const satisfies Readonly<Record<RoleName, string>>;
 
 export function verifierFromLabel(label: string): VerifierName | undefined {
-  return verifierNames.find((name) => verifierLabels[name] === label);
+  return verifierNames.find(
+    (name) =>
+      verifierLabels[name] === label ||
+      label.startsWith(`${verifierLabels[name]}/`),
+  );
 }
 
 export function roleFromLabel(label: string): RoleName | undefined {
@@ -58,10 +75,13 @@ export const task = z.strictObject({
 });
 export type Task = z.output<typeof task>;
 
+// INCONCLUSIVE is the reconstruction verifier's third verdict: the
+// independent text left something unproved and no defect was found. It
+// blocks acceptance without marking the note defective.
 export const verdict = z.strictObject({
   verifier: z.enum(verifierNames),
   note: noteId,
-  verdict: z.enum(["PASS", "FAIL"]),
+  verdict: z.enum(["PASS", "FAIL", "INCONCLUSIVE"]),
   report: nonblank,
 });
 export type Verdict = z.output<typeof verdict>;
@@ -74,6 +94,7 @@ const distinctSupport = [
   (value: { readonly support: readonly string[] }) => boolean,
   { message: string; path: string[] },
 ];
+const passOrFail = z.enum(["PASS", "FAIL"]);
 const noteFields = z.strictObject({
   id: noteId,
   summary: nonblank.optional(),
@@ -231,7 +252,49 @@ function noteBound<T extends z.ZodRawShape>(
 }
 
 export function verdictFor(input: VerifierInput) {
+  return noteBound(
+    verdict.omit({ verifier: true }).extend({ verdict: passOrFail }),
+    input,
+  );
+}
+
+export function reconstructionVerdictFor(input: VerifierInput) {
   return noteBound(verdict.omit({ verifier: true }), input);
+}
+
+/** What a text establishes, with nothing of how: the reconstruction verifier states it for the note and each support note. */
+export const statement = z.strictObject({
+  statement: nonblank,
+  support: z.array(z.strictObject({ note: noteId, statement: nonblank })),
+});
+export type Statement = z.output<typeof statement>;
+export function statementFor(input: VerifierInput) {
+  return statement.refine(
+    (value) =>
+      value.support.map(({ note }) => note).join(",") ===
+      input.note.support.join(","),
+    { message: "one statement per support note, in order", path: ["support"] },
+  );
+}
+
+/** The proof the reconstruction verifier writes from the statement and support statements alone. */
+export const proof = z.strictObject({ proof: nonblank });
+
+const normalized = (value: string): string =>
+  value.replace(/\s+/gu, " ").trim();
+
+/** Whether the statements would hand the note's text to the proof call. */
+export function statementLeaks(
+  input: VerifierInput,
+  value: Statement,
+): boolean {
+  const exact = normalized(input.note.text);
+  const supplied = normalized(
+    [value.statement, ...value.support.map(({ statement }) => statement)].join(
+      " ",
+    ),
+  );
+  return exact.length > 0 && supplied.includes(exact);
 }
 
 /** What the source verifier confirmed: one entry per external result the text invokes. */
@@ -246,7 +309,7 @@ export const sources = z.array(
 );
 export const sourceVerdict = verdict
   .omit({ verifier: true })
-  .extend({ sources });
+  .extend({ verdict: passOrFail, sources });
 export function sourceVerdictFor(input: VerifierInput) {
   return noteBound(sourceVerdict, input);
 }

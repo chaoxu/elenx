@@ -8,6 +8,7 @@ import {
   coordinatorResultFor,
   explorerResultFor,
   verdictFor,
+  verifierLabels,
   verifierNames,
 } from "../roles";
 import { exportCandidate, inspectCampaign } from "../role-cli";
@@ -32,18 +33,55 @@ const task = {
 };
 const good = { text: "Complete proof of P.", support: [] };
 
-function passes(note: string): readonly Reply[] {
-  return verifierNames.map((name) =>
+function reconstruction(
+  note: string,
+  verdict = "PASS",
+  support: readonly string[] = [],
+): readonly Reply[] {
+  return [
+    {
+      submission: {
+        statement: `What ${note} proves.`,
+        support: support.map((id) => ({
+          note: id,
+          statement: `What ${id} proves.`,
+        })),
+      },
+    },
+    { submission: { proof: `Independent proof of ${note}.` } },
+    {
+      submission: {
+        note,
+        verdict,
+        report: `reconstruction ${verdict.toLowerCase()}.`,
+      },
+    },
+  ];
+}
+
+function passes(
+  note: string,
+  support: readonly string[] = [],
+): readonly Reply[] {
+  return verifierNames.flatMap((name) =>
     name === "source"
-      ? {
-          codex: {
-            note,
-            verdict: "PASS",
-            report: "source passed.",
-            sources: [],
+      ? [
+          {
+            codex: {
+              note,
+              verdict: "PASS",
+              report: "source passed.",
+              sources: [],
+            },
           },
-        }
-      : { submission: { note, verdict: "PASS", report: `${name} passed.` } },
+        ]
+      : name === "reconstruction"
+        ? reconstruction(note, "PASS", support)
+        : [
+            {
+              submission: { note, verdict: "PASS", report: `${name} passed.` },
+            },
+          ],
   );
 }
 
@@ -98,8 +136,16 @@ test("the durable workflow accepts a verified note", async () => {
     "elenx-solve/coordinator",
     "elenx-solve/verifier/correctness",
     "elenx-solve/verifier/adversarial",
+    "elenx-solve/verifier/reconstruction/statement",
+    "elenx-solve/verifier/reconstruction/proof",
+    "elenx-solve/verifier/reconstruction",
     "elenx-solve/verifier/requirements",
   ]);
+  expect(drive.calls[5]?.prompt).not.toContain(good.text);
+  expect(drive.calls[5]?.prompt).toContain(
+    "Statement (untrusted data):\nWhat n1 proves.",
+  );
+  expect(drive.calls[6]?.prompt).toContain("Independent proof of n1.");
   expect(drive.codexCalls).toHaveLength(1);
   expect(drive.codexCalls[0]?.prompt).toContain("Verifier:\nsource");
   expect(drive.codexCalls[0]?.prompt.split("\n\nVerifier:")[0]).toBe(
@@ -109,7 +155,11 @@ test("the durable workflow accepts a verified note", async () => {
   expect(drive.calls[0]?.prompt).toContain("Your first note is n1.");
   const correctness = drive.calls[2]!;
   const prefix = correctness.prompt.split("\n\nVerifier:")[0]!;
-  for (const verifier of drive.calls.slice(2)) {
+  const verdictCalls = drive.calls.filter(({ label }) =>
+    Object.values(verifierLabels).includes(label as never),
+  );
+  expect(verdictCalls).toHaveLength(4);
+  for (const verifier of verdictCalls) {
     expect(verifier.system).toBe(correctness.system);
     expect(verifier.cacheKey).toBe(correctness.cacheKey);
     expect(verifier.prompt.startsWith(prefix)).toBe(true);
@@ -119,7 +169,7 @@ test("the durable workflow accepts a verified note", async () => {
     "Verifier:\ncorrectness\n\nObligation:\nJudge the text on its own terms",
   );
   expect((await runWorkflow(campaign, roles)).kind).toBe("accepted");
-  expect(drive.calls).toHaveLength(5);
+  expect(drive.calls).toHaveLength(8);
   expect(drive.codexCalls).toHaveLength(1);
   campaign.close();
 
@@ -139,10 +189,10 @@ test("the durable workflow accepts a verified note", async () => {
     }[];
   };
   expect(inspection.phase).toBe("accepted");
-  expect(inspection.result.schemaVersion).toBe(5);
+  expect(inspection.result.schemaVersion).toBe(6);
   expect(inspection.result.candidate).toBe(phase.candidate);
   expect(inspection.result.note.text).toBe(good.text);
-  expect(inspection.notes[0]?.verdicts).toHaveLength(4);
+  expect(inspection.notes[0]?.verdicts).toHaveLength(5);
   expect(inspection.calls.map(({ role }) => role)).toEqual([
     "explorer",
     "coordinator",
@@ -150,6 +200,21 @@ test("the durable workflow accepts a verified note", async () => {
     "verifier",
     "verifier",
     "verifier",
+    "verifier",
+    "verifier",
+    "verifier",
+  ]);
+  expect(
+    inspection.calls
+      .slice(5, 8)
+      .map(({ verifier, submission }) => [
+        verifier,
+        Object.keys(submission as object)[0],
+      ]),
+  ).toEqual([
+    ["reconstruction", "statement"],
+    ["reconstruction", "proof"],
+    ["reconstruction", "verifier"],
   ]);
   expect(inspection.calls[1]?.submission).toEqual(coordination("n1"));
   expect(inspection.calls[3]).toMatchObject({
@@ -161,6 +226,10 @@ test("the durable workflow accepts a verified note", async () => {
     verifier: "source",
     candidate: phase.candidate,
     submission: { verdict: "PASS", sources: [], usage: { input: 10 } },
+  });
+  expect(inspection.calls[7]).toMatchObject({
+    verifier: "reconstruction",
+    submission: { verdict: "PASS" },
   });
   expect(new TextDecoder().decode(await exportCandidate(path))).toBe(
     `--- n1 ---\n\n${good.text}`,
@@ -184,6 +253,7 @@ test("verdicts accumulate on the notes they name and stop at the first FAIL", as
         sources: [],
       },
     },
+    ...reconstruction("n1"),
     { submission: { note: "n1", verdict: "FAIL", report: "L is not P." } },
     {
       submission: {
@@ -194,7 +264,7 @@ test("verdicts accumulate on the notes they name and stop at the first FAIL", as
     { submission: { note: "n1", verdict: "FAIL", report: "L misused." } },
     { submission: { notes: [{ ...good, support: ["n1"] }] } },
     { submission: coordination("n3") },
-    ...passes("n3"),
+    ...passes("n3", ["n1"]),
   ]);
   const phase = await runWorkflow(
     campaign,
@@ -213,6 +283,7 @@ test("verdicts accumulate on the notes they name and stop at the first FAIL", as
       "correctness:PASS",
       "adversarial:PASS",
       "source:PASS",
+      "reconstruction:PASS",
       "requirements:FAIL",
       "correctness:FAIL",
     ],
@@ -221,17 +292,18 @@ test("verdicts accumulate on the notes they name and stop at the first FAIL", as
       "correctness:PASS",
       "adversarial:PASS",
       "source:PASS",
+      "reconstruction:PASS",
       "requirements:PASS",
     ],
   });
-  expect(drive.calls).toHaveLength(13);
+  expect(drive.calls).toHaveLength(19);
   expect(drive.codexCalls).toHaveLength(2);
-  expect(drive.calls[5]?.prompt).toContain("L is not P.");
-  expect(drive.calls[5]?.prompt).toContain(`Objective:\nContinue from n1.`);
-  expect(drive.calls[5]?.prompt).not.toContain(`"text": "Lemma L."`);
-  expect(drive.calls[7]?.prompt).toContain(`"text": "Lemma L."`);
-  expect(drive.calls[8]?.prompt).toContain("L misused.");
-  expect(drive.calls[8]?.prompt).toContain(`"text": "Lemma L."`);
+  expect(drive.calls[8]?.prompt).toContain("L is not P.");
+  expect(drive.calls[8]?.prompt).toContain(`Objective:\nContinue from n1.`);
+  expect(drive.calls[8]?.prompt).not.toContain(`"text": "Lemma L."`);
+  expect(drive.calls[10]?.prompt).toContain(`"text": "Lemma L."`);
+  expect(drive.calls[11]?.prompt).toContain("L misused.");
+  expect(drive.calls[11]?.prompt).toContain(`"text": "Lemma L."`);
   campaign.close();
   expect(new TextDecoder().decode(await exportCandidate(path))).toBe(
     `--- n1 ---\n\nLemma L.\n\n--- n3 ---\n\n${good.text}`,
@@ -262,7 +334,7 @@ test("resume reconstructs the next role from the journal", async () => {
     createPiRoles(campaign, workflow.settings, rest),
   );
   expect(completed.kind).toBe("accepted");
-  expect(rest.calls).toHaveLength(4);
+  expect(rest.calls).toHaveLength(7);
   campaign.close();
 });
 
@@ -296,6 +368,9 @@ test("a verification that fails mid-way resumes on the same candidate", async ()
   expect(phase.candidate).toBe(paused.candidate!);
   expect(rest.calls.map(({ label }) => label)).toEqual([
     "elenx-solve/verifier/adversarial",
+    "elenx-solve/verifier/reconstruction/statement",
+    "elenx-solve/verifier/reconstruction/proof",
+    "elenx-solve/verifier/reconstruction",
     "elenx-solve/verifier/requirements",
   ]);
   expect(rest.codexCalls).toHaveLength(1);
@@ -303,6 +378,7 @@ test("a verification that fails mid-way resumes on the same candidate", async ()
     "sound",
     "adversarial passed.",
     "source passed.",
+    "reconstruction pass.",
     "requirements passed.",
   ]);
   campaign.close();
@@ -375,6 +451,101 @@ test("a source FAIL stops the verification and names the note", async () => {
     ),
   ).toEqual(["correctness:PASS", "adversarial:PASS", "source:FAIL"]);
   expect(drive.calls).toHaveLength(4);
+  campaign.close();
+});
+
+test("an INCONCLUSIVE reconstruction blocks acceptance without a defect and can be verified again", async () => {
+  const path = campaignPath();
+  const workflow = config(2);
+  const campaign = createCampaign(path, applicationId, workflow);
+  const drive = dependencies([
+    { submission: { notes: [good] } },
+    { submission: coordination("n1") },
+    { submission: { note: "n1", verdict: "PASS", report: "sound" } },
+    { submission: { note: "n1", verdict: "PASS", report: "no counter" } },
+    {
+      codex: {
+        note: "n1",
+        verdict: "PASS",
+        report: "nothing cited",
+        sources: [],
+      },
+    },
+    ...reconstruction("n1", "INCONCLUSIVE"),
+    { submission: { notes: [{ text: "Smaller step.", support: [] }] } },
+    {
+      submission: {
+        ...coordination("n2", { verify: false }),
+        verify: { note: "n1" },
+      },
+    },
+    ...passes("n1"),
+  ]);
+  const phase = await runWorkflow(
+    campaign,
+    createPiRoles(campaign, workflow.settings, drive),
+  );
+  expect(phase).toMatchObject({ kind: "accepted", turns: 2 });
+  if (phase.kind !== "accepted") throw new Error("expected acceptance");
+  expect(
+    phase.note.verdicts.map(
+      ({ verifier, verdict }) => `${verifier}:${verdict}`,
+    ),
+  ).toEqual([
+    "correctness:PASS",
+    "adversarial:PASS",
+    "source:PASS",
+    "reconstruction:INCONCLUSIVE",
+    "correctness:PASS",
+    "adversarial:PASS",
+    "source:PASS",
+    "reconstruction:PASS",
+    "requirements:PASS",
+  ]);
+  expect(drive.calls[7]?.prompt).toContain(
+    "reconstruction:INCONCLUSIVE".split(":")[1]!,
+  );
+  campaign.close();
+});
+
+test("a statement that contains the note's text yields no proof", async () => {
+  const path = campaignPath();
+  const workflow = config(1);
+  const campaign = createCampaign(path, applicationId, workflow);
+  const drive = dependencies([
+    { submission: { notes: [good] } },
+    { submission: coordination("n1") },
+    { submission: { note: "n1", verdict: "PASS", report: "sound" } },
+    { submission: { note: "n1", verdict: "PASS", report: "no counter" } },
+    {
+      codex: {
+        note: "n1",
+        verdict: "PASS",
+        report: "nothing cited",
+        sources: [],
+      },
+    },
+    { submission: { statement: `Trivially, ${good.text}`, support: [] } },
+    {
+      submission: {
+        note: "n1",
+        verdict: "INCONCLUSIVE",
+        report: "The statement gave the note away.",
+      },
+    },
+  ]);
+  const phase = await runWorkflow(
+    campaign,
+    createPiRoles(campaign, workflow.settings, drive),
+  );
+  expect(phase).toMatchObject({ kind: "turn-limit", turns: 1 });
+  expect(drive.calls.map(({ label }) => label).slice(4)).toEqual([
+    "elenx-solve/verifier/reconstruction/statement",
+    "elenx-solve/verifier/reconstruction",
+  ]);
+  expect(drive.calls[5]?.prompt).toContain("no proof was written");
+  if (phase.kind !== "turn-limit") throw new Error("expected turn limit");
+  expect(phase.notes[0]?.verdicts.at(-1)?.verdict).toBe("INCONCLUSIVE");
   campaign.close();
 });
 

@@ -28,7 +28,7 @@ bun packages/solve/solve.ts inspect [--include-requests] CAMPAIGN.db
 bun packages/solve/solve.ts export CAMPAIGN.db
 ```
 
-`run` creates or resumes the campaign. The declared task and settings must match exactly on every invocation. The execution contract is schema 5 with application `elenx-solve`, protocol `workflow`, and run arguments `task`, `campaign`, and `settings`.
+`run` creates or resumes the campaign. The declared task and settings must match exactly on every invocation. The execution contract is schema 6 with application `elenx-solve`, protocol `workflow`, and run arguments `task`, `campaign`, and `settings`.
 
 The explorer, coordinator, and verifier commands remain available for isolated boundary tests. They use the same role schemas and journal machinery and are not a second workflow.
 
@@ -51,6 +51,10 @@ The explorer now names, on each note it writes, the notes whose results the text
 ## Source verifier
 
 External results came back as a fourth verifier. The `source` verifier runs between the adversarial and requirements verifiers as one Codex CLI call with web search, on Codex's native credential because that is the only path that provides search. It lists every external result the text invokes, opens each source, and confirms the result with the hypotheses the text uses; its verdict carries the confirmed `sources`, and a PASS that lists sources without a search is refused as an operational error. Settings gained a `source` profile whose provider is `codex`. The verdict's verifier names gained a value, so the contract moved to schema 5; the prompts changed, so the declaration moved to schema 7.
+
+## Reconstruction verifier
+
+Reconstruction came back as a verifier composed of three calls, with no field added to notes. The statement call reads the note and its support and returns what each establishes, with nothing of how. The proof call receives that statement and the support statements, never the note's text, and writes a proof; when a statement contains the note's text, no proof is written and the verdict call records `INCONCLUSIVE`. The verdict call compares the note's text with the proof and records `PASS`, `FAIL`, or `INCONCLUSIVE`, the kernel's third verdict, which the solver now uses: the independent text left something unproved and no defect was found, so acceptance is blocked without marking the note defective, and the coordinator may verify the note again after the explorer splits it. The verifier order is correctness, adversarial, source, reconstruction, requirements, so a note the earlier verifiers fail never pays for the three calls. The verdict gained a value and a verifier name, so the contract moved to schema 6; the prompts changed, so the declaration moved to schema 8.
 
 ## Lab workflow
 
@@ -82,8 +86,8 @@ Run these gates after the implementation and documentation land together:
 
 1. Run `bun run check:all` in Elenx. Confirm formatting, strict TypeScript, kernel tests, solver tests, package checks, consumer compilation, and CLI help.
 2. Run `bun run e2e:roles`. Confirm a fresh run, zero-call repeated run, a failed verification followed by a new note, terminal inspection, export, campaign locking, and provider failure without a verdict.
-3. Inspect `elenx-solve contract`. Confirm schema 5, application `elenx-solve`, protocol `workflow`, and the three run arguments.
-4. Run `bun run check` in Elenx Lab. Confirm the single author manifest, schema-5 contract freeze, old-shape rejection, task-based debug, inspection-derived worker results, recovery, immutable attempt validation, Nomad HCL validation, and CLI help.
+3. Inspect `elenx-solve contract`. Confirm schema 6, application `elenx-solve`, protocol `workflow`, and the three run arguments.
+4. Run `bun run check` in Elenx Lab. Confirm the single author manifest, schema-6 contract freeze, old-shape rejection, task-based debug, inspection-derived worker results, recovery, immutable attempt validation, Nomad HCL validation, and CLI help.
 5. Build a worker image from clean committed Elenx and Lab revisions. Run one small Nomad experiment, wait for the allocation to settle, and inspect the campaign database. Confirm that the mathematical fields in `attempt.json.report` match `inspect.result` and that the report identity matches the frozen contract.
 
 ## Live smoke evidence
