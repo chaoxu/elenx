@@ -479,6 +479,7 @@ test("a journal written by other prompts is refused", async () => {
   const roles = createPiRoles(campaign, workflow.settings, drive);
   await roles.explorer({
     task,
+    guidance: [],
     objective: "Some other objective.",
     notes: [],
     support: [],
@@ -1063,5 +1064,19 @@ test("a source profile without search runs the source verifier offline", async (
   expect(drive.codexCalls[0]?.prompt).toContain(
     "Pass a note only when its text invokes no external result",
   );
+  campaign.close();
+});
+
+test("the fold copies the settings' guidance into the explorer input", async () => {
+  const path = campaignPath();
+  const workflow = workflowConfiguration({
+    task,
+    settings: { ...roleSettings(), explorerGuidance: ["Say G."] },
+  });
+  const campaign = createCampaign(path, applicationId, workflow);
+  expect(await phaseOf(campaign)).toMatchObject({
+    kind: "explorer",
+    input: { guidance: ["Say G."] },
+  });
   campaign.close();
 });

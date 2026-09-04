@@ -18,7 +18,7 @@ A verdict names the verifier that produced it, the note it is about, `PASS`, `FA
 
 ## Explorer
 
-`ExplorerInput` contains the task, one objective, every note without its text, and the support notes in full. The first objective is the problem. `ExplorerResult` contains one or more new notes, each a text with its support. The new notes are numbered after the notes the explorer received, in the order it returns them, and a note may name an earlier note of the same turn. Support names no dead note, and a text names a note by id only when that note is its support; the result schema refuses a text that names a live earlier note its support does not name. The explorer performs mathematics, chooses the method, decides how a turn's work splits into notes, says in a text when the note meets the completion criteria, and writes no summaries.
+`ExplorerInput` contains the task, the guidance, one objective, every note without its text, and the support notes in full. The first objective is the problem. `ExplorerResult` contains one or more new notes, each a text with its support. The new notes are numbered after the notes the explorer received, in the order it returns them, and a note may name an earlier note of the same turn. Support names no dead note, and a text names a note by id only when that note is its support; the result schema refuses a text that names a live earlier note its support does not name. The explorer performs mathematics, chooses the method, decides how a turn's work splits into notes, says in a text when the note meets the completion criteria, and writes no summaries.
 
 ## Coordinator
 

@@ -14,6 +14,7 @@ import { verifierNames } from "../roles";
 import { workflowSchemaVersion } from "../workflow";
 
 const task = { problem: "Prove P.", completionCriteria: "Prove P fully." };
+
 const note = {
   id: "n1",
   summary: "P holds.",
@@ -30,6 +31,18 @@ const note = {
     },
   ],
 };
+
+test("the explorer's guidance follows its fixed instructions", () => {
+  const input = { task, objective: "Extend P.", notes: [], support: [] };
+  expect(
+    explorerCall({ ...input, guidance: ["Say G.", "Then H."] }).system,
+  ).toContain(
+    "as support. Say G. Then H. Do not use web search or external tools.",
+  );
+  expect(explorerCall({ ...input, guidance: [] }).system).toContain(
+    "as support. Do not use web search or external tools.",
+  );
+});
 
 test("prompt bytes are frozen with the workflow schema version", () => {
   const { text, ...heading } = note;
@@ -49,6 +62,7 @@ test("prompt bytes are frozen with the workflow schema version", () => {
   const calls: { label: string; system: string; prompt: string }[] = [
     explorerCall({
       task,
+      guidance: ["Test the degenerate instances first."],
       objective: "Extend P.",
       notes: [heading],
       support: [note],
@@ -91,8 +105,8 @@ test("prompt bytes are frozen with the workflow schema version", () => {
   // Changing any role prompt changes the bytes the workflow fold matches
   // against journals, so bump workflowSchemaVersion and update this digest
   // in the same change.
-  expect(workflowSchemaVersion).toBe(17);
+  expect(workflowSchemaVersion).toBe(18);
   expect(digest.digest("hex")).toBe(
-    "16719fc96c1678bda5325640990d755ab0dadf49cdcfd17f1c4a6cbf220bfbb7",
+    "bef2b9662c7d5389e0517ffa254710bedfc822e01c1777cce9208aebe5efc1d5",
   );
 });

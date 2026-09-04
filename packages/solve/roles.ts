@@ -136,6 +136,7 @@ function distinctKnown(
 export const explorerInput = z
   .strictObject({
     task,
+    guidance: z.array(nonblank),
     objective: nonblank,
     notes: z.array(noteFields.omit({ text: true }).refine(...distinctSupport)),
     support: z.array(note),

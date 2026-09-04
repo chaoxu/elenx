@@ -61,7 +61,8 @@ This is the vocabulary of Elenx and its solver. Work in this repository uses the
 | projection | `Projection`: the fold's in-memory Cozo database of notes, summaries, support, and verdicts, rebuilt from the journal on every derivation and never persisted. It alone derives verified, dead, and accepted. |
 | schema version | The declaration's version moves with every role prompt or journal shape change. The contract's version moves only with the contract or report shape. |
 | contract | The output of `elenx-solve contract`: command, arguments, outcomes, and the execution report schema. |
-| settings | One profile for the explorer, one for the coordinator, one per verifier, `maxExplorerTurns`, and `window`. |
+| settings | One profile for the explorer, one for the coordinator, one per verifier, `maxExplorerTurns`, `window`, and `explorerGuidance`, the explorer's guidance. |
+| guidance | Sentences from the settings added to the explorer's fixed instructions on every turn: how to explore, never what the task is. The fold copies them into every explorer input. Empty by default. |
 | profile | A provider, model, and reasoning level. The source verifier's profile is either the Codex CLI on its native credential, provider `codex`, whose `search` decides whether the call has web search, true by default, or a Pi profile, and then the source verifier is one Pi call without web search; without search the call can confirm no external result. |
 | run, inspect, export | The commands that start or resume a campaign, derive its phase and result, and emit the accepted note with its transitive support. |
 

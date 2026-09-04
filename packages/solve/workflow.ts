@@ -37,7 +37,7 @@ import {
   type VerifierInput,
 } from "./roles";
 
-export const workflowSchemaVersion = 17;
+export const workflowSchemaVersion = 18;
 export const workflowConfig = z.strictObject({
   kind: z.literal("workflow"),
   schemaVersion: z.literal(workflowSchemaVersion),
@@ -193,6 +193,7 @@ export async function deriveWorkflow(
       const known = await projection.at(cursor);
       const explorerRequest = explorerInput.parse({
         task: config.task,
+        guidance: config.settings.explorerGuidance,
         objective,
         notes: known.map(({ text, ...rest }) => rest),
         support: support.map((id) => pick(known, id)),

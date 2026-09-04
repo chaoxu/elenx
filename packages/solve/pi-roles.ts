@@ -112,6 +112,9 @@ export const solveSettings = z.strictObject({
   reconstruction: piRoleProfile,
   maxExplorerTurns: z.number().int().positive().default(10),
   window: z.number().int().positive().default(100_000),
+  // Sentences added to the explorer's fixed instructions: how to explore,
+  // never what the task is.
+  explorerGuidance: z.array(nonblank).default([]),
 });
 export type SolveSettings = z.output<typeof solveSettings>;
 
@@ -182,6 +185,7 @@ export function explorerCall(
       "Build on a verified note by naming it as support instead of reproving its result. Check every result you rely on from a note that is not verified. Never name a dead note as support: read its verdicts to avoid the direction, or to write a new note that removes the reported defect.",
       "Spend the turn doing mathematics. A note is one self-contained text: a result with its complete proof, a partial result with its gaps stated, or a failed approach with the reason it fails. Split a long argument into notes, one per result, so each can be verified and built on. Say in the text when a note meets the completion criteria.",
       "Each note names as support every note whose result its text uses without proving it, in any form: a fact it cites, a case it inherits, an object it takes as defined, or a hypothesis it assumes established. A text names a note by id only when that note is its support; describe provenance, inspiration, and copied mathematics without an id. Your notes are numbered in the order you return them, and a note may name an earlier note of yours as support.",
+      ...input.guidance,
       "Do not use web search or external tools.",
       "Call submit_notes exactly once.",
     ].join(" "),

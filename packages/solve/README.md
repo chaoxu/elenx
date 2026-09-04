@@ -27,12 +27,13 @@ The task file has one schema. The completion criteria are the only statement of 
 }
 ```
 
-Settings select one model profile for the explorer, one for the coordinator, one per verifier, the cap on explorer turns, and the window:
+Settings select one model profile for the explorer, one for the coordinator, one per verifier, the cap on explorer turns, the window, and the explorer's guidance:
 
 ```json
 {
   "maxExplorerTurns": 10,
   "window": 100000,
+  "explorerGuidance": ["State the result of each note in its first sentence."],
   "explorer": {
     "provider": "codex-lb",
     "model": "gpt-5.6-sol",
@@ -67,7 +68,7 @@ Settings select one model profile for the explorer, one for the coordinator, one
 }
 ```
 
-The correctness, requirements, and reconstruction verifiers run through Pi on their own profiles, so a note that leans on an outside result costs one source call, a defective one adds one correctness call, and only sound notes reach the expensive calls. The source verifier runs the Codex CLI on its native credential, the only path that provides web search, when its provider is `codex`. Its `search` is true by default; `false` runs that call without web search, for a task that must not reach the internet, and a note then passes only when its text invokes no external result. `ELENX_CODEX_COMMAND` names the binary, default `codex`. A source profile with any other provider runs the source verifier as one Pi call without web search, so a worker needs no Codex credential; that is the profile for a task that must not reach the internet. `window` is a character count over the note and support texts one verification reads, default 100000. A verification of one note makes one to six calls: the reconstruction verifier is three. Spend covers the Pi calls; the source verifier's usage is on its submission.
+The correctness, requirements, and reconstruction verifiers run through Pi on their own profiles, so a note that leans on an outside result costs one source call, a defective one adds one correctness call, and only sound notes reach the expensive calls. The source verifier runs the Codex CLI on its native credential, the only path that provides web search, when its provider is `codex`. Its `search` is true by default; `false` runs that call without web search, for a task that must not reach the internet, and a note then passes only when its text invokes no external result. `ELENX_CODEX_COMMAND` names the binary, default `codex`. A source profile with any other provider runs the source verifier as one Pi call without web search, so a worker needs no Codex credential; that is the profile for a task that must not reach the internet. `window` is a character count over the note and support texts one verification reads, default 100000. `explorerGuidance` is complete sentences added to the explorer's fixed instructions on every turn: how to explore, never what the task is; empty by default. A verification of one note makes one to six calls: the reconstruction verifier is three. Spend covers the Pi calls; the source verifier's usage is on its submission.
 
 ## Run
 
@@ -92,7 +93,7 @@ bun packages/solve/solve.ts coordinator input.json roles.db settings.json
 bun packages/solve/solve.ts verifier input.json roles.db settings.json
 ```
 
-Standalone role commands are boundary diagnostics. They use the same role schemas and journal machinery and are not a second workflow.
+Standalone role commands are boundary diagnostics. They use the same role schemas and journal machinery and are not a second workflow. An explorer input states its `guidance`: the fold fills it from the settings' `explorerGuidance`, and the standalone explorer reads it from the input alone.
 
 ## Development
 
