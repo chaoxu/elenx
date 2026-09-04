@@ -457,7 +457,9 @@ async function runCall<S extends z.ZodType>(
     reasoning: profile.reasoning,
     tools: [submitTool],
     stopAfterToolResult: true,
-    maxRecoveries: 1,
+    // The upstream closes about one in ten of Sol's half-hour max-reasoning
+    // streams early; one recovery per call was not enough.
+    maxRecoveries: 3,
     maxLengthContinuations: 8,
     transport: "sse",
     cacheKey: createHash("sha256")
