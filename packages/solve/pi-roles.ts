@@ -457,8 +457,8 @@ async function runCall<S extends z.ZodType>(
     reasoning: profile.reasoning,
     tools: [submitTool],
     stopAfterToolResult: true,
-    // The upstream closes long Sol streams early and does not bill a closed
-    // stream, so a recovery costs wall clock only.
+    // Recover transient long-stream failures within this call. Missing usage
+    // on an interrupted attempt is unknown spend, not evidence of no billing.
     maxRecoveries: 8,
     maxLengthContinuations: 8,
     transport: "sse",

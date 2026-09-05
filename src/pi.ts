@@ -12,6 +12,7 @@ import {
 } from "@earendil-works/pi-agent-core";
 import {
   contentText,
+  createAssistantMessageEventStream,
   isContextOverflow,
   isRetryableAssistantError,
   type Api,
@@ -27,6 +28,7 @@ import {
 import { z } from "zod";
 
 import { entryId, json } from "./schemas";
+import { ReasoningRecovery } from "./pi-recovery";
 import type {
   AuditedTool,
   Campaign,
@@ -242,7 +244,7 @@ const lengthContinuation =
 const transientGatewayErrorPattern =
   /upstream_(?:unavailable|error)|proxy_unavailable|ClientPayloadError/i;
 const incompleteStreamErrorPattern =
-  /^(?:stream_incomplete:\s*Upstream closed stream without completion|upstream_eof_before_terminal_event)$/i;
+  /^(?:(?:stream_incomplete:\s*)?Upstream closed stream without completion|upstream_eof_before_terminal_event)$/i;
 const deterministicProviderErrorPattern =
   /\b(?:401|403)\b|invalid_api_key|permission denied|insufficient_quota|out of budget|quota exceeded|billing|invalid_request(?:_error)?|context_length_exceeded|tool submission|schema validation/i;
 const transientGatewayDiagnosticCodes = new Set([
@@ -694,6 +696,7 @@ function measuredStream(
   parent: EntryId,
   models: PiModels,
   cacheKey: string | undefined,
+  recovery: ReasoningRecovery,
 ): StreamFn {
   return (model, context, options) =>
     createTypedSpanStarter(
@@ -765,7 +768,15 @@ function measuredStream(
             await options?.onResponse?.(response, responseModel);
           },
         });
+        const observed = recovery.observe(model);
+        const buffered = createAssistantMessageEventStream();
+        for await (const event of stream) {
+          observed.event(event);
+          buffered.push(event);
+        }
         const final = await stream.result();
+        observed.settle(final);
+        buffered.end(final);
         const failedBeforeCheckpoint =
           hookCalls <= 1 &&
           !checkpointed &&
@@ -819,7 +830,7 @@ function measuredStream(
             },
           });
         }
-        return stream;
+        return buffered;
       },
     );
 }
@@ -951,6 +962,7 @@ async function runPiBody(
   // fallback on this ID; without it a WebSocket failure repeats on every
   // recovery attempt. The ID is transport configuration and is not persisted.
   const sessionId = crypto.randomUUID();
+  const recovery = new ReasoningRecovery();
   const startSpan = createTypedSpanStarter(telemetry, [
     ELENX_PI_TELEMETRY_SCHEMA,
   ]);
@@ -988,7 +1000,8 @@ async function runPiBody(
           },
           {
             model: options.model,
-            convertToLlm,
+            convertToLlm: (messages) =>
+              convertToLlm(recovery.forModel(messages)),
             toolExecution: "sequential",
             sessionId,
             ...(options.transport === undefined
@@ -1008,6 +1021,7 @@ async function runPiBody(
             call,
             options.models,
             exact.cacheKey,
+            recovery,
           ),
         );
       let messages = await loop(exact.prompt, []);
@@ -1038,9 +1052,7 @@ async function runPiBody(
           if (lengthContinuations >= exact.maxLengthContinuations) break;
           lengthContinuations += 1;
         }
-        const prior = retry
-          ? messages.slice(0, messages.lastIndexOf(final))
-          : messages;
+        const prior = messages;
         messages = [
           ...prior,
           ...(await loop(retry ? undefined : lengthContinuation, prior)),
