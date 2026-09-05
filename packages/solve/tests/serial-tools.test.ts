@@ -1,4 +1,6 @@
 import { expect, test } from "bun:test";
+import { streamSimple as streamResponses } from "@earendil-works/pi-ai/api/openai-responses";
+import { streamSimple as streamCodexResponses } from "@earendil-works/pi-ai/api/openai-codex-responses";
 
 import type { PiRunOptions } from "elenx/pi";
 
@@ -117,3 +119,88 @@ test("non-openai APIs stream with untouched options", () => {
   );
   expect(observed.options).toEqual({});
 });
+
+test.each([platformModel, codexModel])(
+  "$api sends custom Astra reasoning and terminal tool controls before checkpointing",
+  async (baseModel) => {
+    const model: PiRunOptions["model"] = {
+      ...baseModel,
+      id: "gpt-6-astra",
+      thinkingLevelMap: {
+        low: "low",
+        medium: "medium",
+        high: "high",
+        xhigh: "xhigh",
+        max: "max",
+      },
+    };
+    const apiKey = `stub.${Buffer.from(
+      JSON.stringify({
+        "https://api.openai.com/auth": { chatgpt_account_id: "test-account" },
+      }),
+    ).toString("base64url")}.stub`;
+    const models = withSerialToolCalls({
+      getModel: () => model,
+      streamSimple(_model, context, options) {
+        const configured = { ...options, apiKey, transport: "sse" as const };
+        return model.api === "openai-responses"
+          ? streamResponses(
+              model as Parameters<typeof streamResponses>[0],
+              context,
+              configured,
+            )
+          : streamCodexResponses(
+              model as Parameters<typeof streamCodexResponses>[0],
+              context,
+              configured,
+            );
+      },
+    });
+    for (const tools of [
+      undefined,
+      [],
+      [
+        {
+          name: "submit",
+          description: "Submit the result",
+          parameters: {
+            type: "object",
+            properties: {},
+            additionalProperties: false,
+          },
+        },
+      ],
+    ]) {
+      let checkpoint: unknown;
+      const stream = models.streamSimple(
+        model,
+        {
+          messages: [
+            { role: "user", content: "Submit the result", timestamp: 0 },
+          ],
+          ...(tools === undefined ? {} : { tools }),
+        },
+        {
+          reasoning: "max",
+          onPayload(payload) {
+            checkpoint = payload;
+            throw new Error("stopped before transport");
+          },
+        },
+      );
+      expect((await stream.result()).stopReason).toBe("error");
+      expect(checkpoint).toMatchObject({
+        model: "gpt-6-astra",
+        reasoning: { effort: "max" },
+      });
+      if (tools?.length) {
+        expect(checkpoint).toMatchObject({
+          tool_choice: "required",
+          parallel_tool_calls: false,
+        });
+      } else {
+        expect(checkpoint).not.toMatchObject({ tool_choice: "required" });
+      }
+    }
+  },
+);

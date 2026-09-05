@@ -11,8 +11,9 @@ const openAiResponsesApis = new Set([
 /**
  * Force the sole terminal tool for OpenAI Responses requests and disable
  * parallel calls. The payload is rewritten before the checkpointing hook sees
- * it so the durable checkpoint matches the sent bytes. Pi exposes no option
- * for this; drop the wrapper if one appears upstream.
+ * it so the durable checkpoint matches the sent bytes. Pi 0.85's simple-stream
+ * toolChoice supports only auto/none, not required, and has no parallel-call
+ * option. Keep this wrapper until both controls are available upstream.
  */
 export function withSerialToolCalls(models: SolveModels): SolveModels {
   return {

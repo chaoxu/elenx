@@ -29,7 +29,8 @@
     "check": "bun run format:check && bun run typecheck && bun run test && bun run pack:check && bun solve.ts --help"
   },
   "dependencies": {
-    "@earendil-works/pi-coding-agent": "0.84.2",
+    "@earendil-works/pi-coding-agent": "0.85.0",
+    "@earendil-works/pi-server": "0.85.0",
     "cozo-node": "0.7.6",
     "zod": "4.4.3"
   },

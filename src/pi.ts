@@ -6,7 +6,6 @@ import {
   InMemoryTelemetryContext,
   NOOP_TELEMETRY_CONTEXT,
   runAgentLoop,
-  startAiSpan,
   type AgentMessage,
   type AgentTool,
   type StreamFn,
@@ -697,8 +696,10 @@ function measuredStream(
   cacheKey: string | undefined,
 ): StreamFn {
   return (model, context, options) =>
-    startAiSpan(
+    createTypedSpanStarter(
       options?.telemetryContext ?? NOOP_TELEMETRY_CONTEXT,
+      [AI_TELEMETRY_SCHEMA],
+    )(
       "pi.ai.request",
       {
         "pi.ai.operation": "stream",

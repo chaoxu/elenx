@@ -35,8 +35,8 @@
     "check:all": "bun run check && bun run check:solve"
   },
   "dependencies": {
-    "@earendil-works/pi-agent-core": "0.84.2",
-    "@earendil-works/pi-ai": "0.84.2",
+    "@earendil-works/pi-agent-core": "0.85.0",
+    "@earendil-works/pi-ai": "0.85.0",
     "zod": "4.4.3"
   },
   "devDependencies": {

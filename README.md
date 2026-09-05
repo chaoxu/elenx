@@ -27,6 +27,7 @@ The API and campaign schema are experimental. Campaigns are accepted only when t
 | How do I run the solver? | [`packages/solve/README.md`](packages/solve/README.md) |
 | How do the solver roles and replay behave? | [`packages/solve/docs/role-runner.md`](packages/solve/docs/role-runner.md) |
 | How do I build an application? | [`docs/application-author.md`](docs/application-author.md) |
+| What changed with Pi 0.85, and can it run Astra? | [`docs/pi-085-upgrade.md`](docs/pi-085-upgrade.md) |
 | Why was the workflow contract reset, and how are notes verified? | [`docs/workflow-rebuild-20260902.md`](docs/workflow-rebuild-20260902.md) |
 | What is the verification design and why? | [`docs/verification-proposal-20260902.md`](docs/verification-proposal-20260902.md) |
 
