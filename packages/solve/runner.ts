@@ -3,23 +3,34 @@ import { isDeepStrictEqual } from "node:util";
 
 import { createCampaign, openCampaign, type Campaign } from "elenx";
 import { builtinPi } from "elenx/pi";
+import { getSupportedThinkingLevels } from "@earendil-works/pi-ai";
 import { z } from "zod";
 
 import {
   createPiRoles,
+  codexSource,
+  piProfileNames,
+  piProviders,
   RoleCallError,
   solveSettings,
   type PiRoleDependencies,
   type SolveSettings,
 } from "./pi-roles";
 import { applicationId, task } from "./roles";
-import { withCampaignLock } from "./runtime";
+import {
+  codexCommand,
+  requireCredentials,
+  selectModel,
+  withCampaignLock,
+} from "./runtime";
+import { requireCodex } from "./source";
 import {
   deriveWorkflow,
   runWorkflow,
   workflowConfig,
   workflowConfiguration,
   workflowResult,
+  unresolvedVerification,
   type WorkflowConfig,
   type WorkflowResult,
 } from "./workflow";
@@ -34,7 +45,9 @@ const runRequest = z.strictObject({
 });
 
 export interface RunDependencies extends Omit<PiRoleDependencies, "models"> {
-  readonly models?: PiRoleDependencies["models"];
+  readonly models?:
+    | PiRoleDependencies["models"]
+    | (() => Promise<PiRoleDependencies["models"]>);
   readonly pauseRequested?: () => boolean;
   readonly status?: (message: string) => void;
 }
@@ -51,8 +64,8 @@ async function drive(
   campaign: Campaign,
   config: WorkflowConfig,
   dependencies: RunDependencies,
+  models: PiRoleDependencies["models"],
 ): Promise<RunResult> {
-  const models = dependencies.models ?? builtinPi();
   const roles = createPiRoles(campaign, config.settings, {
     models,
     ...(dependencies.run === undefined ? {} : { run: dependencies.run }),
@@ -66,7 +79,12 @@ async function drive(
     if (phase.kind === "accepted" || phase.kind === "turn-limit") {
       return workflowResult(phase);
     }
-    return { outcome: "paused", at: phase.kind };
+    return (
+      unresolvedVerification(campaign.records(), phase) ?? {
+        outcome: "paused",
+        at: phase.kind,
+      }
+    );
   } catch (error) {
     let at: string;
     try {
@@ -81,8 +99,6 @@ async function drive(
       return { outcome: "call-failure", at, reason: error.message };
     }
     throw error;
-  } finally {
-    campaign.close();
   }
 }
 
@@ -95,22 +111,71 @@ export async function run(
     task: request.task,
     settings: request.settings,
   });
-  return withCampaignLock(request.campaignPath, () => {
-    const campaign = existsSync(request.campaignPath)
+  return withCampaignLock(request.campaignPath, async () => {
+    let campaign = existsSync(request.campaignPath)
       ? openCampaign(request.campaignPath)
-      : createCampaign(request.campaignPath, applicationId, config);
+      : undefined;
     try {
-      const declaration = campaign.records()[0];
-      const frozen = workflowConfig.parse(
-        declaration?.kind === "campaign" ? declaration.config : undefined,
-      );
-      if (!isDeepStrictEqual(frozen, config)) {
-        throw new Error("task or settings disagree with the workflow journal");
+      if (campaign !== undefined) {
+        const declaration = campaign.records()[0];
+        const frozen = workflowConfig.parse(
+          declaration?.kind === "campaign" ? declaration.config : undefined,
+        );
+        if (!isDeepStrictEqual(frozen, config)) {
+          throw new Error(
+            "task or settings disagree with the workflow journal",
+          );
+        }
+        const phase = (await deriveWorkflow(campaign)).phase;
+        if (phase.kind === "accepted" || phase.kind === "turn-limit")
+          return workflowResult(phase);
       }
-    } catch (error) {
-      campaign.close();
-      throw error;
+      const models =
+        typeof dependencies.models === "function"
+          ? await dependencies.models()
+          : (dependencies.models ?? builtinPi());
+      // Resolve every configured Pi role before creating a fresh journal or
+      // dispatching any work, including roles reached only after exploration.
+      for (const name of [...piProfileNames, "source"] as const) {
+        const profile = config.settings[name];
+        if (name === "source" && codexSource(config.settings.source)) continue;
+        try {
+          const model = selectModel(models, {
+            provider: profile.provider,
+            modelId: profile.model,
+          });
+          if (!getSupportedThinkingLevels(model).includes(profile.reasoning)) {
+            throw new Error(
+              `unsupported reasoning level ${profile.reasoning} for ${profile.provider}/${profile.model}`,
+            );
+          }
+        } catch (error) {
+          throw new Error(
+            `${name}: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      }
+      if (models.checkAuth !== undefined) {
+        await requireCredentials(
+          { checkAuth: (provider) => models.checkAuth!(provider) },
+          piProviders(config.settings),
+        );
+      }
+      if (
+        codexSource(config.settings.source) &&
+        dependencies.codex === undefined
+      ) {
+        await requireCodex({
+          command: codexCommand(process.env),
+          ...(dependencies.signal === undefined
+            ? {}
+            : { signal: dependencies.signal }),
+        });
+      }
+      campaign ??= createCampaign(request.campaignPath, applicationId, config);
+      return await drive(campaign, config, dependencies, models);
+    } finally {
+      campaign?.close();
     }
-    return drive(campaign, config, dependencies);
   });
 }

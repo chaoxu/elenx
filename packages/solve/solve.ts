@@ -11,14 +11,9 @@ import {
   readSettings,
   runRoleCommand,
 } from "./role-cli";
-import { piProviders } from "./pi-roles";
 import { run, settings, type RunDependencies, type Settings } from "./runner";
 import { task } from "./roles";
-import {
-  modelRegistryPath,
-  requireCredentials,
-  type SolveModels,
-} from "./runtime";
+import { modelRegistryPath, type SolveModels } from "./runtime";
 import { withSerialToolCalls } from "./serial-tools";
 
 export { executionContract, run, settings };
@@ -108,9 +103,6 @@ async function main(args: readonly string[]): Promise<void> {
   const campaignPath = positionals[1]!;
   const settingsPath = positionals[2]!;
   const workflowSettings = await readSettings(settingsPath);
-  const { ModelRuntime } = await import("@earendil-works/pi-coding-agent");
-  const runtime = await ModelRuntime.create(modelRuntimeOptions(process.env));
-  await requireCredentials(runtime, piProviders(workflowSettings));
   const controller = new AbortController();
   let pauseRequested = false;
   const stop = () => {
@@ -131,7 +123,13 @@ async function main(args: readonly string[]): Promise<void> {
         settings: workflowSettings,
       },
       {
-        models: withSerialToolCalls(runtime),
+        models: async () => {
+          const { ModelRuntime } =
+            await import("@earendil-works/pi-coding-agent");
+          return withSerialToolCalls(
+            await ModelRuntime.create(modelRuntimeOptions(process.env)),
+          );
+        },
         signal: controller.signal,
         pauseRequested: () => pauseRequested,
         status: (phase) => console.error(phase),

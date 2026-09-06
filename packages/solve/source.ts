@@ -240,6 +240,124 @@ const disabledFeatures = [
   "workspace_dependencies",
 ] as const;
 
+const fileCredentials = 'cli_auth_credentials_store="file"';
+
+async function sourceEnvironment(
+  directory: string,
+  inherited: NodeJS.ProcessEnv,
+): Promise<{ readonly env: NodeJS.ProcessEnv; readonly hasAuth: boolean }> {
+  const codexHome = join(directory, "codex-home");
+  await mkdir(codexHome);
+  const inheritedHome = resolve(
+    inherited["CODEX_HOME"] ?? join(inherited["HOME"] ?? homedir(), ".codex"),
+  );
+  const inheritedAuth = join(inheritedHome, "auth.json");
+  const hasAuth = existsSync(inheritedAuth);
+  if (hasAuth) {
+    await symlink(await realpath(inheritedAuth), join(codexHome, "auth.json"));
+  } else {
+    await writeFile(join(codexHome, "auth.json"), "{}\n", { mode: 0o600 });
+  }
+  // Only what the CLI needs to run and reach the network; in particular
+  // no OPENAI_* or CODEX_* variable that would move it off its native
+  // credential, and no other process's secrets.
+  const env: NodeJS.ProcessEnv = { CODEX_HOME: codexHome };
+  for (const name of Object.keys(inherited)) {
+    if (
+      ["PATH", "HOME", "TMPDIR", "TERM", "LANG", "LC_ALL"].includes(name) ||
+      /^(?:HTTPS?|NO|ALL)_PROXY$/iu.test(name)
+    ) {
+      env[name] = inherited[name];
+    }
+  }
+  return { env, hasAuth };
+}
+
+/** Check local CLI capabilities and native credentials without a model call. */
+export async function requireCodex(
+  options: {
+    readonly command?: string;
+    readonly environment?: NodeJS.ProcessEnv;
+    readonly signal?: AbortSignal;
+  } = {},
+): Promise<void> {
+  const command = options.command ?? "codex";
+  const directory = await mkdtemp(join(tmpdir(), "elenx-source-"));
+  try {
+    const { env, hasAuth } = await sourceEnvironment(
+      directory,
+      options.environment ?? process.env,
+    );
+    const check = async (args: readonly string[], failure: string) => {
+      if (options.signal?.aborted) {
+        throw new Error("source verifier preflight cancelled");
+      }
+      let result: CommandResult;
+      try {
+        result = await runCommand(command, args, {
+          cwd: directory,
+          env,
+          ...(options.signal === undefined ? {} : { signal: options.signal }),
+        });
+      } catch {
+        throw new Error(
+          options.signal?.aborted
+            ? "source verifier preflight cancelled"
+            : failure,
+        );
+      }
+      if (result.cancelled) {
+        throw new Error("source verifier preflight cancelled");
+      }
+      // In particular, login status output can contain credential details.
+      // Only its exit status is authoritative; never expose its output.
+      if (result.exitCode !== 0) throw new Error(failure);
+      return result.stdout;
+    };
+    const versionFailure = "source verifier requires an executable Codex CLI";
+    if ((await check(["--version"], versionFailure)).trim() === "") {
+      throw new Error(versionFailure);
+    }
+    for (const [args, flags] of [
+      [["--help"], ["--search", "--disable", "--model", "--config"]],
+      [
+        ["exec", "--help"],
+        [
+          "--ephemeral",
+          "--ignore-user-config",
+          "--ignore-rules",
+          "--strict-config",
+          "--skip-git-repo-check",
+          "--sandbox",
+          "--json",
+          "--color",
+          "--output-schema",
+          "--cd",
+        ],
+      ],
+    ] as const) {
+      const help = await check(
+        args,
+        "source verifier could not check Codex CLI capabilities",
+      );
+      const missing = flags.filter(
+        (flag) => !new RegExp(`${flag}(?=[\\s=,]|$)`, "u").test(help),
+      );
+      if (missing.length > 0) {
+        throw new Error(
+          `source verifier requires Codex CLI options: ${missing.join(", ")}`,
+        );
+      }
+    }
+    const authFailure =
+      "source verifier requires native Codex credentials in CODEX_HOME/auth.json; run codex login";
+    if (!hasAuth) throw new Error(authFailure);
+    await check(["-c", fileCredentials, "login", "status"], authFailure);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+}
+
 export function codexExec(
   options: {
     readonly command?: string;
@@ -257,33 +375,7 @@ export function codexExec(
     let exitCode: number | null | undefined;
     try {
       directory = await mkdtemp(join(tmpdir(), "elenx-source-"));
-      const codexHome = join(directory, "codex-home");
-      await mkdir(codexHome);
-      const inheritedHome = resolve(
-        inherited["CODEX_HOME"] ??
-          join(inherited["HOME"] ?? homedir(), ".codex"),
-      );
-      const inheritedAuth = join(inheritedHome, "auth.json");
-      if (existsSync(inheritedAuth)) {
-        await symlink(
-          await realpath(inheritedAuth),
-          join(codexHome, "auth.json"),
-        );
-      } else {
-        await writeFile(join(codexHome, "auth.json"), "{}\n", { mode: 0o600 });
-      }
-      // Only what the CLI needs to run and reach the network; in particular
-      // no OPENAI_* or CODEX_* variable that would move it off its native
-      // credential, and no other process's secrets.
-      const env: NodeJS.ProcessEnv = { CODEX_HOME: codexHome };
-      for (const name of Object.keys(inherited)) {
-        if (
-          ["PATH", "HOME", "TMPDIR", "TERM", "LANG", "LC_ALL"].includes(name) ||
-          /^(?:HTTPS?|NO|ALL)_PROXY$/iu.test(name)
-        ) {
-          env[name] = inherited[name];
-        }
-      }
+      const { env } = await sourceEnvironment(directory, inherited);
       const schemaPath = join(directory, "verdict.schema.json");
       await writeFile(schemaPath, JSON.stringify(request.outputSchema));
       if (codexVersion === undefined) {
@@ -329,6 +421,8 @@ export function codexExec(
           "never",
           "--output-schema",
           schemaPath,
+          "-c",
+          fileCredentials,
           "-c",
           `model_reasoning_effort="${request.reasoning}"`,
           "-c",

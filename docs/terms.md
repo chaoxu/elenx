@@ -55,7 +55,7 @@ This is the vocabulary of Elenx and its solver. Work in this repository uses the
 | report | The text of a verdict. Qualified as execution report: a run's result with `schemaVersion`, `application`, and `protocol`, as `run` and `inspect` emit it. |
 | turn | One explorer call, its coordinator call, and any verification. Capped by `maxExplorerTurns`. |
 | phase | Where the fold stands: the role to call next, or the terminal kind `accepted` or `turn-limit`. |
-| outcome | A run's ending: `accepted`, `turn-limit`, `paused`, `call-failure`, `interrupted`. |
+| outcome | A run's ending: `accepted`, `turn-limit`, `paused`, `call-failure`, `interrupted`. Inspection derives `paused` for a settled unresolved verification, naming its verifier/note reports in `reason`, and does not infer a pause from an in-progress or failed retry. |
 | result | A run's outcome with its data. The terminal results carry the turns, notes, and for `accepted` the note and candidate; the resumable ones carry the phase they stopped at as `at` and an optional reason. `inspect.result` is the terminal one. |
 | fold | `deriveWorkflow`: the derivation of notes and phase from the journal, matching each role call by its derived prompt bytes. It builds the projection and asks it which notes exist at a journal sequence, which are accepted, and for a note's closure. |
 | projection | `Projection`: the fold's in-memory Cozo database of notes, summaries, support, and verdicts, rebuilt from the journal on every derivation and never persisted. It alone derives verified, dead, and accepted. |

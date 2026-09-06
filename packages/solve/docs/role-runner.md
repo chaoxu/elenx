@@ -56,6 +56,6 @@ Explorer results number the notes `n1`, `n2`, and so on in order. Note verdicts 
 
 ## Inspection and export
 
-`inspect` reports the task, current phase, notes with verdicts and flags, every role call once with its state and submission, telemetry-derived spend, and with `--include-requests` the exact requests. A terminal campaign adds `result`, derived from the journal. Each verifier call carries its verifier name and its candidate.
+`inspect` reports the task, current phase, notes with verdicts and flags, every role call once with its state and submission, telemetry-derived spend, and with `--include-requests` the exact requests. A terminal campaign adds `result`, derived from the journal. An unresolved verification adds a `paused` result with its verifier/note reports only when all reachable unfinished checks are inconclusive and no newer verifier call lacks a verdict. Fresh work, in-flight calls, failed retries, and correction-only judgments cannot inherit an older pause. Each verifier call carries its verifier name and its candidate.
 
 `export` returns the accepted note preceded by its closure in id order, each under a heading with its id.

@@ -4,6 +4,7 @@ import { basename, dirname, join } from "node:path";
 
 import { withCampaignLock } from "../runtime";
 import { run } from "../runner";
+import { inspectCampaign } from "../role-cli";
 import {
   campaignPath,
   cleanupCampaigns,
@@ -12,6 +13,108 @@ import {
 } from "./harness";
 
 afterEach(cleanupCampaigns);
+
+test("an unknown late verifier model fails before creating a campaign or making a call", async () => {
+  const path = campaignPath();
+  const drive = dependencies([]);
+  const settings = roleSettings();
+  settings.reconstruction = {
+    ...settings.reconstruction,
+    model: "missing-model",
+  };
+  await expect(
+    run(
+      {
+        task: { problem: "P", completionCriteria: "Prove P" },
+        campaignPath: path,
+        settings,
+      },
+      drive,
+    ),
+  ).rejects.toThrow("reconstruction: unknown Pi model: test/missing-model");
+  expect(existsSync(path)).toBe(false);
+  expect(drive.calls).toHaveLength(0);
+  expect(drive.codexCalls).toHaveLength(0);
+});
+
+test("missing provider credentials fail before exploration and campaign creation", async () => {
+  const path = campaignPath();
+  const drive = dependencies([]);
+  const checked: string[] = [];
+  await expect(
+    run(
+      {
+        task: { problem: "P", completionCriteria: "Prove P" },
+        campaignPath: path,
+        settings: roleSettings(),
+      },
+      {
+        ...drive,
+        models: {
+          ...drive.models,
+          async checkAuth(provider) {
+            checked.push(provider);
+            return undefined;
+          },
+        },
+      },
+    ),
+  ).rejects.toThrow("No credential for provider(s): test");
+  expect(checked).toEqual(["test"]);
+  expect(existsSync(path)).toBe(false);
+  expect(drive.calls).toHaveLength(0);
+});
+
+test("unsupported late-role reasoning is rejected before any provider call", async () => {
+  const path = campaignPath();
+  const drive = dependencies([]);
+  const settings = roleSettings();
+  settings.reconstruction = { ...settings.reconstruction, reasoning: "max" };
+  await expect(
+    run(
+      {
+        task: { problem: "P", completionCriteria: "Prove P" },
+        campaignPath: path,
+        settings,
+      },
+      drive,
+    ),
+  ).rejects.toThrow("reconstruction: unsupported reasoning level max");
+  expect(existsSync(path)).toBe(false);
+  expect(drive.calls).toHaveLength(0);
+});
+
+test("a completed campaign is returned before initializing models or checking credentials", async () => {
+  const path = campaignPath();
+  const settings = { ...roleSettings(), maxExplorerTurns: 1 };
+  const request = {
+    task: { problem: "P", completionCriteria: "Prove P" },
+    campaignPath: path,
+    settings,
+  };
+  const drive = dependencies([
+    { submission: { notes: [{ text: "An unfinished idea.", support: [] }] } },
+    {
+      submission: {
+        filings: [{ note: "n1", summary: "An unfinished idea." }],
+        objective: "Prove P",
+        support: [],
+        verify: [],
+      },
+    },
+  ]);
+  const first = await run(request, drive);
+  expect(first.outcome).toBe("turn-limit");
+  const before = await Bun.file(path).arrayBuffer();
+  expect(
+    await run(request, {
+      models: async () => {
+        throw new Error("must not initialize provider");
+      },
+    }),
+  ).toEqual(first);
+  expect(await Bun.file(path).arrayBuffer()).toEqual(before);
+});
 
 test("run honors an injected source executor instead of invoking the CLI", async () => {
   const path = campaignPath();
@@ -56,6 +159,17 @@ test("run honors an injected source executor instead of invoking the CLI", async
     ).toMatchObject({ outcome: "paused", at: "verifier" });
     expect(drive.codexCalls).toHaveLength(1);
     expect(drive.calls).toHaveLength(2);
+    expect(await inspectCampaign(path)).toMatchObject({
+      phase: "verifier",
+      result: {
+        schemaVersion: 8,
+        application: "elenx-solve",
+        protocol: "workflow",
+        outcome: "paused",
+        at: "verifier",
+        reason: "source n1: Source unavailable.",
+      },
+    });
   } finally {
     if (previous === undefined) delete process.env["ELENX_CODEX_COMMAND"];
     else process.env["ELENX_CODEX_COMMAND"] = previous;

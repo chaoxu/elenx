@@ -19,6 +19,7 @@ import {
   journalVerdicts,
   jsonSnapshot,
   judgedBy,
+  missingVerdicts,
   noteIdAfter,
   pick,
   succeededSubmission,
@@ -27,6 +28,7 @@ import {
   verificationComplete,
   verifierInput,
   verifierLabels,
+  verifierNames,
   type CoordinatorInput,
   type ExplorerInput,
   type Note,
@@ -339,6 +341,62 @@ export function workflowResult(phase: WorkflowTerminal): WorkflowResult {
   }
   const { kind, ...result } = phase;
   return { ...result, outcome: kind };
+}
+
+/** A paused check witnessed by the current candidate's settled verdicts.
+ * A newer verifier call invalidates that pause until it has its own verdict.
+ */
+export function unresolvedVerification(
+  records: readonly Entry[],
+  phase: WorkflowPhase,
+):
+  | {
+      readonly outcome: "paused";
+      readonly at: "verifier";
+      readonly reason: string;
+    }
+  | undefined {
+  if (phase.kind !== "verifier" || phase.candidate === undefined)
+    return undefined;
+  const verdicts = journalVerdicts(records).filter(
+    ({ candidate }) => candidate === phase.candidate,
+  );
+  const lastVerdict = verdicts.at(-1)?.seq;
+  if (
+    lastVerdict === undefined ||
+    records.some(
+      (entry) =>
+        entry.kind === "call" &&
+        entry.role === "verifier" &&
+        entry.candidate === phase.candidate &&
+        entry.seq > lastVerdict,
+    )
+  )
+    return undefined;
+  const recorded = verdicts.map(({ verdict }) => verdict);
+  const unresolved = verifierNames.flatMap((name) =>
+    missingVerdicts(recorded, name, judgedBy(phase.input, recorded, name)).map(
+      (note) =>
+        recorded.findLast(
+          (verdict) => verdict.verifier === name && verdict.note === note,
+        ),
+    ),
+  );
+  if (
+    unresolved.length === 0 ||
+    unresolved.some((verdict) => verdict?.verdict !== "INCONCLUSIVE")
+  )
+    return undefined;
+  return {
+    outcome: "paused",
+    at: "verifier",
+    reason: unresolved
+      .map(
+        (verdict) =>
+          `${verdict!.verifier} ${verdict!.note}: ${verdict!.report}`,
+      )
+      .join("\n"),
+  };
 }
 
 export interface WorkflowDependencies {

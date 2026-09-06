@@ -3,6 +3,7 @@
 // its invocation and answers with a fixed verdict per note under verification.
 
 import { appendFile, readFile } from "node:fs/promises";
+import { join } from "node:path";
 
 import { codexStdout } from "./codex-stdout";
 
@@ -11,7 +12,8 @@ const capturePath = process.env["FAKE_CODEX_CAPTURE"];
 if (process.env["CODEX_HOME"] === undefined) {
   throw new Error("missing CODEX_HOME");
 }
-const input = args.includes("exec") ? await Bun.stdin.text() : "";
+const executing = args.includes("exec") && !args.includes("--help");
+const input = executing ? await Bun.stdin.text() : "";
 const option = (name: string): string => {
   const index = args.indexOf(name);
   const value = args[index + 1];
@@ -24,7 +26,7 @@ if (capturePath !== undefined)
     `${JSON.stringify({
       args,
       input,
-      ...(args.includes("exec")
+      ...(executing
         ? {
             schema: JSON.parse(
               await readFile(option("--output-schema"), "utf8"),
@@ -36,6 +38,15 @@ if (capturePath !== undefined)
 
 if (args[0] === "--version") {
   console.log("codex-cli fake-1.0");
+} else if (args.includes("--help")) {
+  console.log(
+    "--search --disable --model --config --ephemeral --ignore-user-config --ignore-rules --strict-config --skip-git-repo-check --sandbox --json --color --output-schema --cd",
+  );
+} else if (args.includes("login") && args.includes("status")) {
+  const auth = JSON.parse(
+    await readFile(join(process.env["CODEX_HOME"], "auth.json"), "utf8"),
+  );
+  process.exitCode = auth.tokens || auth.OPENAI_API_KEY ? 0 : 1;
 } else if (process.env["FAKE_CODEX_MODE"] === "malformed") {
   console.log(JSON.stringify({ type: "thread.started", thread_id: "fake" }));
   console.log("{");

@@ -47,7 +47,12 @@ import {
 } from "./runtime";
 import { withSerialToolCalls } from "./serial-tools";
 import { codexRequest, codexSubmission } from "./source";
-import { deriveWorkflow, workflowConfig, workflowResult } from "./workflow";
+import {
+  deriveWorkflow,
+  unresolvedVerification,
+  workflowConfig,
+  workflowResult,
+} from "./workflow";
 
 const callsConfig = z.strictObject({ kind: z.literal("calls") });
 export type RoleCommand = RoleName;
@@ -191,10 +196,12 @@ export async function inspectCampaign(
     );
     const snapshot = config.success ? await deriveWorkflow(reader) : undefined;
     const phase = snapshot?.phase;
-    const terminal =
+    const report =
       phase?.kind === "accepted" || phase?.kind === "turn-limit"
-        ? executionReport(workflowResult(phase))
-        : undefined;
+        ? workflowResult(phase)
+        : phase === undefined
+          ? undefined
+          : unresolvedVerification(records, phase);
     return JSON.parse(
       JSON.stringify({
         ...(snapshot === undefined
@@ -203,7 +210,9 @@ export async function inspectCampaign(
               task: snapshot.config.task,
               phase: phase?.kind,
               notes: snapshot.notes,
-              ...(terminal === undefined ? {} : { result: terminal }),
+              ...(report === undefined
+                ? {}
+                : { result: executionReport(report) }),
             }),
         calls,
         spend: derivePiSpend(records).summary,

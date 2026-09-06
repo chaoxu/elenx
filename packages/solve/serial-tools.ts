@@ -17,6 +17,9 @@ const openAiResponsesApis = new Set([
  */
 export function withSerialToolCalls(models: SolveModels): SolveModels {
   return {
+    ...(models.checkAuth === undefined
+      ? {}
+      : { checkAuth: (provider: string) => models.checkAuth!(provider) }),
     getModel(provider, id) {
       return models.getModel(provider, id);
     },

@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -39,6 +39,9 @@ test("run starts, resumes, inspects, and exports one workflow", async () => {
   });
   expect(await recordedRequests(directory)).toHaveLength(10);
 
+  // Completed journals need neither the model registry nor native credentials.
+  await rm(join(directory, "models.json"));
+  await rm(join(directory, ".codex"), { recursive: true });
   const second = await cli(directory, "run", task, campaign, settings);
   expect(second.code).toBe(0);
   expect(JSON.parse(second.stdout).outcome).toBe("accepted");
@@ -197,6 +200,10 @@ async function writeSettings(directory: string): Promise<string> {
     },
   });
   await writeJson(directory, "auth.json", {});
+  await mkdir(join(directory, ".codex"));
+  await writeJson(join(directory, ".codex"), "auth.json", {
+    tokens: { access_token: "fixture-only" },
+  });
   const profile = { provider: "e2e", model: "e2e-model", reasoning: "low" };
   return writeJson(directory, "settings.json", {
     maxExplorerTurns: 3,

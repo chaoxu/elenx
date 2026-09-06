@@ -97,6 +97,15 @@ test("unconfirmed sources pause the same verification without killing the note",
     .filter((entry) => entry.kind === "candidate");
   campaign.close();
 
+  expect(await inspectCampaign(path)).toMatchObject({
+    result: {
+      schemaVersion: 8,
+      outcome: "paused",
+      at: "verifier",
+      reason: "source n1: Check inconclusive.",
+    },
+  });
+
   campaign = openCampaign(path);
   const resumed = dependencies([
     check(),
@@ -116,6 +125,33 @@ test("unconfirmed sources pause the same verification without killing the note",
   expect(
     campaign.records().filter((entry) => entry.kind === "candidate"),
   ).toEqual(candidates);
+  campaign.close();
+});
+
+test("an in-progress or failed retry is not reported as the previous inconclusive pause", async () => {
+  const path = campaignPath();
+  const configuration = config();
+  const campaign = createCampaign(path, applicationId, configuration);
+  const drive = dependencies([...start, check("INCONCLUSIVE")]);
+  await runWorkflow(
+    campaign,
+    createPiRoles(campaign, configuration.settings, drive),
+  );
+  const snapshot = await deriveWorkflow(campaign);
+  if (
+    snapshot.phase.kind !== "verifier" ||
+    snapshot.phase.candidate === undefined
+  )
+    throw new Error("expected verifier candidate");
+  const candidate = snapshot.phase.candidate;
+  await campaign.call(
+    { label: verifierLabels.source, role: "verifier", candidate, request: {} },
+    async () => {
+      expect(await inspectCampaign(path)).not.toHaveProperty("result");
+      return { state: "failed", error: "provider disconnected" };
+    },
+  );
+  expect(await inspectCampaign(path)).not.toHaveProperty("result");
   campaign.close();
 });
 

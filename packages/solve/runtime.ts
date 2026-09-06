@@ -7,7 +7,7 @@ import { builtinPi } from "elenx/pi";
 export type SolveModels = Pick<
   ReturnType<typeof builtinPi>,
   "getModel" | "streamSimple"
->;
+> & { readonly checkAuth?: (provider: string) => Promise<unknown> };
 
 export function codexCommand(environment: NodeJS.ProcessEnv): string {
   return environment["ELENX_CODEX_COMMAND"] ?? "codex";
