@@ -97,7 +97,7 @@ const distinctSupport = [
 ];
 // The projection derives the two flags from the verdict rows and the support
 // edges. A note is verified when one verification passed source and
-// correctness and it is not dead, so its result can be built on; it is dead when
+// correctness over verified support and it is not dead; it is dead when
 // correctness, source, or reconstruction failed it or a note in its support
 // is dead, so it can never be verified. A note is accepted when one
 // verification passed every verifier.
@@ -426,15 +426,27 @@ export function verificationComplete(
   input: Pick<VerifierInput, "verify" | "notes" | "support">,
   recorded: readonly Verdict[],
 ): boolean {
-  return verifierNames.every((name) =>
-    judgedBy(input, recorded, name).every((id) =>
-      recorded.some(
+  return verifierNames.every(
+    (name) =>
+      missingVerdicts(recorded, name, judgedBy(input, recorded, name))
+        .length === 0,
+  );
+}
+
+/** Checks that still need a decisive verdict within one candidate. */
+export function missingVerdicts(
+  recorded: readonly Verdict[],
+  name: VerifierName,
+  notes: readonly string[],
+): string[] {
+  return notes.filter(
+    (note) =>
+      !recorded.some(
         (value) =>
           value.verifier === name &&
-          value.note === id &&
+          value.note === note &&
           value.verdict !== "INCONCLUSIVE",
       ),
-    ),
   );
 }
 

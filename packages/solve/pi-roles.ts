@@ -29,6 +29,7 @@ import {
   journalVerdicts,
   jsonSnapshot,
   judgedBy,
+  missingVerdicts,
   noteIdAfter,
   pick,
   proof as proofSchema,
@@ -67,7 +68,7 @@ const piRoleProfile = z.strictObject({
 });
 type PiRoleProfile = z.output<typeof piRoleProfile>;
 
-/** The calls that run through Pi: two roles and three verifiers, each on its own profile. */
+/** The profiles that always execute through Pi. */
 export const piProfileNames = [
   "explorer",
   "coordinator",
@@ -535,20 +536,6 @@ export function createPiRoles(
         journalVerdicts(campaign.records())
           .filter((entry) => entry.candidate === candidate)
           .map(({ verdict }) => verdict);
-      const missing = (
-        have: readonly Verdict[],
-        name: VerifierName,
-        ids: readonly string[],
-      ): string[] =>
-        ids.filter(
-          (id) =>
-            !have.some(
-              (value) =>
-                value.verifier === name &&
-                value.note === id &&
-                value.verdict !== "INCONCLUSIVE",
-            ),
-        );
       const record = (
         call: EntryId,
         values: readonly Omit<Verdict, "verifier">[],
@@ -570,9 +557,11 @@ export function createPiRoles(
           const attempted = new Set<string>();
           for (;;) {
             const have = recorded();
-            const next = missing(have, name, judgedBy(input, have, name)).find(
-              (id) => !attempted.has(id),
-            );
+            const next = missingVerdicts(
+              have,
+              name,
+              judgedBy(input, have, name),
+            ).find((id) => !attempted.has(id));
             if (next === undefined) break;
             attempted.add(next);
             const { call, value } = await runReconstruction(
@@ -589,7 +578,7 @@ export function createPiRoles(
           continue;
         }
         const have = recorded();
-        const judged = missing(have, name, judgedBy(input, have, name));
+        const judged = missingVerdicts(have, name, judgedBy(input, have, name));
         if (judged.length === 0) continue;
         const after = journalVerdicts(campaign.records())
           .filter(

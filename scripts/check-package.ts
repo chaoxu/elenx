@@ -17,6 +17,7 @@ async function reject(command: string[], cwd: string): Promise<void> {
 }
 
 const root = process.cwd();
+const manifest = await Bun.file(join(root, "package.json")).json();
 const temporary = await mkdtemp(join(tmpdir(), "elenx-package-"));
 const consumer = join(temporary, "consumer");
 const archive = join(temporary, "elenx.tgz");
@@ -39,8 +40,14 @@ try {
     JSON.stringify({
       private: true,
       type: "module",
-      dependencies: { elenx: `file:${archive}`, zod: "4.4.3" },
-      devDependencies: { "@types/bun": "1.3.14", typescript: "5.9.2" },
+      dependencies: {
+        elenx: `file:${archive}`,
+        zod: manifest.dependencies.zod,
+      },
+      devDependencies: {
+        "@types/bun": manifest.devDependencies["@types/bun"],
+        typescript: manifest.devDependencies.typescript,
+      },
     }),
   );
   await Bun.write(

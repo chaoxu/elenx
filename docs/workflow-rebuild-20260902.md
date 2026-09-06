@@ -1,5 +1,7 @@
 # Elenx workflow rebuild
 
+This document records the workflow's development history. [`packages/solve/docs/role-runner.md`](../packages/solve/docs/role-runner.md) defines the current roles, verification, and replay behavior.
+
 The 2026-09-02 rebuild gives Elenx Solve and Elenx Lab one task contract and one journal-derived result path.
 
 ## Removed contracts

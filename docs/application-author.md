@@ -3,7 +3,7 @@
 Install Elenx from GitHub:
 
 ```sh
-bun add github:chaoxu/elenx zod@4.4.3
+bun add github:chaoxu/elenx zod@4.5.4
 ```
 
 ## Create and verify a candidate

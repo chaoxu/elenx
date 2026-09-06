@@ -56,6 +56,7 @@ async function drive(
   const roles = createPiRoles(campaign, config.settings, {
     models,
     ...(dependencies.run === undefined ? {} : { run: dependencies.run }),
+    ...(dependencies.codex === undefined ? {} : { codex: dependencies.codex }),
     ...(dependencies.signal === undefined
       ? {}
       : { signal: dependencies.signal }),

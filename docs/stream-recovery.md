@@ -1,6 +1,6 @@
 # Interrupted reasoning recovery
 
-Elenx replays completed encrypted reasoning during bounded in-call recovery through Pi's existing message serializer. Pi 0.85.0 supplies the completion events and signed content, but its agent and harness recovery paths exclude failed assistant messages from the next model input. Elenx adds an input-only projection in `src/pi-recovery.ts` and keeps Pi's original failed message in the transcript. The [runner contract](../SPEC.md#pi-runner) defines admission, retry limits, and durability.
+Elenx replays completed encrypted reasoning during bounded in-call recovery through Pi's existing message serializer. Pi supplies the completion events and signed content, but its agent and harness recovery paths exclude failed assistant messages from the next model input. Elenx adds an input-only projection in `src/pi-recovery.ts` and keeps Pi's original failed message in the transcript. The [runner contract](../SPEC.md#pi-runner) defines admission, retry limits, and durability.
 
 ## Pi integration
 

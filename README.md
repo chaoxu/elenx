@@ -11,7 +11,7 @@ The kernel enforces identity, durability, crash semantics, and accounting contra
 The v1 kernel requires Bun 1.3.13 or newer. Applications define tool schemas with Zod:
 
 ```sh
-bun add github:chaoxu/elenx zod@4.4.3
+bun add github:chaoxu/elenx zod@4.5.4
 ```
 
 Elenx exposes Pi types directly. Keep TypeScript's `skipLibCheck` enabled while Pi's provider SDK declarations require it.
@@ -27,9 +27,10 @@ The API and campaign schema are experimental. Campaigns are accepted only when t
 | How do I run the solver? | [`packages/solve/README.md`](packages/solve/README.md) |
 | How do the solver roles and replay behave? | [`packages/solve/docs/role-runner.md`](packages/solve/docs/role-runner.md) |
 | How do I build an application? | [`docs/application-author.md`](docs/application-author.md) |
+| Which dependencies and compatibility controls are current? | [`docs/dependencies.md`](docs/dependencies.md) |
 | What changed with Pi 0.85, and can it run Astra? | [`docs/pi-085-upgrade.md`](docs/pi-085-upgrade.md) |
-| Why was the workflow contract reset, and how are notes verified? | [`docs/workflow-rebuild-20260902.md`](docs/workflow-rebuild-20260902.md) |
-| What is the verification design and why? | [`docs/verification-proposal-20260902.md`](docs/verification-proposal-20260902.md) |
+| How did the workflow evolve? | [`docs/workflow-rebuild-20260902.md`](docs/workflow-rebuild-20260902.md) (history) |
+| Which choices motivated note verification? | [`docs/verification-proposal-20260902.md`](docs/verification-proposal-20260902.md) (design history) |
 
 The deterministic verifier example is [`examples/v1/scripted-verifier.ts`](examples/v1/scripted-verifier.ts). [`examples/v1/pi-smoke.ts`](examples/v1/pi-smoke.ts) exercises the LLM-verdict path with a real Pi model.
 
