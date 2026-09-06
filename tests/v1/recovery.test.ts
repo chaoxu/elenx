@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
@@ -52,41 +52,58 @@ const HAPPY_PATH_ACTIONS = 7;
 const HAPPY_PATH_MODEL_CALLS = 4;
 
 describe("campaign recovery", () => {
-  test("resume completes the campaign from every phase boundary without losing or repeating work", async () => {
-    const reference = temporaryPath();
-    const referenceModel = countingModel();
-    const complete = await runSession(startCampaign(reference), referenceModel);
-    expect(complete.interrupted).toBe(false);
-    expect(complete.actions).toHaveLength(HAPPY_PATH_ACTIONS);
-    expect(referenceModel.calls).toBe(HAPPY_PATH_MODEL_CALLS);
-    const expected = verifiedProjection(reference);
+  describe("phase-boundary recovery", () => {
+    let expected: readonly string[];
+    beforeAll(async () => {
+      const reference = temporaryPath();
+      const referenceModel = countingModel();
+      const complete = await runSession(
+        startCampaign(reference),
+        referenceModel,
+      );
+      expect(complete.interrupted).toBe(false);
+      expect(complete.actions).toHaveLength(HAPPY_PATH_ACTIONS);
+      expect(referenceModel.calls).toBe(HAPPY_PATH_MODEL_CALLS);
+      expected = verifiedProjection(reference);
+    });
 
-    for (let budget = 0; budget <= HAPPY_PATH_ACTIONS; budget += 1) {
-      const path = temporaryPath();
-      const first = countingModel();
-      const interrupted = await runSession(startCampaign(path), first, budget);
-      expect(interrupted.interrupted).toBe(budget < HAPPY_PATH_ACTIONS);
-      expect(interrupted.actions).toHaveLength(budget);
+    // Each independent durable-write scenario gets its own timeout and
+    // cleanup instead of sharing five seconds across the entire matrix.
+    test.each(
+      Array.from({ length: HAPPY_PATH_ACTIONS + 1 }, (_, budget) => budget),
+    )(
+      "resumes after %i actions without losing or repeating work",
+      async (budget) => {
+        const path = temporaryPath();
+        const first = countingModel();
+        const interrupted = await runSession(
+          startCampaign(path),
+          first,
+          budget,
+        );
+        expect(interrupted.interrupted).toBe(budget < HAPPY_PATH_ACTIONS);
+        expect(interrupted.actions).toHaveLength(budget);
 
-      const second = countingModel();
-      const resumed = await runSession(resumeCampaign(path), second);
-      expect(resumed.interrupted).toBe(false);
+        const second = countingModel();
+        const resumed = await runSession(resumeCampaign(path), second);
+        expect(resumed.interrupted).toBe(false);
 
-      // Committed work must not disappear or repeat: the two sessions
-      // together perform exactly the reference work, and the journal is
-      // record-for-record the reference journal.
-      expect(first.calls + second.calls).toBe(HAPPY_PATH_MODEL_CALLS);
-      expect(resumed.actions).toHaveLength(HAPPY_PATH_ACTIONS - budget);
-      expect(verifiedProjection(path)).toEqual(expected);
+        // Committed work must not disappear or repeat: the two sessions
+        // together perform exactly the reference work, and the journal is
+        // record-for-record the reference journal.
+        expect(first.calls + second.calls).toBe(HAPPY_PATH_MODEL_CALLS);
+        expect(resumed.actions).toHaveLength(HAPPY_PATH_ACTIONS - budget);
+        expect(verifiedProjection(path)).toEqual(expected);
 
-      // Resume after the last required PASS must make no model call and
-      // append nothing.
-      const third = countingModel();
-      const settled = await runSession(resumeCampaign(path), third);
-      expect(settled).toMatchObject({ interrupted: false, actions: [] });
-      expect(third.calls).toBe(0);
-      expect(verifiedProjection(path)).toEqual(expected);
-    }
+        // Resume after the last required PASS must make no model call and
+        // append nothing.
+        const third = countingModel();
+        const settled = await runSession(resumeCampaign(path), third);
+        expect(settled).toMatchObject({ interrupted: false, actions: [] });
+        expect(third.calls).toBe(0);
+        expect(verifiedProjection(path)).toEqual(expected);
+      },
+    );
   });
 
   test("a repeated verdict for the same call is rejected durably", async () => {
