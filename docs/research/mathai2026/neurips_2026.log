@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026) (preloaded format=pdflatex 2026.7.2)  6 SEP 2026 14:57
+This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026) (preloaded format=pdflatex 2026.7.2)  6 SEP 2026 15:01
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -421,24 +421,58 @@ Package microtype Info: Loading generic protrusion settings for font family
 (microtype)             `phv' (encoding: OT1).
 (microtype)             For optimal results, create family-specific settings.
 (microtype)             See the microtype manual for details.
- [1
-
-
-{/Users/chaoxu/Library/TinyTeX/texmf-var/fonts/map/pdftex/updmap/pdftex.map}{/Users/chaoxu/Library/TinyTeX/texmf-dist/fonts/enc/dvips/base/8r.enc}] (/Users/chaoxu/Library/TinyTeX/texmf-dist/tex/latex/microtype/mt-cmr.cfg
+ (/Users/chaoxu/Library/TinyTeX/texmf-dist/tex/latex/microtype/mt-cmr.cfg
 File: mt-cmr.cfg 2013/05/19 v2.2 microtype config. file: Computer Modern Roman (RS)
 )
-LaTeX Font Info:    Trying to load font information for U+msa on input line 14.
+LaTeX Font Info:    Trying to load font information for U+msa on input line 13.
  (/Users/chaoxu/Library/TinyTeX/texmf-dist/tex/latex/amsfonts/umsa.fd
 File: umsa.fd 2013/01/14 v3.01 AMS symbols A
 ) (/Users/chaoxu/Library/TinyTeX/texmf-dist/tex/latex/microtype/mt-msa.cfg
 File: mt-msa.cfg 2006/02/04 v1.1 microtype config. file: AMS symbols (a) (RS)
 )
-LaTeX Font Info:    Trying to load font information for U+msb on input line 14.
+LaTeX Font Info:    Trying to load font information for U+msb on input line 13.
  (/Users/chaoxu/Library/TinyTeX/texmf-dist/tex/latex/amsfonts/umsb.fd
 File: umsb.fd 2013/01/14 v3.01 AMS symbols B
 ) (/Users/chaoxu/Library/TinyTeX/texmf-dist/tex/latex/microtype/mt-msb.cfg
 File: mt-msb.cfg 2005/06/01 v1.0 microtype config. file: AMS symbols (b) (RS)
-) [2] (./neurips_2026.aux)
+)
+! Missing $ inserted.
+<inserted text> 
+                $
+l.14 \section
+             {Results and ablations}\begin{table}[h]\centering\caption{Match...
+I've inserted a begin-math/end-math symbol since I think
+you left one out. Proceed, with fingers crossed.
+
+
+Underfull \hbox (badness 2111) in paragraph at lines 13--14
+\OT1/ptm/m/n/10 (+20) can-di-date proofs, and four in-de-pen-dent ver-dicts. Three can-di-dates were re-jected with
+ []
+
+
+Underfull \hbox (badness 2735) in paragraph at lines 13--14
+\OT1/ptm/m/n/10 (+20) lo-cal-ized ob-jec-tions to load-bearing lem-mas. The fourth re-ceived PASS af-ter a self-
+ []
+
+
+Underfull \hbox (badness 1616) in paragraph at lines 13--14
+\OT1/ptm/m/n/10 (+20) contained proof cov-er-ing all car-di-nal-i-ties. A sep-a-rate Danus run pro-vides the mo-ti-vat-
+ []
+
+
+Underfull \hbox (badness 1552) in paragraph at lines 13--14
+\OT1/ptm/m/n/10 (+20) ing cost con-trast: Danus al-lo-cated only 8.3% of cost to rea-son-ing (46% of out-put to-
+ []
+
+
+Overfull \hbox (411.43784pt too wide) in paragraph at lines 13--14
+\OT1/cmr/m/n/10 2\OML/cmm/m/it/10 ; \OT1/cmr/m/n/10 000\OML/cmm/m/it/10 whilefailingtoreachasufficientverifiedresolution\OT1/cmr/m/n/10 ; \OML/cmm/m/it/10 wewillciteitsdurableaccountingrecordinthesupplement:Theseareauditedcasestudies; notyetastatisticallypoweredcomparison:$ 
+ []
+
+[1
+
+
+{/Users/chaoxu/Library/TinyTeX/texmf-var/fonts/map/pdftex/updmap/pdftex.map}{/Users/chaoxu/Library/TinyTeX/texmf-dist/fonts/enc/dvips/base/8r.enc}] [2] (./neurips_2026.aux)
  ***********
 LaTeX2e <2026-06-01>
 L3 programming layer <2026-06-18>
@@ -447,18 +481,18 @@ Package rerunfilecheck Info: File `neurips_2026.out' has not changed.
 (rerunfilecheck)             Checksum: 1312AFDE8ADA11FAF35A674FAECAA1F0;728.
  ) 
 Here is how much of TeX's memory you used:
- 11969 strings out of 469115
- 188954 string characters out of 5458255
+ 11966 strings out of 469115
+ 188924 string characters out of 5458255
  650047 words of memory out of 5000000
  40758 multiletter control sequences out of 15000+600000
- 643955 words of font info for 116 fonts, out of 8000000 for 9000
+ 643836 words of font info for 114 fonts, out of 8000000 for 9000
  36 hyphenation exceptions out of 8191
- 72i,8n,79p,1098b,551s stack positions out of 10000i,1000n,20000p,200000b,200000s
-</Users/chaoxu/Library/TinyTeX/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi10.pfb></Users/chaoxu/Library/TinyTeX/texmf-dist/fonts/type1/public/amsfonts/cm/cmr7.pfb></Users/chaoxu/Library/TinyTeX/texmf-dist/fonts/type1/public/amsfonts/cm/cmtt10.pfb></Users/chaoxu/Library/TinyTeX/texmf-dist/fonts/type1/urw/helvetic/uhvr8a.pfb></Users/chaoxu/Library/TinyTeX/texmf-dist/fonts/type1/urw/times/utmb8a.pfb></Users/chaoxu/Library/TinyTeX/texmf-dist/fonts/type1/urw/times/utmr8a.pfb>
-Output written on neurips_2026.pdf (2 pages, 65908 bytes).
+ 72i,8n,79p,1098b,469s stack positions out of 10000i,1000n,20000p,200000b,200000s
+</Users/chaoxu/Library/TinyTeX/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi10.pfb></Users/chaoxu/Library/TinyTeX/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb></Users/chaoxu/Library/TinyTeX/texmf-dist/fonts/type1/public/amsfonts/cm/cmr7.pfb></Users/chaoxu/Library/TinyTeX/texmf-dist/fonts/type1/public/amsfonts/cm/cmtt10.pfb></Users/chaoxu/Library/TinyTeX/texmf-dist/fonts/type1/urw/helvetic/uhvr8a.pfb></Users/chaoxu/Library/TinyTeX/texmf-dist/fonts/type1/urw/times/utmb8a.pfb></Users/chaoxu/Library/TinyTeX/texmf-dist/fonts/type1/urw/times/utmr8a.pfb>
+Output written on neurips_2026.pdf (2 pages, 82647 bytes).
 PDF statistics:
- 78 PDF objects out of 1000 (max. 8388607)
- 61 compressed objects within 1 object stream
+ 83 PDF objects out of 1000 (max. 8388607)
+ 64 compressed objects within 1 object stream
  12 named destinations out of 1000 (max. 500000)
  32817 words of extra memory for PDF output out of 35830 (max. 10000000)
 
