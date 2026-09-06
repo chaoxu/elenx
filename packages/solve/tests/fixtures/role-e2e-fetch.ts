@@ -116,6 +116,7 @@ function submissionFor(tool: string, request: string): unknown {
       throw new Error("request omitted verifier identity");
     }
     return {
+      ...(verifier === "reconstruction" ? { statement: null } : {}),
       verdicts: notes.map((note) => ({
         note,
         verdict: pass ? "PASS" : "FAIL",

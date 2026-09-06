@@ -39,13 +39,16 @@ const relations = [
 // Verified, dead, and accepted are derived from the verdict rows and the
 // support edges alone. A note is dead when correctness, source, or
 // reconstruction failed it or a note in its support is dead; verified when
-// one candidate passed source and correctness and it is not dead; accepted
-// when one candidate passed every verifier.
+// one candidate passed source and correctness over verified support and it is
+// not dead; accepted when one candidate passed every verifier.
 const derivedRules = `passed[candidate, note, verifier] := *verdict{seq, candidate, verifier, note, verdict: "PASS"}, seq <= $seq
 dead[note] := *verdict{seq, verifier, note, verdict: "FAIL"}, seq <= $seq, verifier != "requirements"
 dead[note] := *support{note, support}, dead[support]
-verified[note] := passed[candidate, note, "correctness"], passed[candidate, note, "source"], not dead[note]
-accepted[note] := passed[candidate, note, "correctness"], passed[candidate, note, "source"], passed[candidate, note, "requirements"], passed[candidate, note, "reconstruction"], not dead[note]`;
+passed_source_correctness[note] := passed[candidate, note, "correctness"], passed[candidate, note, "source"]
+unverified[note] := *note{id: note, seq}, seq <= $seq, not passed_source_correctness[note]
+unverified[note] := *support{note, support}, unverified[support]
+verified[note] := passed_source_correctness[note], not unverified[note], not dead[note]
+accepted[note] := passed[candidate, note, "correctness"], passed[candidate, note, "source"], passed[candidate, note, "requirements"], passed[candidate, note, "reconstruction"], verified[note]`;
 
 export class Projection {
   private constructor(private readonly db: InstanceType<typeof CozoDb>) {}

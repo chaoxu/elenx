@@ -30,6 +30,7 @@ import {
   roleNames,
   proof,
   reconstructionCalls,
+  reconstructionResult,
   roleTools,
   sourceVerdicts,
   statement,
@@ -127,6 +128,9 @@ function visibleSubmission(
       return jsonSnapshot(coordinatorResult.parse(submission.input));
     }
     if (verifier === undefined) return undefined;
+    if (verifier === "reconstruction") {
+      return { verifier, ...reconstructionResult.parse(submission.input) };
+    }
     return { verifier, ...verdicts.parse(submission.input) };
   } catch {
     return undefined;

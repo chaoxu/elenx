@@ -1,6 +1,8 @@
 import { expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 
+import type { EntryId } from "elenx";
+
 import {
   coordinatorCall,
   explorerCall,
@@ -44,6 +46,20 @@ test("the explorer's guidance follows its fixed instructions", () => {
   );
 });
 
+test("abandonment guidance is confined to the explorer treatment", () => {
+  const input = { task, objective: "Extend P.", notes: [], support: [] };
+  const guidance =
+    "Abandon approaches whose remaining gaps are hard to repair.";
+  const baseline = explorerCall({ ...input, guidance: [] });
+  const treatment = explorerCall({ ...input, guidance: [guidance] });
+  expect(treatment.system.replace(`${guidance} `, "")).toBe(baseline.system);
+  expect(treatment.prompt).toBe(baseline.prompt);
+  const coordinator = coordinatorCall({ task, notes: [note] });
+  expect(coordinator.system).not.toContain("is abandoned");
+  expect(coordinator.system).not.toContain("asks for a different one");
+  expect(coordinator.system).not.toContain(guidance);
+});
+
 test("prompt bytes are frozen with the workflow schema version", () => {
   const { text, ...heading } = note;
   const second = {
@@ -77,6 +93,14 @@ test("prompt bytes are frozen with the workflow schema version", () => {
     statementCall(verification, second),
     proofCall(verification, second, stated),
     reconstructionCall(verification, second, stated, "Independent proof of P."),
+    proofCall(verification, second, stated, 42 as EntryId),
+    reconstructionCall(
+      verification,
+      second,
+      stated,
+      "Independent proof of P.",
+      42 as EntryId,
+    ),
   );
   const source = sourceCall(
     { provider: "codex", model: "codex-model", reasoning: "low", search: true },
@@ -105,8 +129,8 @@ test("prompt bytes are frozen with the workflow schema version", () => {
   // Changing any role prompt changes the bytes the workflow fold matches
   // against journals, so bump workflowSchemaVersion and update this digest
   // in the same change.
-  expect(workflowSchemaVersion).toBe(18);
+  expect(workflowSchemaVersion).toBe(19);
   expect(digest.digest("hex")).toBe(
-    "bef2b9662c7d5389e0517ffa254710bedfc822e01c1777cce9208aebe5efc1d5",
+    "3744462682b371b287f4ee3fd362164d716ed99ae81780f1ff0e1872c4ae2451",
   );
 });

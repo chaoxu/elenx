@@ -37,7 +37,7 @@ import {
   type VerifierInput,
 } from "./roles";
 
-export const workflowSchemaVersion = 18;
+export const workflowSchemaVersion = 19;
 export const workflowConfig = z.strictObject({
   kind: z.literal("workflow"),
   schemaVersion: z.literal(workflowSchemaVersion),
@@ -284,18 +284,6 @@ export async function deriveWorkflow(
       const recorded = verdicts.filter(
         (entry) => entry.candidate === candidate,
       );
-      if (
-        !verificationComplete(
-          verifierRequest,
-          recorded.map(({ verdict }) => verdict),
-        )
-      ) {
-        return {
-          config,
-          notes: filed,
-          phase: { kind: "verifier", input: verifierRequest, candidate },
-        };
-      }
       cursor = Math.max(cursor, ...recorded.map(({ seq }) => seq));
       const accepted = await projection.accepted(cursor);
       const acceptedId = verify
@@ -314,6 +302,18 @@ export async function deriveWorkflow(
             candidate,
             closure: await projection.closure(acceptedId),
           },
+        };
+      }
+      if (
+        !verificationComplete(
+          verifierRequest,
+          recorded.map(({ verdict }) => verdict),
+        )
+      ) {
+        return {
+          config,
+          notes: await projection.at(cursor),
+          phase: { kind: "verifier", input: verifierRequest, candidate },
         };
       }
     }
@@ -351,13 +351,14 @@ export async function runWorkflow(
   roles: Roles,
   dependencies: WorkflowDependencies = {},
 ): Promise<WorkflowPhase> {
+  let phase = (await deriveWorkflow(campaign)).phase;
   for (;;) {
-    const phase = (await deriveWorkflow(campaign)).phase;
     if (phase.kind === "accepted" || phase.kind === "turn-limit") {
       return phase;
     }
     if (dependencies.pauseRequested?.()) return phase;
     dependencies.status?.(phase.kind);
+    const wasVerifier = phase.kind === "verifier";
     if (phase.kind === "explorer") {
       await roles.explorer(phase.input);
     } else if (phase.kind === "coordinator") {
@@ -365,6 +366,8 @@ export async function runWorkflow(
     } else {
       await roles.verifier(phase.input, phase.candidate);
     }
+    phase = (await deriveWorkflow(campaign)).phase;
+    if (wasVerifier && phase.kind === "verifier") return phase;
   }
 }
 

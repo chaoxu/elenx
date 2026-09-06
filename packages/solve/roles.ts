@@ -78,10 +78,7 @@ export const task = z.strictObject({
 });
 export type Task = z.output<typeof task>;
 
-// INCONCLUSIVE is the reconstruction verifier's third verdict: the
-// independent proof left something unproved and no defect was found, or the
-// statement misstated or gave away the note. It blocks acceptance without
-// marking the note defective.
+// INCONCLUSIVE leaves a check unresolved without marking the note defective.
 export const verdict = z.strictObject({
   verifier: z.enum(verifierNames),
   note: noteId,
@@ -98,7 +95,6 @@ const distinctSupport = [
   (value: { readonly support: readonly string[] }) => boolean,
   { message: string; path: string[] },
 ];
-const passOrFail = z.enum(["PASS", "FAIL"]);
 // The projection derives the two flags from the verdict rows and the support
 // edges. A note is verified when one verification passed source and
 // correctness and it is not dead, so its result can be built on; it is dead when
@@ -403,11 +399,21 @@ export function judgedBy(
           value.verifier !== "requirements" &&
           value.verdict === "FAIL",
       ) || (known.find((note) => note.id === id)?.support ?? []).some(dead);
+    const supportPassed = (id: string): boolean =>
+      (known.find((note) => note.id === id)?.support ?? []).every(
+        (support) =>
+          known.find((note) => note.id === support)?.verified === true ||
+          (verifierNames
+            .slice(0, Math.min(verifierIndex(verifier), 2))
+            .every((name) => passed(support, name)) &&
+            supportPassed(support)),
+      );
     if (
       verifierNames
         .slice(0, verifierIndex(verifier))
         .every((name) => passed(entry.note, name)) &&
-      !dead(entry.note)
+      !dead(entry.note) &&
+      supportPassed(entry.note)
     ) {
       judged.push(entry.note);
     }
@@ -415,14 +421,19 @@ export function judgedBy(
   return judged;
 }
 
-/** Whether every verdict the verification calls for is recorded. */
+/** Whether every reachable check has a decisive verdict. */
 export function verificationComplete(
   input: Pick<VerifierInput, "verify" | "notes" | "support">,
   recorded: readonly Verdict[],
 ): boolean {
   return verifierNames.every((name) =>
     judgedBy(input, recorded, name).every((id) =>
-      recorded.some((value) => value.verifier === name && value.note === id),
+      recorded.some(
+        (value) =>
+          value.verifier === name &&
+          value.note === id &&
+          value.verdict !== "INCONCLUSIVE",
+      ),
     ),
   );
 }
@@ -456,14 +467,25 @@ export const verdicts = z.strictObject({
   verdicts: z.array(verdict.omit({ verifier: true })),
 });
 export function verdictsFor(judged: readonly string[]) {
-  return verdictsOver(
-    verdict.omit({ verifier: true }).extend({ verdict: passOrFail }),
-    judged,
-  );
+  return verdictsOver(verdict.omit({ verifier: true }), judged);
 }
 
-export function reconstructionVerdictFor(noteId: string) {
-  return verdictsOver(verdict.omit({ verifier: true }), [noteId]);
+/** A note verdict, or a corrected statement with no mathematical verdict. */
+export const reconstructionResult = z
+  .strictObject({
+    statement: nonblank.nullable(),
+    verdicts: z.array(verdict.omit({ verifier: true })).max(1),
+  })
+  .refine(
+    (value) => value.verdicts.length === (value.statement === null ? 1 : 0),
+    "return either one verdict or a corrected statement",
+  );
+
+export function reconstructionResultFor(noteId: string) {
+  return reconstructionResult.refine(
+    (value) => value.verdicts.every(({ note }) => note === noteId),
+    "verdict must name the note under verification",
+  );
 }
 
 /** What a text establishes, with nothing of how: one or several propositions. */
@@ -483,9 +505,7 @@ export const sources = z.array(
     url: z.string().refine((value) => URL.canParse(value), "must be a URL"),
   }),
 );
-const sourceVerdict = verdict
-  .omit({ verifier: true })
-  .extend({ verdict: passOrFail, sources });
+const sourceVerdict = verdict.omit({ verifier: true }).extend({ sources });
 /** The verdicts of one source call. */
 export const sourceVerdicts = z.strictObject({
   verdicts: z.array(sourceVerdict),

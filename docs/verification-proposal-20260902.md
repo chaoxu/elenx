@@ -4,6 +4,8 @@ This records the verification design agreed on 2026-09-02 after the three change
 
 ## The unit is the note
 
+The current recovery behavior is documented in [`packages/solve/docs/role-runner.md`](../packages/solve/docs/role-runner.md). The 2026-09-06 repair makes unavailable evidence inconclusive, keeps unresolved checks on their existing candidate, repairs malformed reconstruction statements inside verification, and places abandonment policy in explorer guidance. The proposal below records the earlier design discussion.
+
 Verification acts on notes in the journal, never on the explorer's output in flight. A note exists the moment the explorer's call settles, the coordinator files its summary, and a verifier reads it from the journal with the support it declares. Exploration and verification share data and nothing else. The fold sequences them today, one verification in the gap between two explorer turns, but that is a sequencing choice: the coordinator may verify any note from any earlier turn, and verification could run beside exploration later without touching the roles.
 
 Two rules make this sound, and both landed:
@@ -31,7 +33,7 @@ Two rules make this sound, and both landed:
 
 ## Why this is a good way to handle verification
 
-- **Soundness is by construction, not by prompt.** Verified support and acceptance over a verified closure are schema and fold rules. The prompts can be wrong about a note and the accepted proof is still checked to the bottom.
+- **Verification coverage is enforced by the schemas and fold.** Every declared dependency must pass the required checks. Mathematical correctness still depends on the verifiers' judgments.
 - **Cost tracks reading, and reading is shared.** A batch reads each support text once, the cheap verifiers run first, and the proof is written only for a note the coordinator asked to have fully verified. A verified supporting note costs a correctness verdict and a source check over its text and its support; the final note adds requirements and the three reconstruction calls.
 - **The explorer sees what it can build on and what it must avoid.** Live notes with their summaries and verdicts, dead notes with the verdicts that killed them, and verified notes need no rechecking.
 - **Every decision has one owner.** The explorer writes mathematics, the coordinator files summaries, routes, orders, and chooses how far to verify, the verifiers judge, the requirements verifier alone decides completion, and the projection alone derives verified, dead, and accepted from the journal.
@@ -39,4 +41,4 @@ Two rules make this sound, and both landed:
 
 ## What stays open
 
-The batch verdict calls judge several notes per call; if a run shows verdict quality falling with batch size, the window setting is the lever, not a new mechanism. A supporting note's independence rests on its correctness verdict alone; the final note's reconstruction reproves the theorem over the support texts, which is where an unsound supporting note surfaces. A coordinator that never asks for full verification of a note that meets the criteria ends the campaign at the turn limit, which the verdicts make visible. Recognizing a restated result is the coordinator's judgment, checked by nothing but the next verification. Reading support in full is the standing cost; if a campaign shows it dominating spend, the lever is a certified statement per verified note handed over instead of the text, a later change, not this one. Concurrency between exploration and verification is possible on this design and is not part of the change.
+The batch verdict calls judge several notes per call; if a run shows verdict quality falling with batch size, the window setting is the lever, not a new mechanism. A supporting note's independence rests on its correctness verdict alone; the final note's reconstruction works over those support texts as established premises. It does not guarantee detection of a mistakenly approved supporting lemma. Final review of the complete argument remains external to Elenx. A coordinator that never asks for full verification of a note that meets the criteria ends the campaign at the turn limit, which the verdicts make visible. Recognizing a restated result is the coordinator's judgment, checked by nothing but the next verification. Reading support in full is the standing cost; if a campaign shows it dominating spend, the lever is a certified statement per verified note handed over instead of the text, a later change, not this one. Concurrency between exploration and verification is possible on this design and is not part of the change.

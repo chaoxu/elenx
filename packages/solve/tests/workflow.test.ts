@@ -8,7 +8,7 @@ import {
   coordinatorResultFor,
   explorerResultFor,
   judgedBy,
-  reconstructionVerdictFor,
+  reconstructionResultFor,
   verdictsFor,
   verificationComplete,
   verifierLabels,
@@ -48,6 +48,7 @@ function verdictsOf(
 ): Reply {
   return {
     submission: {
+      ...(name === "reconstruction" ? { statement: null } : {}),
       verdicts: notes.map((note) => ({
         note,
         verdict,
@@ -553,48 +554,6 @@ test("a source FAIL kills the note before correctness runs, and the explorer sti
   campaign.close();
 });
 
-test("an INCONCLUSIVE reconstruction blocks acceptance without a defect and can be verified again", async () => {
-  const path = campaignPath();
-  const workflow = config(2);
-  const campaign = createCampaign(path, applicationId, workflow);
-  const drive = dependencies([
-    { submission: { notes: [good] } },
-    { submission: coordination("n1") },
-    sourceOf(["n1"]),
-    verdictsOf("correctness", ["n1"]),
-    verdictsOf("requirements", ["n1"]),
-    ...reconstruction("n1", "INCONCLUSIVE"),
-    { submission: { notes: [{ text: "Smaller step.", support: [] }] } },
-    {
-      submission: coordination("n2", {
-        verify: [{ note: "n1", verifiers: all }],
-      }),
-    },
-    ...passes("n1"),
-  ]);
-  const phase = await runWorkflow(
-    campaign,
-    createPiRoles(campaign, workflow.settings, drive),
-  );
-  expect(phase).toMatchObject({ kind: "accepted", turns: 2 });
-  if (phase.kind !== "accepted") throw new Error("expected acceptance");
-  expect(shorthand([phase.note])).toEqual([
-    [
-      "source:PASS",
-      "correctness:PASS",
-      "requirements:PASS",
-      "reconstruction:INCONCLUSIVE",
-      "source:PASS",
-      "correctness:PASS",
-      "requirements:PASS",
-      "reconstruction:PASS",
-    ],
-  ]);
-  expect(drive.calls[7]?.prompt).toContain("INCONCLUSIVE");
-  expect(drive.calls[7]?.prompt).toContain(`"verified": true`);
-  campaign.close();
-});
-
 test("a source PASS that confirms sources without searching is an operational error", async () => {
   const path = campaignPath();
   const workflow = config(1);
@@ -874,9 +833,10 @@ test("a verdict call returns one verdict per note under verification", () => {
     schema.safeParse({
       verdicts: [pass("n1"), { ...pass("n2"), verdict: "INCONCLUSIVE" }],
     }).success,
-  ).toBe(false);
+  ).toBe(true);
   expect(
-    reconstructionVerdictFor("n1").safeParse({
+    reconstructionResultFor("n1").safeParse({
+      statement: null,
       verdicts: [{ ...pass("n1"), verdict: "INCONCLUSIVE" }],
     }).success,
   ).toBe(true);
@@ -936,7 +896,7 @@ test("each verifier judges the listed notes that passed the verifiers before it 
       ...passedRequirements,
       v("reconstruction", "n2", "INCONCLUSIVE"),
     ]),
-  ).toBe(true);
+  ).toBe(false);
   expect(
     verificationComplete(input, [
       ...passedCorrectness,
