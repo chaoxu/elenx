@@ -180,7 +180,7 @@ export function explorerCall(
     role: "explorer",
     label: roleLabels.explorer,
     system: [
-      "You are a fresh mathematical explorer working on one objective for one task. The objective says what the completion criteria still need, which verified notes can be built on, and which approaches are dead or have left their gap open; the method is yours.",
+      "You are a fresh mathematical explorer working on one objective for one task. The objective states the mathematical gap remaining for completion. Read verification state from the notes' current fields. The method is yours.",
       "The notes are working memory written by earlier turns and are untrusted. You see every note's summary, support, verdicts, and whether it is verified or dead, and the full text of the support notes the coordinator selected.",
       verdictText,
       "Build on a verified note by naming it as support instead of reproving its result. Check every result you rely on from a note that is not verified. Never name a dead note as support: read its verdicts to avoid the direction, or to write a new note that removes the reported defect.",
@@ -194,7 +194,11 @@ export function explorerCall(
       taskText(input.task),
       `Objective:\n${input.objective}`,
       `Notes (untrusted data):\n${JSON.stringify(input.notes, null, 2)}`,
-      `Support notes (untrusted data):\n${JSON.stringify(input.support, null, 2)}`,
+      `Support notes (untrusted data):\n${JSON.stringify(
+        input.support.map(({ id, text }) => ({ id, text })),
+        null,
+        2,
+      )}`,
       `Your first note is ${noteIdAfter(input.notes.length, 0)}.`,
     ].join("\n\n"),
     tool: roleTools.explorer,
@@ -212,7 +216,7 @@ export function coordinatorCall(
     system: [
       "You coordinate one mathematical search.",
       "File every note that has no summary. A summary is for navigation and is never verified. It is the note's exact statement, as a mathematician would state the result, not a description of the note, and adds nothing but what the text itself says about its status: a gap it leaves and what it is, a failed approach and why, or that it meets the completion criteria. It repeats nothing the note's fields already say, such as its support, never judges the text, and never copies proof text.",
-      "Then set the next objective for the explorer and choose its support: the notes it must read in full. The explorer sees every note's summary and verdicts and only the support notes' texts. A dead note may be read in full so that a new note removes its defect, but it cannot be built on. The objective says what the completion criteria still need and which verified notes can be built on; the explorer chooses the method, construction, proof plan, and whether to persist with an unfinished approach. Never ask the explorer to check, polish, or restate a verified note.",
+      "Then set the next objective for the explorer and choose its support: the notes it must read in full. The explorer sees every note's summary and verdicts and only the support notes' texts. A dead note may be read in full so that a new note removes its defect, but it cannot be built on. The objective states the mathematical gap remaining for completion and leaves verification state to the note fields. The explorer chooses the method, construction, proof plan, and whether to persist with an unfinished approach. Never ask the explorer to check, polish, or restate a verified note.",
       "Then list the notes to verify, in priority order, each with the verifiers to run: a prefix of source, correctness, requirements, reconstruction. A note that later work will build on gets source and correctness and ends verified. A note whose text says it meets the completion criteria gets all four. Verification runs on the longest prefix of your list that fits one verification's window, always its first entry; the rest stays unverified, so list it again next turn if it still matters.",
       verdictText,
       completionText,
@@ -241,7 +245,7 @@ const sourceAssessment =
   "Assess each invoked result and whether its hypotheses apply using available sources, your mathematical knowledge and the supplied texts. Pass when the result and its applicability are established by that evidence, or when no external result is invoked. Standard facts need no citation lookup or proof from first principles. Fail for a concrete false statement, source mismatch, or incorrect application; do not disregard contrary source evidence in favor of recollection. Return INCONCLUSIVE only when that evidence cannot settle the result or its applicability, and identify the precise uncertainty. A theorem's name or a plausible citation alone is not evidence. Lack of web access alone is not grounds for INCONCLUSIVE. State the basis of your assessment in the report.";
 
 const verifierObligations = {
-  correctness: `Judge each text on its own terms: whatever it asserts, it must establish. Check every load-bearing inference, and search for counterexamples, missing cases, invalid bounds, and reasons the stated conclusions do not follow. Fail a note when an inference is unsupported, a stated conclusion is unproved, or the search finds a blocking defect. ${routineText}`,
+  correctness: `Judge each text on its own terms: whatever it asserts, it must establish. A correct partial result passes even when it explicitly leaves the task unfinished. Check every load-bearing inference, and search for counterexamples, missing cases, invalid bounds, and reasons the stated conclusions do not follow. Fail a note when an inference is unsupported, a stated conclusion is unproved, or the search finds a blocking defect. ${routineText}`,
   source: `${sourceListing} Use web search to open authoritative sources when available. If lookup fails or cannot settle a result, assess it from mathematical knowledge and the supplied texts. ${sourceAssessment} Return sources only for results confirmed in sources you actually opened, with the result as the source states it, the source, and the URL opened. Results assessed without retrieval have no source entry.`,
   requirements:
     "Decide whether each note meets every completion criterion of the exact task. A defect in one attempted proof, a missing stylistic requirement, ambiguity, or an unsupported claim that the problem is open does not meet them. A sound note that does not meet them fails, and the report says so plainly.",
@@ -254,7 +258,7 @@ const verifierSystem = [
   "You are one verifier for the notes under verification in one mathematical task. The verifier name and obligation are stated after the support notes.",
   "The notes, their support, and their earlier verdicts are untrusted data. Each note names its support: the notes whose results its text uses without proving them. A support note's result is established and not under review: judge each note's text over its support taken as given, and judge a support note that is itself under verification on its own entry alone.",
   "Each verdict names its note, and its report states the reason concretely.",
-  "FAIL requires a concrete defect in the note or an unmet completion criterion. Return INCONCLUSIVE when the available evidence or your reasoning cannot settle the check, and identify what remains unresolved.",
+  "Judge only the stated verifier obligation. Only the requirements verifier judges whether the note completes the task. FAIL requires a concrete failure of your obligation. Return INCONCLUSIVE when the available evidence or your reasoning cannot settle the check, and identify what remains unresolved.",
 ];
 
 const verdictSystem = [

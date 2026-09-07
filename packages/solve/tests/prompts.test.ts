@@ -60,6 +60,124 @@ test("abandonment guidance is confined to the explorer treatment", () => {
   expect(coordinator.system).not.toContain(guidance);
 });
 
+test("selected support contributes its metadata once and its full proof once", () => {
+  const first = { ...note, summary: "First navigation statement." };
+  const second = {
+    ...note,
+    id: "n2",
+    summary: "Unselected navigation statement.",
+    text: "Unselected proof text.",
+    verified: false,
+    verdicts: [],
+  };
+  const third = {
+    ...note,
+    id: "n3",
+    summary: "Defective navigation statement.",
+    text: "Selected failed proof text.",
+    support: ["n1"],
+    verified: false,
+    dead: true,
+    verdicts: [
+      {
+        verifier: "correctness" as const,
+        note: "n3",
+        verdict: "FAIL" as const,
+        report: "The last inference is invalid.",
+      },
+    ],
+  };
+  const headings = [first, second, third].map(
+    ({ text, ...heading }) => heading,
+  );
+  const call = explorerCall({
+    task,
+    objective: "Prove the remaining case.",
+    guidance: [],
+    notes: headings,
+    support: [first, third],
+  });
+  const [metadata, texts] = call.prompt
+    .split("Notes (untrusted data):\n")[1]!
+    .split("\n\nSupport notes (untrusted data):\n");
+  expect(JSON.parse(metadata!)).toEqual(headings);
+  expect(JSON.parse(texts!.split("\n\nYour first note")[0]!)).toEqual([
+    { id: "n1", text: first.text },
+    { id: "n3", text: third.text },
+  ]);
+  for (const selected of [first, third]) {
+    expect(call.prompt.split(selected.summary)).toHaveLength(2);
+    expect(call.prompt.split(selected.text)).toHaveLength(2);
+  }
+  expect(call.prompt).not.toContain(second.text);
+  expect(call.prompt).toContain("Your first note is n4.");
+});
+
+test("the objective carries the mathematical gap while note fields carry current verification state", () => {
+  const coordinator = coordinatorCall({ task, notes: [note] });
+  expect(coordinator.system).toContain(
+    "The objective states the mathematical gap remaining for completion and leaves verification state to the note fields.",
+  );
+  expect(coordinator.system).not.toContain(
+    "The objective says what the completion criteria still need and which verified notes can be built on",
+  );
+  const { text, ...heading } = note;
+  const objective = "Prove the remaining case using the bound in n1.";
+  const explorer = explorerCall({
+    task,
+    objective,
+    guidance: [],
+    notes: [heading],
+    support: [note],
+  });
+  expect(explorer.system).toContain(
+    "Read verification state from the notes' current fields.",
+  );
+  expect(explorer.prompt).toContain(`Objective:\n${objective}`);
+});
+
+test("correctness permits valid partial claims and reserves task completion for requirements", () => {
+  const partial = {
+    ...note,
+    id: "n14",
+    summary: "The bound 9 <= n0 <= 16 holds.",
+    text: "Partial result: 9 <= n0 <= 16. This note does not determine the exact value of n0.",
+    verified: false,
+    verdicts: [],
+  };
+  const verification = {
+    task: {
+      problem: "Determine n0.",
+      completionCriteria: "Determine the exact value of n0 with a proof.",
+    },
+    verify: [{ note: "n14", verifiers: [...verifierNames] }],
+    notes: [partial],
+    support: [],
+  };
+  const correctness = verifierCall("correctness", verification, ["n14"]);
+  const requirements = verifierCall("requirements", verification, ["n14"]);
+  const source = verifierCall("source", verification, ["n14"]);
+  for (const call of [correctness, requirements, source]) {
+    expect(call.system).toContain(
+      "Only the requirements verifier judges whether the note completes the task.",
+    );
+    expect(call.system).not.toContain(
+      "FAIL requires a concrete defect in the note or an unmet completion criterion",
+    );
+    expect(call.prompt).toContain(partial.text);
+    expect(call.prompt).toContain(verification.task.completionCriteria);
+  }
+  expect(correctness.prompt).toContain(
+    "A correct partial result passes even when it explicitly leaves the task unfinished.",
+  );
+  expect(correctness.prompt).toContain(
+    "Fail a note when an inference is unsupported, a stated conclusion is unproved",
+  );
+  expect(requirements.prompt).toContain(
+    "Decide whether each note meets every completion criterion of the exact task.",
+  );
+});
+
 test("prompt bytes are frozen with the workflow schema version", () => {
   const { text, ...heading } = note;
   const second = {
@@ -129,8 +247,8 @@ test("prompt bytes are frozen with the workflow schema version", () => {
   // Changing any role prompt changes the bytes the workflow fold matches
   // against journals, so bump workflowSchemaVersion and update this digest
   // in the same change.
-  expect(workflowSchemaVersion).toBe(21);
+  expect(workflowSchemaVersion).toBe(22);
   expect(digest.digest("hex")).toBe(
-    "98ac6ea88326cab98530dc4d1a3033394b8710a923e283737d0cfef753140489",
+    "e60b190bb86818189d116edb7fc42cf087c762518bbe4a40d44de05892bb25e3",
   );
 });

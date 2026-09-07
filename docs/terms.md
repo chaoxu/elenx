@@ -23,6 +23,7 @@ This is the vocabulary of Elenx and its solver. Work in this repository uses the
 | verified | For a candidate, the kernel status in which every required verifier recorded `PASS`; the solver reads it as evidence and decides nothing by it. For a note, one verification passed source and correctness over verified support and the note is not dead, so its result can be built on; the coordinator lists a note for verification only after every note in its support is verified or listed earlier with the correctness verifier, so an accepted note's closure is verified. |
 | transcript | The provider messages of a settled call, on its call-result. A Codex call's transcript is its JSONL output. |
 | telemetry, spend | Provider request observation of Pi calls, and the summary derived from it: request counts, request errors, measured usage in tokens, and estimated cost. A Codex call's usage is on its submission. |
+| accounting | The inspection report of measured cost and its completeness: missing request usage, unaccounted calls and their saved request checkpoints, and calls without recorded prices. Missing cost remains unknown. |
 
 ## Solver
 

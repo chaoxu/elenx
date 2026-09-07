@@ -57,7 +57,15 @@ test("run starts, resumes, inspects, and exports one workflow", async () => {
     phase: "accepted",
     result: { outcome: "accepted", note: { id: "n2" } },
     spend: { logicalProviderRequests: 10, requestErrors: 0 },
+    accounting: {
+      complete: false,
+      unmeasuredRequests: 0,
+      unaccountedCalls: [],
+      potentialRequests: [],
+    },
   });
+  // Native Codex source calls report tokens, but no price is journaled for them.
+  expect(inspection.accounting.unpricedCalls).toHaveLength(2);
   expect(
     inspection.calls.map(({ role }: { readonly role: string }) => role),
   ).toEqual([
