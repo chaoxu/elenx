@@ -83,7 +83,7 @@ const codexProfile = z.strictObject({
   model: nonblank,
   reasoning: codexReasoning,
   // Without search the source verifier has no web access, for a task that
-  // must not touch the internet; an external result then remains unconfirmed.
+  // must not touch the internet; results are assessed from mathematical knowledge.
   search: z.boolean().default(true),
 });
 // Any other provider runs the source verifier as a Pi call without web
@@ -237,15 +237,18 @@ const sourceListing =
 const routineText =
   "Do not fail solely for an omitted routine fact or harmless standard convention whose justification is immediate and does not change the argument.";
 
+const sourceAssessment =
+  "Assess each invoked result and whether its hypotheses apply using available sources, your mathematical knowledge and the supplied texts. Pass when the result and its applicability are established by that evidence, or when no external result is invoked. Standard facts need no citation lookup or proof from first principles. Fail for a concrete false statement, source mismatch, or incorrect application; do not disregard contrary source evidence in favor of recollection. Return INCONCLUSIVE only when that evidence cannot settle the result or its applicability, and identify the precise uncertainty. A theorem's name or a plausible citation alone is not evidence. Lack of web access alone is not grounds for INCONCLUSIVE. State the basis of your assessment in the report.";
+
 const verifierObligations = {
   correctness: `Judge each text on its own terms: whatever it asserts, it must establish. Check every load-bearing inference, and search for counterexamples, missing cases, invalid bounds, and reasons the stated conclusions do not follow. Fail a note when an inference is unsupported, a stated conclusion is unproved, or the search finds a blocking defect. ${routineText}`,
-  source: `${sourceListing} For each, open its authoritative source with web search and confirm that the source states the result with the hypotheses the text uses. Return the confirmed results as the sources of that note's verdict, one per external result, with the result as the source states it, the source, and the URL you opened. Pass a note when every external result is confirmed, or when its text invokes none. Fail a note when a retrieved source states a different result or the text applies it outside its hypotheses. Return INCONCLUSIVE when a source cannot be found or retrieved, or the available evidence cannot settle the citation, and name what remains unconfirmed.`,
+  source: `${sourceListing} Use web search to open authoritative sources when available. If lookup fails or cannot settle a result, assess it from mathematical knowledge and the supplied texts. ${sourceAssessment} Return sources only for results confirmed in sources you actually opened, with the result as the source states it, the source, and the URL opened. Results assessed without retrieval have no source entry.`,
   requirements:
     "Decide whether each note meets every completion criterion of the exact task. A defect in one attempted proof, a missing stylistic requirement, ambiguity, or an unsupported claim that the problem is open does not meet them. A sound note that does not meet them fails, and the report says so plainly.",
   reconstruction: `Compare the note's text with a proof written from the statement and the support notes alone. First check that the supplied statement faithfully states what the note establishes, with its hypotheses and conclusion and without its proof method or steps. If the statement misstates the note or gives away its method, return a corrected statement in the statement field and an empty verdicts list. This repairs the verification input and makes no verdict on the note. Otherwise set statement to null and return one verdict: PASS when both establish the statement and the note's text uses no result beyond its support and the statement's hypotheses; FAIL when the note's text does not establish the statement or relies on an undeclared result; INCONCLUSIVE when the independent proof left something unproved and no concrete defect in the note was found. ${routineText}`,
 } as const satisfies Readonly<Record<VerifierName, string>>;
 
-const sourceObligationWithoutSearch = `${sourceListing} You have no web search, so no external result can be confirmed, and every verdict returns no sources. Pass a note only when its text invokes no external result. Return INCONCLUSIVE for a note that invokes one, naming the unconfirmed result in the report. Lack of access is not a defect in the argument.`;
+const sourceObligationWithoutSearch = `${sourceListing} You have no web search. ${sourceAssessment} Do not claim to have retrieved or inspected an external source; return no sources.`;
 
 const verifierSystem = [
   "You are one verifier for the notes under verification in one mathematical task. The verifier name and obligation are stated after the support notes.",

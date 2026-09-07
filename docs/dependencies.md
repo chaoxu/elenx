@@ -13,7 +13,7 @@ The cleanup on 2026-09-06 checked stable npm releases and upstream release notes
 
 Pi 0.85.1 fixes the SDK import problem from 0.85.0, so Elenx no longer declares `pi-server` as a workaround. Its simple-stream tool choice still supports only `auto` and `none`, so `withSerialToolCalls` remains necessary for required, serial terminal submissions. Interrupted-reasoning recovery also remains an Elenx responsibility. The public `maxRecoveries` behavior for callers that omit `maxLengthContinuations` is retained and covered by tests.
 
-Workflow schema 20 records the changed tool-schema encoding. Role prompts, argument reconstruction, external execution contract 8, and the placement of abandonment policy in optional explorer guidance retain their existing behavior. Historical campaigns need their matching implementation.
+Workflow schema 20 records the changed tool-schema encoding. Schema 21 changes source verification to use mathematical knowledge and supplied texts when search is disabled or retrieval cannot settle a result. Argument reconstruction, external execution contract 8, and the placement of abandonment policy in optional explorer guidance retain their existing behavior. Historical campaigns need their matching implementation.
 
 Current dependencies and passing checks establish implementation currency. Claims about mathematical state-of-the-art performance require matched budgets, held-out problems, and external adjudication, following the [external review procedure](../packages/solve/README.md#external-final-review).
 
