@@ -12,6 +12,7 @@ import {
 import { derivePiSpend } from "elenx/pi";
 import { z } from "zod";
 
+import { campaignAccounting } from "./accounting";
 import { executionReport } from "./execution-contract";
 import {
   createPiRoles,
@@ -202,6 +203,7 @@ export async function inspectCampaign(
         : phase === undefined
           ? undefined
           : unresolvedVerification(records, phase);
+    const spend = derivePiSpend(records);
     return JSON.parse(
       JSON.stringify({
         ...(snapshot === undefined
@@ -215,7 +217,8 @@ export async function inspectCampaign(
                 : { result: executionReport(report) }),
             }),
         calls,
-        spend: derivePiSpend(records).summary,
+        spend: spend.summary,
+        accounting: campaignAccounting(records, spend),
       }),
     ) as Json;
   } finally {
