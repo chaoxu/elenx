@@ -105,6 +105,20 @@ const dropped: WireEvent = {
   },
 };
 
+function incomplete(reason: string, output: WireItem[] = []): WireEvent {
+  return {
+    type: "response.incomplete",
+    response: {
+      id: "resp_incomplete",
+      model: platformModel.id,
+      status: "incomplete",
+      incomplete_details: { reason },
+      output,
+      usage: { input_tokens: 10, output_tokens: 5, total_tokens: 15 },
+    },
+  };
+}
+
 function textReply(text: string): WireEvent[] {
   const item = {
     type: "message",
@@ -174,104 +188,173 @@ function input(payload: unknown): WireItem[] {
 describe.each([platformModel, codexModel])(
   "$api interrupted reasoning",
   (model) => {
-    test("replays only completed encrypted reasoning and never executes failed tools", async () => {
+    test.each(["stream failure", "max_messages"])(
+      "replays only completed encrypted reasoning and never executes failed tools after %s",
+      async (failure) => {
+        const store = campaign();
+        const checkpoint = reasoning("rs_checkpoint");
+        const unsigned = {
+          ...reasoning("rs_unsigned"),
+          encrypted_content: null,
+        };
+        const failedTool = toolItem("failed_tool", 99);
+        const validTool = toolItem("valid_tool", 7);
+        const adapter = scriptedAdapter(model, [
+          [
+            ...itemDone(checkpoint, 0),
+            ...itemDone(unsigned, 1),
+            {
+              type: "response.output_item.added",
+              output_index: 2,
+              item: { type: "reasoning", id: "rs_unfinished", summary: [] },
+            },
+            {
+              type: "response.reasoning_summary_text.delta",
+              output_index: 2,
+              delta: "Unfinished private plan",
+            },
+            { type: "response.reasoning_summary_part.done", output_index: 2 },
+            {
+              type: "response.output_item.added",
+              output_index: 3,
+              item: { type: "message", id: "msg_partial", content: [] },
+            },
+            {
+              type: "response.output_text.delta",
+              output_index: 3,
+              delta: "Unfinished public answer",
+            },
+            ...itemDone(failedTool, 4),
+            failure === "max_messages"
+              ? incomplete("max_messages", [checkpoint, unsigned, failedTool])
+              : dropped,
+          ],
+          [...itemDone(validTool, 0), completed([validTool])],
+        ]);
+        const executed: number[] = [];
+        const record = defineTool({
+          name: "record",
+          description: "Record one value",
+          input: z.strictObject({ value: z.number() }),
+          replay: "safe",
+          async run({ value }) {
+            executed.push(value);
+            return { recorded: value };
+          },
+        });
+        const result = await runPi(store, {
+          models: adapter.models,
+          model,
+          label: "recovery/signed",
+          prompt: "Record 7 after reasoning",
+          tools: [record],
+          stopAfterToolResult: true,
+          maxRecoveries: 1,
+        });
+
+        expect(result.state).toBe("succeeded");
+        expect(result.text).toBe("");
+        expect(executed).toEqual([7]);
+        expect(adapter.sent).toHaveLength(2);
+        expect(input(adapter.sent[1])).toEqual([
+          ...input(adapter.sent[0]),
+          checkpoint,
+        ]);
+        const requests = piRequestAttempts(store.records(), result.call);
+        expect(requests).toHaveLength(2);
+        expect(requests[1]?.payload as unknown).toEqual(adapter.sent[1]);
+        expect(result.transcript).toMatchObject([
+          { role: "user" },
+          {
+            role: "assistant",
+            stopReason: "error",
+            content: [
+              {
+                type: "thinking",
+                thinkingSignature: JSON.stringify(checkpoint),
+              },
+              { type: "thinking" },
+              { type: "thinking", thinking: "Unfinished private plan\n\n" },
+              { type: "text", text: "Unfinished public answer" },
+              { type: "toolCall", name: "record", arguments: { value: 99 } },
+            ],
+          },
+          { role: "assistant", stopReason: "toolUse" },
+          { role: "toolResult", isError: false },
+        ]);
+        expect(
+          result.telemetry.spans
+            .filter(({ name }) => name === "pi.ai.request")
+            .map(({ status, attributes }) => ({
+              status: status.status,
+              stop: attributes["pi.ai.response.stop_reason"],
+            })),
+        ).toEqual([
+          { status: "error", stop: "error" },
+          { status: "ok", stop: "tool_use" },
+        ]);
+        expect(
+          derivePiSpend(store.records()).summary.logicalProviderRequests,
+        ).toBe(2);
+      },
+    );
+
+    test("bounds max_messages recovery with the error budget even when length continuations remain", async () => {
       const store = campaign();
-      const checkpoint = reasoning("rs_checkpoint");
-      const unsigned = { ...reasoning("rs_unsigned"), encrypted_content: null };
-      const failedTool = toolItem("failed_tool", 99);
-      const validTool = toolItem("valid_tool", 7);
+      const first = reasoning("rs_limit_first");
+      const second = reasoning("rs_limit_second");
       const adapter = scriptedAdapter(model, [
-        [
-          ...itemDone(checkpoint, 0),
-          ...itemDone(unsigned, 1),
-          {
-            type: "response.output_item.added",
-            output_index: 2,
-            item: { type: "reasoning", id: "rs_unfinished", summary: [] },
-          },
-          {
-            type: "response.reasoning_summary_text.delta",
-            output_index: 2,
-            delta: "Unfinished private plan",
-          },
-          { type: "response.reasoning_summary_part.done", output_index: 2 },
-          {
-            type: "response.output_item.added",
-            output_index: 3,
-            item: { type: "message", id: "msg_partial", content: [] },
-          },
-          {
-            type: "response.output_text.delta",
-            output_index: 3,
-            delta: "Unfinished public answer",
-          },
-          ...itemDone(failedTool, 4),
-          dropped,
-        ],
-        [...itemDone(validTool, 0), completed([validTool])],
+        [...itemDone(first, 0), incomplete("max_messages", [first])],
+        [...itemDone(second, 0), incomplete("max_messages", [second])],
       ]);
-      const executed: number[] = [];
-      const record = defineTool({
-        name: "record",
-        description: "Record one value",
-        input: z.strictObject({ value: z.number() }),
-        replay: "safe",
-        async run({ value }) {
-          executed.push(value);
-          return { recorded: value };
-        },
-      });
       const result = await runPi(store, {
         models: adapter.models,
         model,
-        label: "recovery/signed",
-        prompt: "Record 7 after reasoning",
-        tools: [record],
-        stopAfterToolResult: true,
+        label: "recovery/message-limit",
+        prompt: "Continue reasoning",
         maxRecoveries: 1,
+        maxLengthContinuations: 8,
       });
-
-      expect(result.state).toBe("succeeded");
-      expect(executed).toEqual([7]);
+      expect(result).toMatchObject({
+        state: "failed",
+        providerRetryable: true,
+        truncated: false,
+        error: "Response incomplete: max_messages",
+        text: "",
+      });
       expect(adapter.sent).toHaveLength(2);
       expect(input(adapter.sent[1])).toEqual([
         ...input(adapter.sent[0]),
-        checkpoint,
+        first,
       ]);
-      const requests = piRequestAttempts(store.records(), result.call);
-      expect(requests).toHaveLength(2);
-      expect(requests[1]?.payload as unknown).toEqual(adapter.sent[1]);
       expect(result.transcript).toMatchObject([
         { role: "user" },
-        {
-          role: "assistant",
-          stopReason: "error",
-          content: [
-            { type: "thinking", thinkingSignature: JSON.stringify(checkpoint) },
-            { type: "thinking" },
-            { type: "thinking", thinking: "Unfinished private plan\n\n" },
-            { type: "text", text: "Unfinished public answer" },
-            { type: "toolCall", name: "record", arguments: { value: 99 } },
-          ],
-        },
-        { role: "assistant", stopReason: "toolUse" },
-        { role: "toolResult", isError: false },
+        { stopReason: "error", rawStopReason: "incomplete.max_messages" },
+        { stopReason: "error", rawStopReason: "incomplete.max_messages" },
       ]);
-      expect(
-        result.telemetry.spans
-          .filter(({ name }) => name === "pi.ai.request")
-          .map(({ status, attributes }) => ({
-            status: status.status,
-            stop: attributes["pi.ai.response.stop_reason"],
-          })),
-      ).toEqual([
-        { status: "error", stop: "error" },
-        { status: "ok", stop: "tool_use" },
-      ]);
-      expect(
-        derivePiSpend(store.records()).summary.logicalProviderRequests,
-      ).toBe(2);
+      expect(piRequestAttempts(store.records(), result.call)).toHaveLength(2);
     });
+
+    test.each(["content_filter", "unknown_limit"])(
+      "does not retry incomplete.%s",
+      async (reason) => {
+        const adapter = scriptedAdapter(model, [[incomplete(reason)]]);
+        const result = await runPi(campaign(), {
+          models: adapter.models,
+          model,
+          label: "recovery/other-incomplete",
+          prompt: "Reason",
+          maxRecoveries: 1,
+          maxLengthContinuations: 8,
+        });
+        expect(result).toMatchObject({
+          state: "failed",
+          providerRetryable: false,
+          truncated: false,
+        });
+        expect(adapter.sent).toHaveLength(1);
+      },
+    );
 
     test("keeps multiple checkpoints ordered, preserves prior tool results, and isolates calls", async () => {
       const store = campaign();
