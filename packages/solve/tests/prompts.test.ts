@@ -129,8 +129,8 @@ test("prompt bytes are frozen with the workflow schema version", () => {
   // Changing any role prompt changes the bytes the workflow fold matches
   // against journals, so bump workflowSchemaVersion and update this digest
   // in the same change.
-  expect(workflowSchemaVersion).toBe(20);
+  expect(workflowSchemaVersion).toBe(21);
   expect(digest.digest("hex")).toBe(
-    "3744462682b371b287f4ee3fd362164d716ed99ae81780f1ff0e1872c4ae2451",
+    "98ac6ea88326cab98530dc4d1a3033394b8710a923e283737d0cfef753140489",
   );
 });

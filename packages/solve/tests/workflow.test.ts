@@ -622,7 +622,7 @@ test("a Pi source profile runs the source verifier as a Pi call without web sear
   ]);
   expect(drive.calls[2]?.prompt).toContain("Verifier:\nsource");
   expect(drive.calls[2]?.prompt).toContain(
-    "Pass a note only when its text invokes no external result",
+    "your mathematical knowledge and the supplied texts",
   );
   expect(drive.calls[2]?.system).toContain("Do not use web search");
   campaign.close();
@@ -985,47 +985,53 @@ test("a verification takes the longest prefix that fits the window, counting sha
   expect(verificationPrefix([], notes, 5)).toEqual([]);
 });
 
-test("a source profile without search runs the source verifier offline", async () => {
-  const path = campaignPath();
-  const settings = roleSettings();
-  const workflow = workflowConfiguration({
-    task,
-    settings: {
-      ...settings,
-      maxExplorerTurns: 1,
-      source: {
-        provider: "codex",
-        model: "codex-model",
-        reasoning: "low",
-        search: false,
+test.each([false, true])(
+  "source verification can use knowledge without retrieved sources (search=%s)",
+  async (search) => {
+    const path = campaignPath();
+    const settings = roleSettings();
+    const workflow = workflowConfiguration({
+      task,
+      settings: {
+        ...settings,
+        maxExplorerTurns: 1,
+        source: {
+          provider: "codex",
+          model: "codex-model",
+          reasoning: "low",
+          search,
+        },
       },
-    },
-  });
-  const campaign = createCampaign(path, applicationId, workflow);
-  const drive = dependencies([
-    { submission: { notes: [good] } },
-    {
-      submission: coordination("n1", {
-        verify: [{ note: "n1", verifiers: lemma }],
-      }),
-    },
-    { ...sourceOf(["n1"]), searched: false },
-    verdictsOf("correctness", ["n1"]),
-  ]);
-  const phase = await runWorkflow(
-    campaign,
-    createPiRoles(campaign, workflow.settings, drive),
-  );
-  expect(phase).toMatchObject({ kind: "turn-limit", turns: 1 });
-  if (phase.kind !== "turn-limit") throw new Error("expected turn limit");
-  expect(phase.notes[0]).toMatchObject({ verified: true, dead: false });
-  expect(drive.codexCalls[0]).toMatchObject({ search: false });
-  expect(drive.codexCalls[0]?.developerInstructions).toContain("no web search");
-  expect(drive.codexCalls[0]?.prompt).toContain(
-    "Pass a note only when its text invokes no external result",
-  );
-  campaign.close();
-});
+    });
+    const campaign = createCampaign(path, applicationId, workflow);
+    const drive = dependencies([
+      { submission: { notes: [good] } },
+      {
+        submission: coordination("n1", {
+          verify: [{ note: "n1", verifiers: lemma }],
+        }),
+      },
+      { ...sourceOf(["n1"]), searched: false },
+      verdictsOf("correctness", ["n1"]),
+    ]);
+    const phase = await runWorkflow(
+      campaign,
+      createPiRoles(campaign, workflow.settings, drive),
+    );
+    expect(phase).toMatchObject({ kind: "turn-limit", turns: 1 });
+    if (phase.kind !== "turn-limit") throw new Error("expected turn limit");
+    expect(phase.notes[0]).toMatchObject({ verified: true, dead: false });
+    expect(drive.codexCalls[0]).toMatchObject({ search });
+    if (!search)
+      expect(drive.codexCalls[0]?.developerInstructions).toContain(
+        "no web search",
+      );
+    expect(drive.codexCalls[0]?.prompt).toContain(
+      "your mathematical knowledge and the supplied texts",
+    );
+    campaign.close();
+  },
+);
 
 test("the fold copies the settings' guidance into the explorer input", async () => {
   const path = campaignPath();
