@@ -1426,6 +1426,31 @@ describe("thin Pi runner", () => {
     );
   });
 
+  test.each([
+    undefined,
+    "incomplete.max_messages_extra",
+    "incomplete.content_filter",
+  ])(
+    "does not infer message-limit recovery from error text with raw reason %s",
+    async (rawStopReason) => {
+      const failed = assistant([], "error");
+      failed.errorMessage = "Response incomplete: max_messages";
+      if (rawStopReason !== undefined) failed.rawStopReason = rawStopReason;
+      const result = await runPi(campaign(), {
+        models: models([failed]),
+        model,
+        label: "recovery/exact-reason",
+        prompt: "Reason",
+        maxRecoveries: 1,
+      });
+      expect(result).toMatchObject({
+        state: "failed",
+        providerRetryable: false,
+        truncated: false,
+      });
+    },
+  );
+
   test("keeps an exhausted incomplete upstream stream retryable", async () => {
     const store = campaign();
     const dropped = () => {

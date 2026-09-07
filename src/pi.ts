@@ -275,6 +275,13 @@ function isRetryableProviderError(message: AssistantMessage): boolean {
   }
   if (isRetryableAssistantError(message)) return true;
   if (message.stopReason !== "error") return false;
+  // Pi treats the Responses message limit as an error. Recover within the
+  // existing error budget; ReasoningRecovery admits only completed reasoning.
+  if (
+    ["openai-responses", "openai-codex-responses"].includes(message.api) &&
+    message.rawStopReason === "incomplete.max_messages"
+  )
+    return true;
   if (hasTransientGatewayDiagnostic(message)) return true;
   return (
     message.errorMessage !== undefined &&
