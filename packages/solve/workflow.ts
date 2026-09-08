@@ -23,7 +23,7 @@ import {
   noteIdAfter,
   pick,
   succeededSubmission,
-  supportOf,
+  supportClosure,
   task,
   verificationComplete,
   verifierInput,
@@ -39,7 +39,7 @@ import {
   type VerifierInput,
 } from "./roles";
 
-export const workflowSchemaVersion = 22;
+export const workflowSchemaVersion = 23;
 export const workflowConfig = z.strictObject({
   kind: z.literal("workflow"),
   schemaVersion: z.literal(workflowSchemaVersion),
@@ -167,7 +167,9 @@ export function verificationPrefix(
   let taken = 0;
   for (const entry of verify) {
     const note = pick(notes, entry.note);
-    const added = [note.id, ...note.support].filter((id) => !read.has(id));
+    const added = [note.id, ...supportClosure([note], notes)].filter(
+      (id) => !read.has(id),
+    );
     const cost = added.reduce(
       (sum, id) => sum + pick(notes, id).text.length,
       0,
@@ -253,7 +255,7 @@ export async function deriveWorkflow(
         task: config.task,
         verify,
         notes: listed,
-        support: supportOf(listed).map((id) => pick(filed, id)),
+        support: supportClosure(listed, filed).map((id) => pick(filed, id)),
       });
       // The source call opens every verification: a Codex request matched
       // exactly, or a Pi call matched by its prompt bytes.

@@ -296,14 +296,30 @@ export function coordinatorResultFor(
   });
 }
 
-/** The distinct support of `notes` outside them, in id order. */
-export function supportOf(
+/** The transitive support of `notes` outside them, once each in id order. */
+export function supportClosure(
   notes: readonly Pick<Note, "id" | "support">[],
+  known: readonly Pick<Note, "id" | "support">[],
 ): string[] {
   const own = new Set(notes.map(({ id }) => id));
-  return [...new Set(notes.flatMap(({ support }) => support))]
-    .filter((id) => !own.has(id))
-    .sort(byId);
+  const byName = new Map(known.map((note) => [note.id, note]));
+  if (byName.size !== known.length)
+    throw new Error("duplicate note in support closure");
+  const seen = new Set<string>();
+  const pending = [...own];
+  while (pending.length > 0) {
+    const id = pending.pop()!;
+    if (seen.has(id)) continue;
+    const note = byName.get(id);
+    if (note === undefined) throw new Error(`missing support note ${id}`);
+    seen.add(id);
+    for (const parent of note.support) {
+      if (byId(parent, id) >= 0)
+        throw new Error(`support ${parent} must precede ${id}`);
+      pending.push(parent);
+    }
+  }
+  return [...seen].filter((id) => !own.has(id)).sort(byId);
 }
 
 export const verifierInput = z
@@ -329,14 +345,22 @@ export const verifierInput = z
         path: ["notes"],
       });
     }
-    if (
-      value.support.map(({ id }) => id).join(",") !==
-      supportOf(value.notes).join(",")
-    ) {
+    let closure: string[];
+    try {
+      closure = supportClosure(value.notes, [...value.notes, ...value.support]);
+    } catch (error) {
+      ctx.addIssue({
+        code: "custom",
+        message: error instanceof Error ? error.message : String(error),
+        path: ["support"],
+      });
+      return;
+    }
+    if (value.support.map(({ id }) => id).join(",") !== closure.join(",")) {
       ctx.addIssue({
         code: "custom",
         message:
-          "support must be the support of the notes outside them, in id order",
+          "support must be the complete transitive support of the notes outside them, in id order",
         path: ["support"],
       });
     }
