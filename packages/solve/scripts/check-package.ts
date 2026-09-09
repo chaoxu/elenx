@@ -62,7 +62,10 @@ try {
       trustedDependencies: ["cozo-node"],
     }),
   );
-  await run([process.execPath, "install"], consumer);
+  await run(
+    [process.execPath, "install", "--minimum-release-age", "86400"],
+    consumer,
+  );
   await run(
     [process.execPath, "run", "node_modules/elenx-solve/solve.ts", "--help"],
     consumer,

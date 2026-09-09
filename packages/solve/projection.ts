@@ -1,28 +1,8 @@
-import { createRequire } from "node:module";
-
 import type { EntryId } from "elenx";
 
-import {
-  byId,
-  note as noteSchema,
-  type JournalVerdict,
-  type Note,
-} from "./roles";
-
-const require = createRequire(import.meta.url);
-// cozo-node is CommonJS with a native addon; require keeps Bun and Node happy.
-const { CozoDb } = require("cozo-node") as {
-  CozoDb: new (
-    engine: string,
-    path: string,
-  ) => {
-    run(
-      script: string,
-      params?: Record<string, unknown>,
-    ): Promise<{ headers: string[]; rows: unknown[][] }>;
-    close(): void;
-  };
-};
+import { CozoDb } from "./cozo";
+import { byId } from "./support";
+import { note as noteSchema, type JournalVerdict, type Note } from "./roles";
 
 // The journal is the only source of truth. The projection is an in-memory
 // Cozo database of notes, summaries, support, and verdicts that the fold
@@ -176,17 +156,6 @@ export class Projection {
       { seq },
     );
     return result.rows.map(([note]) => note as string).sort(byId);
-  }
-
-  /** The transitive support of a note, in id order. */
-  async closure(id: string): Promise<string[]> {
-    const result = await this.db.run(
-      `closure[note, support] := *support{note, support}
-closure[note, support] := closure[note, between], *support{note: between, support}
-?[support] := closure[$note, support]`,
-      { note: id },
-    );
-    return result.rows.map(([supportId]) => supportId as string).sort(byId);
   }
 
   close(): void {

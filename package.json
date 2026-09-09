@@ -1,6 +1,7 @@
 {
   "name": "elenx",
-  "version": "0.9.3",
+  "version": "0.9.4",
+  "license": "MIT",
   "type": "module",
   "workspaces": [
     "packages/solve"
@@ -11,6 +12,7 @@
   },
   "files": [
     "src",
+    "LICENSE",
     "README.md",
     "SPEC.md",
     "docs/application-author.md",

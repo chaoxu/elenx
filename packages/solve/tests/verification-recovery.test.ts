@@ -58,7 +58,7 @@ const start: readonly Reply[] = [
   {
     submission: {
       filings: [{ note: "n1", summary: "P holds." }],
-      objective: "Prove P fully.",
+      explorerGuidance: "Prove P fully.",
       support: ["n1"],
       verify: [{ note: "n1", verifiers: [...verifierNames] }],
     },
@@ -85,7 +85,7 @@ test("unconfirmed sources pause the same verification without killing the note",
       createPiRoles(campaign, configuration.settings, first),
     ),
   ).toMatchObject({ kind: "verifier" });
-  const snapshot = await deriveWorkflow(campaign);
+  const snapshot = await deriveWorkflow(campaign.records());
   expect(snapshot.notes).toHaveLength(1);
   expect(snapshot.notes[0]).toMatchObject({ verified: false, dead: false });
   expect(snapshot.notes[0]?.verdicts).toMatchObject([
@@ -137,7 +137,7 @@ test("an in-progress or failed retry is not reported as the previous inconclusiv
     campaign,
     createPiRoles(campaign, configuration.settings, drive),
   );
-  const snapshot = await deriveWorkflow(campaign);
+  const snapshot = await deriveWorkflow(campaign.records());
   if (
     snapshot.phase.kind !== "verifier" ||
     snapshot.phase.candidate === undefined
@@ -169,7 +169,7 @@ test("inconclusive reconstruction retries only its proof and verdict after reope
       createPiRoles(campaign, configuration.settings, first),
     ),
   ).toMatchObject({ kind: "verifier" });
-  expect((await deriveWorkflow(campaign)).notes[0]).toMatchObject({
+  expect((await deriveWorkflow(campaign.records())).notes[0]).toMatchObject({
     verified: true,
     dead: false,
   });
@@ -363,7 +363,7 @@ test("a resumed source batch retries only unconfirmed notes and preserves the ot
           { note: "n1", summary: "L holds." },
           { note: "n2", summary: "P holds." },
         ],
-        objective: "Prove P.",
+        explorerGuidance: "Prove P.",
         support: [],
         verify: [
           { note: "n1", verifiers: ["source", "correctness"] },
@@ -383,7 +383,9 @@ test("a resumed source batch retries only unconfirmed notes and preserves the ot
     ),
   ).toMatchObject({ kind: "verifier" });
   expect(
-    (await deriveWorkflow(campaign)).notes.map(({ verified }) => verified),
+    (await deriveWorkflow(campaign.records())).notes.map(
+      ({ verified }) => verified,
+    ),
   ).toEqual([true, false]);
   campaign.close();
 
@@ -426,7 +428,7 @@ test("an accepted answer ends the workflow even when an unrelated note is unreso
           { note: "n1", summary: "Lemma." },
           { note: "n2", summary: "P holds." },
         ],
-        objective: "Prove P.",
+        explorerGuidance: "Prove P.",
         support: [],
         verify: [
           { note: "n1", verifiers: [...verifierNames] },
@@ -469,7 +471,7 @@ test("repeated statement corrections stop automatic retries and remain resumable
       createPiRoles(campaign, configuration.settings, first),
     ),
   ).rejects.toThrow("statement");
-  expect((await deriveWorkflow(campaign)).notes[0]).toMatchObject({
+  expect((await deriveWorkflow(campaign.records())).notes[0]).toMatchObject({
     verified: true,
     dead: false,
   });
@@ -510,7 +512,7 @@ test("an unresolved supporting lemma cannot verify its dependent note, and passe
           { note: "n1", summary: "L holds." },
           { note: "n2", summary: "P holds." },
         ],
-        objective: "Prove P.",
+        explorerGuidance: "Prove P.",
         support: ["n1"],
         verify: [
           { note: "n1", verifiers: ["source", "correctness"] },
@@ -530,10 +532,9 @@ test("an unresolved supporting lemma cannot verify its dependent note, and passe
     ),
   ).toMatchObject({ kind: "verifier" });
   expect(
-    (await deriveWorkflow(campaign)).notes.map(({ verified, dead }) => [
-      verified,
-      dead,
-    ]),
+    (await deriveWorkflow(campaign.records())).notes.map(
+      ({ verified, dead }) => [verified, dead],
+    ),
   ).toEqual([
     [false, false],
     [false, false],

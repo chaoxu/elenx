@@ -88,7 +88,7 @@ async function drive(
   } catch (error) {
     let at: string;
     try {
-      at = (await deriveWorkflow(campaign)).phase.kind;
+      at = (await deriveWorkflow(campaign.records())).phase.kind;
     } catch {
       throw error;
     }
@@ -126,7 +126,7 @@ export async function run(
             "task or settings disagree with the workflow journal",
           );
         }
-        const phase = (await deriveWorkflow(campaign)).phase;
+        const phase = (await deriveWorkflow(campaign.records())).phase;
         if (phase.kind === "accepted" || phase.kind === "turn-limit")
           return workflowResult(phase);
       }

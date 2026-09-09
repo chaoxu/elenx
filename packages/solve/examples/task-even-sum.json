@@ -1,0 +1,4 @@
+{
+  "problem": "Prove that the sum of two even integers is even.",
+  "completionCriteria": "Give a standalone proof for arbitrary even integers."
+}

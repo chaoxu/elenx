@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 
-import { createCampaign, openCampaign } from "elenx";
+import { createCampaign, openCampaign, type Campaign } from "elenx";
 
 import { createPiRoles } from "../pi-roles";
 import {
@@ -105,14 +105,14 @@ function coordination(
   const filed = typeof notes === "string" ? [notes] : notes;
   return {
     filings: filed.map((note) => ({ note, summary: `Summary of ${note}.` })),
-    objective: `Continue from ${filed.at(-1)}.`,
+    explorerGuidance: `Continue from ${filed.at(-1)}.`,
     support: options.read ?? [filed.at(-1)!],
     verify: options.verify ?? [{ note: filed.at(-1)!, verifiers: all }],
   };
 }
 
-async function phaseOf(campaign: Parameters<typeof deriveWorkflow>[0]) {
-  return (await deriveWorkflow(campaign)).phase;
+async function phaseOf(campaign: Campaign) {
+  return (await deriveWorkflow(campaign.records())).phase;
 }
 
 function shorthand(notes: readonly { verdicts: readonly Verdict[] }[]) {
@@ -161,7 +161,7 @@ test("the durable workflow accepts a note every verifier passed", async () => {
   expect(drive.codexCalls[0]?.prompt.split("\n\nVerifier:")[0]).toBe(
     drive.calls[2]!.prompt.split("\n\nVerifier:")[0],
   );
-  expect(drive.calls[0]?.prompt).toContain(`Objective:\n${task.problem}`);
+  expect(drive.calls[0]?.prompt).toContain(`Problem:\n${task.problem}`);
   expect(drive.calls[0]?.prompt).toContain("Your first note is n1.");
   const correctness = drive.calls[2]!;
   const prefix = correctness.prompt.split("\n\nVerifier:")[0]!;
@@ -480,12 +480,11 @@ test("a journal written by other prompts is refused", async () => {
   const roles = createPiRoles(campaign, workflow.settings, drive);
   await roles.explorer({
     task,
-    guidance: [],
-    objective: "Some other objective.",
+    explorerGuidance: "Some other objective.",
     notes: [],
     support: [],
   });
-  await expect(deriveWorkflow(campaign)).rejects.toThrow(
+  await expect(deriveWorkflow(campaign.records())).rejects.toThrow(
     "does not match the derived explorer request",
   );
   campaign.close();
@@ -546,7 +545,7 @@ test("a source FAIL kills the note before correctness runs, and the explorer sti
   expect(
     coordinatorResultFor(phase.notes).safeParse({
       filings: [],
-      objective: "Go.",
+      explorerGuidance: "Go.",
       support: [],
       verify: [{ note: "n1", verifiers: all }],
     }).success,
@@ -712,15 +711,18 @@ test("coordination files every note without a summary and lists live notes over 
     },
     { id: "n4", summary: "filed", support: [], verified: false, dead: true },
   ]);
-  const filed = { filings: [{ note: "n2", summary: "new" }], objective: "Go." };
+  const filed = {
+    filings: [{ note: "n2", summary: "new" }],
+    explorerGuidance: "Go.",
+  };
   const accepts = (value: unknown) => schema.safeParse(value).success;
   expect(
-    accepts({ filings: [], objective: "Go.", support: [], verify: [] }),
+    accepts({ filings: [], explorerGuidance: "Go.", support: [], verify: [] }),
   ).toBe(false);
   expect(
     accepts({
       filings: [{ note: "n1", summary: "again" }],
-      objective: "Go.",
+      explorerGuidance: "Go.",
       support: [],
       verify: [],
     }),
@@ -957,7 +959,7 @@ test("each verifier judges the listed notes that passed the verifiers before it 
   ).toBe(true);
 });
 
-test("a verification takes the longest prefix that fits the window, counting shared support once, and always the first entry", () => {
+test("a verification takes the longest prefix that fits the window, counting shared support once, and always the first entry", async () => {
   const note = (id: string, support: string[] = []) => ({
     id,
     summary: "s",
@@ -973,16 +975,16 @@ test("a verification takes the longest prefix that fits the window, counting sha
     { note: "n3", verifiers: lemma },
     { note: "n1", verifiers: lemma },
   ];
-  expect(verificationPrefix(verify, notes, 25).map(({ note }) => note)).toEqual(
-    ["n2"],
-  );
-  expect(verificationPrefix(verify, notes, 30).map(({ note }) => note)).toEqual(
-    ["n2", "n3", "n1"],
-  );
-  expect(verificationPrefix(verify, notes, 5).map(({ note }) => note)).toEqual([
-    "n2",
-  ]);
-  expect(verificationPrefix([], notes, 5)).toEqual([]);
+  expect(
+    (await verificationPrefix(verify, notes, 25)).map(({ note }) => note),
+  ).toEqual(["n2"]);
+  expect(
+    (await verificationPrefix(verify, notes, 30)).map(({ note }) => note),
+  ).toEqual(["n2", "n3", "n1"]);
+  expect(
+    (await verificationPrefix(verify, notes, 5)).map(({ note }) => note),
+  ).toEqual(["n2"]);
+  expect(await verificationPrefix([], notes, 5)).toEqual([]);
 });
 
 test.each([false, true])(
@@ -1033,16 +1035,16 @@ test.each([false, true])(
   },
 );
 
-test("the fold copies the settings' guidance into the explorer input", async () => {
+test("the first Explorer works on the task without fixed guidance in settings", async () => {
   const path = campaignPath();
   const workflow = workflowConfiguration({
     task,
-    settings: { ...roleSettings(), explorerGuidance: ["Say G."] },
+    settings: roleSettings(),
   });
   const campaign = createCampaign(path, applicationId, workflow);
   expect(await phaseOf(campaign)).toMatchObject({
     kind: "explorer",
-    input: { guidance: ["Say G."] },
+    input: { task, explorerGuidance: "" },
   });
   campaign.close();
 });

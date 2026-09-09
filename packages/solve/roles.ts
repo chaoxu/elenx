@@ -6,7 +6,9 @@ import {
 } from "elenx";
 import { z } from "zod";
 
-const nonblank = z.string().refine((value) => value.trim().length > 0, {
+import { byId, supportClosure } from "./support";
+
+export const nonblank = z.string().refine((value) => value.trim().length > 0, {
   message: "must contain non-whitespace text",
 });
 const noteId = z.string().regex(/^n[1-9][0-9]*$/u);
@@ -68,10 +70,6 @@ export function jsonSnapshot(value: unknown): Json {
   return JSON.parse(JSON.stringify(value)) as Json;
 }
 
-/** Note ids in numeric order. */
-export const byId = (left: string, right: string): number =>
-  Number(left.slice(1)) - Number(right.slice(1));
-
 export const task = z.strictObject({
   problem: nonblank,
   completionCriteria: nonblank,
@@ -132,8 +130,7 @@ function distinctKnown(
 export const explorerInput = z
   .strictObject({
     task,
-    guidance: z.array(nonblank),
-    objective: nonblank,
+    explorerGuidance: z.string(),
     notes: z.array(noteFields.omit({ text: true }).refine(...distinctSupport)),
     support: z.array(note),
   })
@@ -218,7 +215,7 @@ export type Verification = z.output<typeof verification>;
 
 export const coordinatorResult = z.strictObject({
   filings: z.array(z.strictObject({ note: noteId, summary: nonblank })),
-  objective: nonblank,
+  explorerGuidance: nonblank,
   support: z.array(noteId),
   verify: z.array(verification),
 });
@@ -296,32 +293,6 @@ export function coordinatorResultFor(
   });
 }
 
-/** The transitive support of `notes` outside them, once each in id order. */
-export function supportClosure(
-  notes: readonly Pick<Note, "id" | "support">[],
-  known: readonly Pick<Note, "id" | "support">[],
-): string[] {
-  const own = new Set(notes.map(({ id }) => id));
-  const byName = new Map(known.map((note) => [note.id, note]));
-  if (byName.size !== known.length)
-    throw new Error("duplicate note in support closure");
-  const seen = new Set<string>();
-  const pending = [...own];
-  while (pending.length > 0) {
-    const id = pending.pop()!;
-    if (seen.has(id)) continue;
-    const note = byName.get(id);
-    if (note === undefined) throw new Error(`missing support note ${id}`);
-    seen.add(id);
-    for (const parent of note.support) {
-      if (byId(parent, id) >= 0)
-        throw new Error(`support ${parent} must precede ${id}`);
-      pending.push(parent);
-    }
-  }
-  return [...seen].filter((id) => !own.has(id)).sort(byId);
-}
-
 export const verifierInput = z
   .strictObject({
     task,
@@ -329,7 +300,7 @@ export const verifierInput = z
     notes: z.array(note),
     support: z.array(note),
   })
-  .superRefine((value, ctx) => {
+  .superRefine(async (value, ctx) => {
     const listed = value.verify.map(({ note }) => note);
     if (new Set(listed).size !== listed.length) {
       ctx.addIssue({
@@ -347,7 +318,10 @@ export const verifierInput = z
     }
     let closure: string[];
     try {
-      closure = supportClosure(value.notes, [...value.notes, ...value.support]);
+      closure = await supportClosure(value.notes, [
+        ...value.notes,
+        ...value.support,
+      ]);
     } catch (error) {
       ctx.addIssue({
         code: "custom",

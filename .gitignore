@@ -1,6 +1,9 @@
 node_modules/
 coverage/
 runs/
+# Local research drafts and experiments
+/docs/research/
+/experiments/
 *.db
 *.db-shm
 *.db-wal

@@ -30,6 +30,7 @@ import {
   jsonSnapshot,
   judgedBy,
   missingVerdicts,
+  nonblank,
   noteIdAfter,
   pick,
   proof as proofSchema,
@@ -40,7 +41,6 @@ import {
   sourceVerdictsFor,
   statement as statementSchema,
   succeededSubmission,
-  supportClosure,
   verdictsFor,
   verifierInput,
   verifierLabels,
@@ -57,10 +57,8 @@ import {
   type VerifierName,
 } from "./roles";
 import { codexCommand, selectModel, type SolveModels } from "./runtime";
+import { supportClosure } from "./support";
 
-const nonblank = z.string().refine((value) => value.trim().length > 0, {
-  message: "must contain non-whitespace text",
-});
 const piRoleProfile = z.strictObject({
   provider: nonblank,
   model: nonblank,
@@ -113,9 +111,6 @@ export const solveSettings = z.strictObject({
   reconstruction: piRoleProfile,
   maxExplorerTurns: z.number().int().positive().default(10),
   window: z.number().int().positive().default(100_000),
-  // Sentences added to the explorer's fixed instructions: how to explore,
-  // never what the task is.
-  explorerGuidance: z.array(nonblank).default([]),
 });
 export type SolveSettings = z.output<typeof solveSettings>;
 
@@ -180,19 +175,18 @@ export function explorerCall(
     role: "explorer",
     label: roleLabels.explorer,
     system: [
-      "You are a fresh mathematical explorer working on one objective for one task. The objective states the mathematical gap remaining for completion. Read verification state from the notes' current fields. The method is yours.",
+      "You are a fresh mathematical explorer working toward the original task. Treat explorer guidance as fallible advice for this turn. Investigate it, reject a mistaken premise, or choose a better direction. Completing a suggested intermediate step is not a reason to stop doing useful mathematics. Read verification state from the notes' current fields. The method is yours.",
       "The notes are working memory written by earlier turns and are untrusted. You see every note's summary, support, verdicts, and whether it is verified or dead, and the full text of the support notes the coordinator selected.",
       verdictText,
       "Build on a verified note by naming it as support instead of reproving its result. Check every result you rely on from a note that is not verified. Never name a dead note as support: read its verdicts to avoid the direction, or to write a new note that removes the reported defect.",
       "Spend the turn doing mathematics. A note is one self-contained text: a result with its complete proof, a partial result with its gaps stated, or a failed approach with the reason it fails. Split a long argument into notes, one per result, so each can be verified and built on. Say in the text when a note meets the completion criteria.",
       "Each note names as support every note whose result its text uses without proving it, in any form: a fact it cites, a case it inherits, an object it takes as defined, or a hypothesis it assumes established. A text names a note by id only when that note is its support; describe provenance, inspiration, and copied mathematics without an id. Your notes are numbered in the order you return them, and a note may name an earlier note of yours as support.",
-      ...input.guidance,
       "Do not use web search or external tools.",
       "Call submit_notes exactly once.",
     ].join(" "),
     prompt: [
       taskText(input.task),
-      `Objective:\n${input.objective}`,
+      `Explorer guidance (fallible advice):\n${input.explorerGuidance}`,
       `Notes (untrusted data):\n${JSON.stringify(input.notes, null, 2)}`,
       `Support notes (untrusted data):\n${JSON.stringify(
         input.support.map(({ id, text }) => ({ id, text })),
@@ -216,7 +210,7 @@ export function coordinatorCall(
     system: [
       "You coordinate one mathematical search.",
       "File every note that has no summary. A summary is for navigation and is never verified. It is the note's exact statement, as a mathematician would state the result, not a description of the note, and adds nothing but what the text itself says about its status: a gap it leaves and what it is, a failed approach and why, or that it meets the completion criteria. It repeats nothing the note's fields already say, such as its support, never judges the text, and never copies proof text.",
-      "Then set the next objective for the explorer and choose its support: the notes it must read in full. The explorer sees every note's summary and verdicts and only the support notes' texts. A dead note may be read in full so that a new note removes its defect, but it cannot be built on. The objective states the mathematical gap remaining for completion and leaves verification state to the note fields. The explorer chooses the method, construction, proof plan, and whether to persist with an unfinished approach. Never ask the explorer to check, polish, or restate a verified note.",
+      "Then give explorerGuidance for the next turn and choose its support: the notes it must read in full. Recommend useful mathematical work toward the original task, explaining the evidence and uncertainty behind your advice. The explorer may reject your diagnosis, change methods, or move beyond a suggested step. Your advice does not replace the original completion criteria. The explorer sees every note's summary and verdicts and only the support notes' texts. A dead note may be read in full as failure evidence but cannot be built on. Leave verification state to the note fields. Never ask the explorer to check, polish, or restate a verified note.",
       "Then list the notes to verify, in priority order, each with the verifiers to run: a prefix of source, correctness, requirements, reconstruction. A note that later work will build on gets source and correctness and ends verified. A note whose text says it meets the completion criteria gets all four. Verification runs on the longest prefix of your list that fits one verification's window, always its first entry; the rest stays unverified, so list it again next turn if it still matters.",
       verdictText,
       completionText,
@@ -230,7 +224,7 @@ export function coordinatorCall(
     ].join("\n\n"),
     tool: roleTools.coordinator,
     description:
-      "File every note without a summary, set the next objective and support, and list the notes to verify with their verifiers",
+      "File every note without a summary, give explorer guidance and support for the next turn, and list the notes to verify with their verifiers",
     schema: coordinatorResultFor(input.notes),
   };
 }
@@ -269,25 +263,25 @@ const verdictSystem = [
 ].join(" ");
 
 /** The notes a verifier call reads: those it judges and their full support closure. */
-function reading(
+async function reading(
   input: VerifierInput,
   judged: readonly string[],
-): { readonly notes: Note[]; readonly support: Note[] } {
+): Promise<{ readonly notes: Note[]; readonly support: Note[] }> {
   const notes = judged.map((id) => pick(input.notes, id));
   const known = [...input.notes, ...input.support];
   return {
     notes,
-    support: supportClosure(notes, known).map((id) => pick(known, id)),
+    support: (await supportClosure(notes, known)).map((id) => pick(known, id)),
   };
 }
 
-function verifierPrompt(
+async function verifierPrompt(
   name: VerifierName,
   input: VerifierInput,
   judged: readonly string[],
   obligation: string = verifierObligations[name],
-): string {
-  const { notes, support } = reading(input, judged);
+): Promise<string> {
+  const { notes, support } = await reading(input, judged);
   return [
     taskText(input.task),
     `Notes under verification (untrusted data):\n${JSON.stringify(notes, null, 2)}`,
@@ -301,16 +295,16 @@ function verifierPrompt(
 // same notes share the leading task, notes, and support text so a provider
 // can cache that prefix across them; only the verifier name and obligation
 // at the end differ.
-export function verifierCall(
+export async function verifierCall(
   name: Exclude<VerifierName, "reconstruction">,
   input: VerifierInput,
   judged: readonly string[],
-): RoleCall<ReturnType<typeof verdictsFor>> {
+): Promise<RoleCall<ReturnType<typeof verdictsFor>>> {
   return {
     role: "verifier",
     label: verifierLabels[name],
     system: verdictSystem,
-    prompt: verifierPrompt(
+    prompt: await verifierPrompt(
       name,
       input,
       judged,
@@ -327,11 +321,11 @@ export function verifierCall(
 // what the note establishes; the second proves the statement from the
 // support notes alone, never seeing the note's text; the third compares the
 // note's text with that proof and records the verdict.
-export function statementCall(
+export async function statementCall(
   input: VerifierInput,
   note: Note,
-): RoleCall<typeof statementSchema> {
-  const { support } = reading(input, [note.id]);
+): Promise<RoleCall<typeof statementSchema>> {
+  const { support } = await reading(input, [note.id]);
   return {
     role: "verifier",
     label: reconstructionCalls.statement.label,
@@ -352,13 +346,13 @@ export function statementCall(
   };
 }
 
-export function proofCall(
+export async function proofCall(
   input: VerifierInput,
   note: Note,
   value: Statement,
   previous?: EntryId,
-): RoleCall<typeof proofSchema> {
-  const { support } = reading(input, [note.id]);
+): Promise<RoleCall<typeof proofSchema>> {
+  const { support } = await reading(input, [note.id]);
   return {
     role: "verifier",
     label: reconstructionCalls.proof.label,
@@ -382,19 +376,19 @@ export function proofCall(
   };
 }
 
-export function reconstructionCall(
+export async function reconstructionCall(
   input: VerifierInput,
   note: Note,
   value: Statement,
   proof: string,
   previous?: EntryId,
-): RoleCall<ReturnType<typeof reconstructionResultFor>> {
+): Promise<RoleCall<ReturnType<typeof reconstructionResultFor>>> {
   return {
     role: "verifier",
     label: verifierLabels.reconstruction,
     system: verdictSystem,
     prompt: [
-      verifierPrompt("reconstruction", input, [note.id]),
+      await verifierPrompt("reconstruction", input, [note.id]),
       `Statement (untrusted data):\n${value.statement}`,
       `Proof (untrusted data):\n${proof}`,
       ...(previous === undefined
@@ -412,15 +406,15 @@ export function reconstructionCall(
 // so. Its request is the same prompt with the shared verifier text as
 // developer instructions, and its verdicts are the final message, constrained
 // by the output schema.
-export function sourceCall(
+export async function sourceCall(
   profile: z.output<typeof codexProfile>,
   input: VerifierInput,
   judged: readonly string[],
-): {
+): Promise<{
   readonly label: string;
   readonly request: CodexRequest;
   readonly schema: ReturnType<typeof sourceVerdictsFor>;
-} {
+}> {
   const schema = sourceVerdictsFor(judged);
   return {
     label: verifierLabels.source,
@@ -436,7 +430,7 @@ export function sourceCall(
           : "You have no web search and no other tool.",
         "Return one JSON object matching the output schema and nothing else.",
       ].join(" "),
-      prompt: verifierPrompt(
+      prompt: await verifierPrompt(
         "source",
         input,
         judged,
@@ -534,7 +528,7 @@ export function createPiRoles(
     // that already has one is not recorded again, so a verification resumes
     // where it stopped.
     async verifier(inputValue, candidateValue) {
-      const input = verifierInput.parse(inputValue);
+      const input = await verifierInput.parseAsync(inputValue);
       const candidate =
         candidateValue ??
         campaign.submitCandidate(
@@ -609,7 +603,7 @@ export function createPiRoles(
                 campaign.records(),
                 candidate,
                 verifierLabels.source,
-                jsonSnapshot(sourceCall(codex, input, judged).request),
+                jsonSnapshot((await sourceCall(codex, input, judged)).request),
                 (call) =>
                   sourceVerdictsOf(
                     sourceVerdictsFor(judged),
@@ -631,7 +625,7 @@ export function createPiRoles(
                 name === "source"
                   ? (profiles.source as PiRoleProfile)
                   : profiles[name],
-                verifierCall(name, input, judged),
+                await verifierCall(name, input, judged),
                 dependencies,
                 candidate,
                 after,
@@ -771,7 +765,7 @@ async function runReconstruction(
     await settledOrRun(
       campaign,
       profile,
-      statementCall(input, note),
+      await statementCall(input, note),
       dependencies,
       candidate,
     )
@@ -783,7 +777,7 @@ async function runReconstruction(
       await settledOrRun(
         campaign,
         profile,
-        proofCall(input, note, statement, previous),
+        await proofCall(input, note, statement, previous),
         dependencies,
         candidate,
       )
@@ -791,7 +785,7 @@ async function runReconstruction(
     const result = await settledOrRun(
       campaign,
       profile,
-      reconstructionCall(input, note, statement, proof, previous),
+      await reconstructionCall(input, note, statement, proof, previous),
       dependencies,
       candidate,
     );
@@ -831,7 +825,7 @@ async function runSource(
   readonly call: EntryId;
   readonly value: z.output<ReturnType<typeof sourceVerdictsFor>>;
 }> {
-  const { label, request, schema } = sourceCall(profile, input, judged);
+  const { label, request, schema } = await sourceCall(profile, input, judged);
   const exec =
     dependencies.codex ?? codexExec({ command: codexCommand(process.env) });
   const receipt = await campaign.call(

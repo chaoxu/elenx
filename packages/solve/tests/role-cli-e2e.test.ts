@@ -4,6 +4,12 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { createCampaign } from "elenx";
+
+import { applicationId, task as taskSchema } from "../roles";
+import { settings as settingsSchema } from "../runner";
+import { workflowConfiguration } from "../workflow";
+
 interface CliResult {
   readonly code: number;
   readonly stdout: string;
@@ -135,6 +141,70 @@ test("run refuses a concurrent owner of the same campaign", async () => {
   const result = await cli(directory, "run", task, campaign, settings);
   expect(result.code).toBe(1);
   expect(result.stderr).toContain("campaign already has a running process");
+});
+
+test("guided CLI workflow retains its verification, accounting, and execution report contract", async () => {
+  const directory = await testDirectory();
+  const settings = await writeSettings(directory);
+  const task = await writeJson(directory, "task.json", {
+    problem: "Prove that there are infinitely many prime numbers.",
+    completionCriteria: "Give a complete self-contained proof.",
+  });
+  const campaign = join(directory, "guided.db");
+  createCampaign(
+    campaign,
+    applicationId,
+    workflowConfiguration({
+      task: taskSchema.parse(await Bun.file(task).json()),
+      settings: settingsSchema.parse(await Bun.file(settings).json()),
+    }),
+  ).close();
+  const text = "Test small counterexamples first.";
+  const guidance = join(directory, "guidance.txt");
+  await Bun.write(guidance, text);
+  const submitted = await cli(
+    directory,
+    "guide",
+    "--id",
+    "e2e-1",
+    campaign,
+    guidance,
+  );
+  expect(submitted.code, submitted.stderr).toBe(0);
+  const result = await cli(directory, "run", task, campaign, settings);
+  expect(result.code, result.stderr).toBe(0);
+  expect(JSON.parse(result.stdout)).toMatchObject({
+    schemaVersion: 8,
+    application: "elenx-solve",
+    protocol: "workflow",
+    outcome: "accepted",
+    turns: 2,
+    note: { id: "n2" },
+  });
+  const inspected = await cli(
+    directory,
+    "inspect",
+    "--include-guidance",
+    "--include-requests",
+    campaign,
+  );
+  expect(inspected.code, inspected.stderr).toBe(0);
+  const report = JSON.parse(inspected.stdout);
+  expect(report).toMatchObject({
+    phase: "accepted",
+    spend: { logicalProviderRequests: 10, requestErrors: 0 },
+    guidance: [{ id: "e2e-1", pending: false }],
+    accounting: { unaccountedCalls: [], potentialRequests: [] },
+  });
+  expect(report.guidance[0].calls).toHaveLength(1);
+  for (const call of report.calls) {
+    if (call.call === report.guidance[0].calls[0])
+      expect(call.request.prompt).toContain(text);
+    else expect(JSON.stringify(call.request)).not.toContain(text);
+  }
+  expect((await cli(directory, "export", campaign)).stdout).toContain(
+    "Since 2 is prime",
+  );
 });
 
 test("a provider failure leaves no verdict", async () => {

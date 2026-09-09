@@ -1,0 +1,34 @@
+{
+  "maxExplorerTurns": 3,
+  "window": 100000,
+  "explorer": {
+    "provider": "openai",
+    "model": "gpt-6-astra",
+    "reasoning": "high"
+  },
+  "coordinator": {
+    "provider": "openai",
+    "model": "gpt-5.6-luna",
+    "reasoning": "low"
+  },
+  "source": {
+    "provider": "openai",
+    "model": "gpt-5.6-luna",
+    "reasoning": "high"
+  },
+  "correctness": {
+    "provider": "openai",
+    "model": "gpt-5.6-luna",
+    "reasoning": "high"
+  },
+  "requirements": {
+    "provider": "openai",
+    "model": "gpt-5.6-luna",
+    "reasoning": "high"
+  },
+  "reconstruction": {
+    "provider": "openai",
+    "model": "gpt-6-astra",
+    "reasoning": "high"
+  }
+}

@@ -107,7 +107,16 @@ void (undefined as unknown as CallReceipt | Campaign | Entry | Json | Verdict |
 void [inspectCoreCampaign, inspectCoreCampaignSummary];
 `,
   );
-  await run([process.execPath, "install", "--ignore-scripts"], consumer);
+  await run(
+    [
+      process.execPath,
+      "install",
+      "--ignore-scripts",
+      "--minimum-release-age",
+      "86400",
+    ],
+    consumer,
+  );
   await reject(
     [process.execPath, "-e", 'await import("elenx/src/campaign")'],
     consumer,

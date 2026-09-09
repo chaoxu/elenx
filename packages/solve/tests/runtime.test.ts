@@ -97,7 +97,7 @@ test("a completed campaign is returned before initializing models or checking cr
     {
       submission: {
         filings: [{ note: "n1", summary: "An unfinished idea." }],
-        objective: "Prove P",
+        explorerGuidance: "Prove P",
         support: [],
         verify: [],
       },
@@ -129,7 +129,7 @@ test("run honors an injected source executor instead of invoking the CLI", async
       {
         submission: {
           filings: [{ note: "n1", summary: "P holds." }],
-          objective: "Prove P.",
+          explorerGuidance: "Prove P.",
           support: [],
           verify: [{ note: "n1", verifiers: ["source", "correctness"] }],
         },

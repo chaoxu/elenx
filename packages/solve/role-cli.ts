@@ -13,6 +13,7 @@ import { derivePiSpend } from "elenx/pi";
 import { z } from "zod";
 
 import { campaignAccounting } from "./accounting";
+import { appendGuidance, inspectGuidance } from "./guidance";
 import { executionReport } from "./execution-contract";
 import {
   createPiRoles,
@@ -145,7 +146,10 @@ function visibleSubmission(
 
 export async function inspectCampaign(
   path: string,
-  options: { readonly includeRequests?: boolean } = {},
+  options: {
+    readonly includeRequests?: boolean;
+    readonly includeGuidance?: boolean;
+  } = {},
 ): Promise<Json> {
   const reader = openReader(path);
   try {
@@ -195,7 +199,7 @@ export async function inspectCampaign(
     const config = workflowConfig.safeParse(
       declaration?.kind === "campaign" ? declaration.config : undefined,
     );
-    const snapshot = config.success ? await deriveWorkflow(reader) : undefined;
+    const snapshot = config.success ? await deriveWorkflow(records) : undefined;
     const phase = snapshot?.phase;
     const report =
       phase?.kind === "accepted" || phase?.kind === "turn-limit"
@@ -219,6 +223,9 @@ export async function inspectCampaign(
         calls,
         spend: spend.summary,
         accounting: campaignAccounting(records, spend),
+        ...(options.includeGuidance === true
+          ? { guidance: inspectGuidance(records) }
+          : {}),
       }),
     ) as Json;
   } finally {
@@ -226,12 +233,31 @@ export async function inspectCampaign(
   }
 }
 
+export async function guideCampaign(
+  path: string,
+  text: string,
+  id: string = crypto.randomUUID(),
+) {
+  const campaign = openCampaign(path);
+  try {
+    const declaration = campaign.records()[0];
+    assertApplication(declaration);
+    workflowConfig.parse(
+      declaration?.kind === "campaign" ? declaration.config : undefined,
+    );
+    return await appendGuidance(path, campaign, text, id);
+  } finally {
+    campaign.close();
+  }
+}
+
 /** The accepted note preceded by its transitive support, in id order. */
 export async function exportCandidate(path: string): Promise<Uint8Array> {
   const reader = openReader(path);
   try {
-    assertApplication(reader.records()[0]);
-    const phase = (await deriveWorkflow(reader)).phase;
+    const records = reader.records();
+    assertApplication(records[0]);
+    const phase = (await deriveWorkflow(records)).phase;
     if (phase.kind !== "accepted") {
       throw new Error("workflow has no accepted candidate");
     }
@@ -263,7 +289,7 @@ export async function runRoleCommand(
   const input = await readJson(inputPath);
   if (command === "explorer") explorerInput.parse(input);
   else if (command === "coordinator") coordinatorInput.parse(input);
-  else verifierInput.parse(input);
+  else await verifierInput.parseAsync(input);
   const { ModelRuntime } = await import("@earendil-works/pi-coding-agent");
   const runtime = await ModelRuntime.create({
     modelsPath: modelRegistryPath(process.env),

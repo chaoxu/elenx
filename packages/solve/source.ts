@@ -13,16 +13,12 @@ import { join, resolve } from "node:path";
 import type { Entry, EntryId, Json } from "elenx";
 import { z } from "zod";
 
-import { returnedOutput } from "./roles";
+import { nonblank, returnedOutput } from "./roles";
 
 // The source verifier runs Codex, with web search only when the request asks
 // for it, isolated in a fresh CODEX_HOME that holds only the inherited OAuth
 // credential, with every other Codex feature disabled. Its request and stdout
 // are journaled like any call.
-
-const nonblank = z.string().refine((value) => value.trim().length > 0, {
-  message: "must contain non-whitespace text",
-});
 
 /** The reasoning levels the Codex CLI accepts for model_reasoning_effort. */
 export const codexReasoning = z.enum([

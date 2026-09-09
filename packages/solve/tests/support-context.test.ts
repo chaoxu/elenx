@@ -11,12 +11,12 @@ import {
 } from "../pi-roles";
 import {
   applicationId,
-  supportClosure,
   verifierInput,
   verifierNames,
   type Note,
   type Verification,
 } from "../roles";
+import { supportClosure } from "../support";
 import {
   runWorkflow,
   verificationPrefix,
@@ -63,44 +63,77 @@ const input = {
   verify: [{ note: "n3", verifiers: [...verifierNames] }],
 };
 
-test("verification requires the complete dependency chain while preserving the direct support edges", () => {
-  expect(verifierInput.parse(input)).toEqual(input);
-  expect(supportClosure([target], all)).toEqual(["n1", "n2"]);
+test("verification requires the complete dependency chain while preserving the direct support edges", async () => {
+  expect(await verifierInput.parseAsync(input)).toEqual(input);
+  expect(await supportClosure([target], all)).toEqual(["n1", "n2"]);
   expect(target.support).toEqual(["n2"]);
   expect(
-    verifierInput.safeParse({ ...input, support: [inherited] }).success,
-  ).toBe(false);
-  expect(
-    verifierInput.safeParse({
-      ...input,
-      support: [first, inherited, unrelated],
-    }).success,
-  ).toBe(false);
-  expect(
-    verifierInput.safeParse({ ...input, support: [inherited, first] }).success,
-  ).toBe(false);
-});
-
-test("cycles and duplicate notes cannot leak a candidate through reconstruction support", () => {
-  const cycle = { ...first, support: ["n3"] };
-  expect(
-    verifierInput.safeParse({ ...input, support: [cycle, inherited] }).success,
-  ).toBe(false);
-  expect(
-    verifierInput.safeParse({ ...input, support: [first, first, inherited] })
+    (await verifierInput.safeParseAsync({ ...input, support: [inherited] }))
       .success,
   ).toBe(false);
+  expect(
+    (
+      await verifierInput.safeParseAsync({
+        ...input,
+        support: [first, inherited, unrelated],
+      })
+    ).success,
+  ).toBe(false);
+  expect(
+    (
+      await verifierInput.safeParseAsync({
+        ...input,
+        support: [inherited, first],
+      })
+    ).success,
+  ).toBe(false);
 });
 
-test("each verifier and reconstruction stage receives inherited context exactly once", () => {
-  const calls = [
+test("cycles and duplicate notes cannot leak a candidate through reconstruction support", async () => {
+  const cycle = { ...first, support: ["n3"] };
+  expect(
+    (
+      await verifierInput.safeParseAsync({
+        ...input,
+        support: [cycle, inherited],
+      })
+    ).success,
+  ).toBe(false);
+  expect(
+    (
+      await verifierInput.safeParseAsync({
+        ...input,
+        support: [first, first, inherited],
+      })
+    ).success,
+  ).toBe(false);
+});
+
+test("support closure combines roots, shares ancestors, and sorts numeric ids", async () => {
+  const shared = note("n9", "Shared result.", ["n2", "n1"]);
+  const left = note("n10", "Left result.", ["n9"]);
+  const right = note("n11", "Right result.", ["n9", "n2"]);
+  const known = [first, inherited, unrelated, shared, left, right];
+  expect(await supportClosure([right, left], known)).toEqual([
+    "n1",
+    "n2",
+    "n9",
+  ]);
+  expect(await supportClosure([], known)).toEqual([]);
+  await expect(supportClosure([target], [target])).rejects.toThrow(
+    "missing support note n2",
+  );
+});
+
+test("each verifier and reconstruction stage receives inherited context exactly once", async () => {
+  const calls = await Promise.all([
     verifierCall("source", input, ["n3"]),
     verifierCall("correctness", input, ["n3"]),
     verifierCall("requirements", input, ["n3"]),
     statementCall(input, target),
     proofCall(input, target, { statement: "Coverage holds." }),
-  ];
-  const native = sourceCall(
+  ]);
+  const native = await sourceCall(
     { provider: "codex", model: "test", reasoning: "low", search: false },
     input,
     ["n3"],
@@ -110,7 +143,7 @@ test("each verifier and reconstruction stage receives inherited context exactly 
     expect(prompt).toContain(inherited.text);
     expect(prompt).not.toContain(unrelated.text);
   }
-  const reconstructed = proofCall(input, target, {
+  const reconstructed = await proofCall(input, target, {
     statement: "Coverage holds.",
   });
   expect(reconstructed.prompt).not.toContain(target.text);
@@ -120,12 +153,12 @@ test("each verifier and reconstruction stage receives inherited context exactly 
     support: [first],
     verify: [{ note: "n2", verifiers: [...verifierNames] }, ...input.verify],
   };
-  const onlyParent = verifierCall("correctness", batch, ["n2"]);
+  const onlyParent = await verifierCall("correctness", batch, ["n2"]);
   expect(onlyParent.prompt).toContain(first.text);
   expect(onlyParent.prompt).not.toContain(target.text);
 });
 
-test("the verification window counts transitive shared texts once without dropping required support", () => {
+test("the verification window counts transitive shared texts once without dropping required support", async () => {
   const notes = [
     note("n1", "a".repeat(100)),
     note("n2", "b".repeat(10), ["n1"]),
@@ -136,16 +169,15 @@ test("the verification window counts transitive shared texts once without droppi
     { note: "n3", verifiers: ["source", "correctness"] },
     { note: "n4", verifiers: ["source", "correctness"] },
   ];
-  expect(verificationPrefix(verify, notes, 125).map((v) => v.note)).toEqual([
-    "n3",
-  ]);
-  expect(verificationPrefix(verify, notes, 130).map((v) => v.note)).toEqual([
-    "n3",
-    "n4",
-  ]);
-  expect(verificationPrefix(verify, notes, 1).map((v) => v.note)).toEqual([
-    "n3",
-  ]);
+  expect(
+    (await verificationPrefix(verify, notes, 125)).map((v) => v.note),
+  ).toEqual(["n3"]);
+  expect(
+    (await verificationPrefix(verify, notes, 130)).map((v) => v.note),
+  ).toEqual(["n3", "n4"]);
+  expect(
+    (await verificationPrefix(verify, notes, 1)).map((v) => v.note),
+  ).toEqual(["n3"]);
 });
 
 test("workflow construction and per-call selection both retain ancestors across explorer turns", async () => {
@@ -161,7 +193,7 @@ test("workflow construction and per-call selection both retain ancestors across 
       {
         submission: {
           filings: [{ note: n.id, summary: n.summary! }],
-          objective: "Complete coverage.",
+          explorerGuidance: "Complete coverage.",
           support: [n.id],
           verify: [{ note: n.id, verifiers: ["source", "correctness"] }],
         },

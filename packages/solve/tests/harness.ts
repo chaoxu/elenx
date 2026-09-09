@@ -26,6 +26,8 @@ const model = {
 };
 
 export interface Reply {
+  /** A test boundary after the request is journaled and before its result. */
+  readonly onStarted?: () => Promise<void>;
   readonly submission?: Json;
   readonly state?: "succeeded" | "failed" | "cancelled";
   readonly error?: string;
@@ -57,7 +59,6 @@ export function roleSettings(): SolveSettings {
   return {
     maxExplorerTurns: 4,
     window: 100_000,
-    explorerGuidance: [],
     explorer: profile,
     coordinator: profile,
     correctness: profile,
@@ -161,6 +162,7 @@ async function respond(
       ...(options.tools === undefined ? {} : { tools: options.tools }),
     },
     async ({ tools }) => {
+      if (reply.onStarted !== undefined) await reply.onStarted();
       if (reply.submission !== undefined) {
         await tools[0]!.execute(reply.submission);
       }

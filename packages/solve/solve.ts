@@ -6,6 +6,7 @@ import { parseArgs } from "node:util";
 import { executionContract, executionReport } from "./execution-contract";
 import {
   exportCandidate,
+  guideCampaign,
   inspectCampaign,
   isRoleCommand,
   readSettings,
@@ -16,7 +17,7 @@ import { task } from "./roles";
 import { modelRegistryPath, type SolveModels } from "./runtime";
 import { withSerialToolCalls } from "./serial-tools";
 
-export { executionContract, run, settings };
+export { executionContract, guideCampaign, run, settings };
 export type { ExecutionContract, ExecutionReport } from "./execution-contract";
 export type { RunDependencies, Settings, SolveModels };
 
@@ -26,10 +27,13 @@ const usage = `Usage:
   elenx-solve explorer INPUT.json CAMPAIGN.db SETTINGS.json
   elenx-solve coordinator INPUT.json CAMPAIGN.db SETTINGS.json
   elenx-solve verifier INPUT.json CAMPAIGN.db SETTINGS.json
-  elenx-solve inspect [--include-requests] CAMPAIGN.db
+  elenx-solve guide [--id ID] CAMPAIGN.db GUIDANCE.txt
+  elenx-solve inspect [--include-requests] [--include-guidance] CAMPAIGN.db
   elenx-solve export CAMPAIGN.db
 
 run starts or resumes the durable explorer, coordinator, and verifier workflow.
+guide appends explorer guidance from a UTF-8 file (or - for stdin).
+Guidance takes effect at the next unfrozen explorer turn. Reuse --id for retries.
 Standalone role commands execute the same role boundaries independently.`;
 
 export function modelRuntimeOptions(environment: NodeJS.ProcessEnv): {
@@ -50,6 +54,8 @@ async function main(args: readonly string[]): Promise<void> {
     options: {
       help: { type: "boolean", short: "h" },
       "include-requests": { type: "boolean" },
+      "include-guidance": { type: "boolean" },
+      id: { type: "string" },
     },
   });
   if (parsed.values.help) {
@@ -57,6 +63,20 @@ async function main(args: readonly string[]): Promise<void> {
     return;
   }
   const [command, ...positionals] = parsed.positionals;
+  if (parsed.values["include-guidance"] === true && command !== "inspect")
+    throw new Error(usage);
+  if (parsed.values.id !== undefined && command !== "guide")
+    throw new Error(usage);
+  if (command === "guide") {
+    if (positionals.length !== 2 || parsed.values["include-requests"] === true)
+      throw new Error(usage);
+    const text =
+      positionals[1] === "-"
+        ? await Bun.stdin.text()
+        : await readFile(positionals[1]!, "utf8");
+    writeJson(await guideCampaign(positionals[0]!, text, parsed.values.id));
+    return;
+  }
   if (isRoleCommand(command)) {
     if (parsed.values["include-requests"] === true) throw new Error(usage);
     writeJson(await runRoleCommand(command, positionals));
@@ -77,6 +97,7 @@ async function main(args: readonly string[]): Promise<void> {
     writeJson(
       await inspectCampaign(positionals[0]!, {
         includeRequests: parsed.values["include-requests"] === true,
+        includeGuidance: parsed.values["include-guidance"] === true,
       }),
     );
     return;

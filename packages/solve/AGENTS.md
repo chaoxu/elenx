@@ -8,6 +8,12 @@ Use the vocabulary in [`../../docs/terms.md`](../../docs/terms.md) for every sch
 
 Keep execution-contract schema version 8 while the contract and report shapes remain unchanged, and bump the workflow declaration schema version whenever a role prompt or the journal shape changes. Standalone role commands exercise the same typed boundaries and are not a second workflow. Elenx Lab must derive a worker result from `inspect.result`, not trust solver stdout as a second authority.
 
+`explorerGuidance` is fallible advice for the next turn, never a persistent setting or a replacement for the original task. Combine the coordinator's submitted guidance and pending external advice in that single Explorer input field. Reuse the coordinator's settled submission instead of copying it to another record. External advice is consumed once per Explorer turn, including all retries of that turn. Do not restore the retired `objective` field or settings-level guidance.
+
+Submitted guidance and Explorer input boundaries use ordinary kernel calls in the campaign database. `guide` records advice without driving the workflow or changing terminal results. Guidance inspection is opt-in. Keep the `run` command and execution-report contract unchanged when only role schemas change.
+
+Derive each inspection from one captured journal entry array. Support closure has one Cozo query in `support.ts`, shared by validation, context selection, window calculation, and export. Keep TypeScript's structural validation and formatting around that query. Verifier-input validation and verifier prompt construction are asynchronous internal boundaries.
+
 Remove retired branches instead of preserving them behind compatibility schemas, aliases, adapters, or mode flags. Do not restore split problem and criteria arguments, separate `trial` or solver `resume` commands, legacy workflow protocols, or alternate result projections. Preserve old campaign databases as historical artifacts and open them only with their matching revision.
 
 Spend reasoning generously and never reason again over what was already reasoned, so no result is verified or derived twice; efficiency work waits for measured spend from real runs.
@@ -24,4 +30,4 @@ Use one bounded completion loop for implementation work:
 8. Repair blocking findings, verify the affected checks, and review only the repair delta when its interaction is local. Repeat the full review only when the repair changes the contract.
 9. Commit immediately after the blocking gates pass.
 
-Do not add another review layer, repeat a smoke, or keep manually inspecting the same campaign unless new evidence identifies a distinct risk. Keep live run artifacts under `runs/` untracked. Do not push unless the user asks.
+Do not add another review layer, repeat a smoke, or keep manually inspecting the same campaign unless new evidence identifies a distinct risk. Public documentation covers installation, usage, integration, and current contracts. Keep measurements, run logs, internal reviews, and research drafts under `runs/` untracked. Do not push unless the user asks.

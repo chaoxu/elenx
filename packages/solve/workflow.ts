@@ -1,7 +1,9 @@
-import type { Campaign, Entry, EntryId, Json, Reader } from "elenx";
+import type { Campaign, Entry, EntryId, Json } from "elenx";
 import { z } from "zod";
 
 import { Projection } from "./projection";
+import { explorerGuidance, freezeExplorerGuidance } from "./guidance";
+import { supportClosure } from "./support";
 import {
   codexSource,
   coordinatorCall,
@@ -23,7 +25,6 @@ import {
   noteIdAfter,
   pick,
   succeededSubmission,
-  supportClosure,
   task,
   verificationComplete,
   verifierInput,
@@ -39,7 +40,7 @@ import {
   type VerifierInput,
 } from "./roles";
 
-export const workflowSchemaVersion = 23;
+export const workflowSchemaVersion = 24;
 export const workflowConfig = z.strictObject({
   kind: z.literal("workflow"),
   schemaVersion: z.literal(workflowSchemaVersion),
@@ -82,6 +83,8 @@ export interface WorkflowSnapshot {
   readonly config: WorkflowConfig;
   readonly notes: readonly Note[];
   readonly phase: WorkflowPhase;
+  /** Journal boundary before the next explorer turn, used only by the driver. */
+  readonly explorerAfter?: EntryId;
 }
 
 function parseConfig(declaration: Entry | undefined): WorkflowConfig {
@@ -157,17 +160,17 @@ function settledCall<S extends z.ZodType>(
  * texts fit the window, and always its first entry. Texts shared by several
  * notes are read once, so they count once.
  */
-export function verificationPrefix(
+export async function verificationPrefix(
   verify: readonly Verification[],
   notes: readonly Note[],
   window: number,
-): Verification[] {
+): Promise<Verification[]> {
   const read = new Set<string>();
   let reading = 0;
   let taken = 0;
   for (const entry of verify) {
     const note = pick(notes, entry.note);
-    const added = [note.id, ...supportClosure([note], notes)].filter(
+    const added = [note.id, ...(await supportClosure([note], notes))].filter(
       (id) => !read.has(id),
     );
     const cost = added.reduce(
@@ -183,22 +186,20 @@ export function verificationPrefix(
 }
 
 export async function deriveWorkflow(
-  reader: Reader,
+  records: readonly Entry[],
 ): Promise<WorkflowSnapshot> {
-  const records = reader.records();
   const config = parseConfig(records[0]);
   const verdicts = journalVerdicts(records);
   const projection = await Projection.open(verdicts);
   try {
     let cursor = records[0]!.seq;
-    let objective = config.task.problem;
+    let guidance = "";
     let support: readonly string[] = [];
     for (let turn = 1; turn <= config.settings.maxExplorerTurns; turn += 1) {
       const known = await projection.at(cursor);
       const explorerRequest = explorerInput.parse({
         task: config.task,
-        guidance: config.settings.explorerGuidance,
-        objective,
+        explorerGuidance: explorerGuidance(records, cursor, guidance),
         notes: known.map(({ text, ...rest }) => rest),
         support: support.map((id) => pick(known, id)),
       });
@@ -212,6 +213,7 @@ export async function deriveWorkflow(
           config,
           notes: known,
           phase: { kind: "explorer", input: explorerRequest },
+          explorerAfter: cursor,
         };
       }
       cursor = explored.settled;
@@ -240,22 +242,24 @@ export async function deriveWorkflow(
       }
       cursor = coordinated.settled;
       await projection.file(coordinated.value.filings, cursor);
-      objective = coordinated.value.objective;
+      guidance = coordinated.value.explorerGuidance;
       support = coordinated.value.support;
       if (coordinated.value.verify.length === 0) continue;
 
       const filed = await projection.at(cursor);
-      const verify = verificationPrefix(
+      const verify = await verificationPrefix(
         coordinated.value.verify,
         filed,
         config.settings.window,
       );
       const listed = verify.map(({ note }) => pick(filed, note));
-      const verifierRequest = verifierInput.parse({
+      const verifierRequest = await verifierInput.parseAsync({
         task: config.task,
         verify,
         notes: listed,
-        support: supportClosure(listed, filed).map((id) => pick(filed, id)),
+        support: (await supportClosure(listed, filed)).map((id) =>
+          pick(filed, id),
+        ),
       });
       // The source call opens every verification: a Codex request matched
       // exactly, or a Pi call matched by its prompt bytes.
@@ -267,10 +271,15 @@ export async function deriveWorkflow(
         verifierLabels.source,
         codexSource(config.settings.source)
           ? jsonSnapshot(
-              sourceCall(config.settings.source, verifierRequest, judged)
-                .request,
+              (
+                await sourceCall(
+                  config.settings.source,
+                  verifierRequest,
+                  judged,
+                )
+              ).request,
             )
-          : verifierCall("source", verifierRequest, judged),
+          : await verifierCall("source", verifierRequest, judged),
       );
       if (first === undefined) {
         return {
@@ -304,7 +313,7 @@ export async function deriveWorkflow(
             note: pick(notes, acceptedId),
             notes,
             candidate,
-            closure: await projection.closure(acceptedId),
+            closure: await supportClosure([pick(notes, acceptedId)], notes),
           },
         };
       }
@@ -411,7 +420,8 @@ export async function runWorkflow(
   roles: Roles,
   dependencies: WorkflowDependencies = {},
 ): Promise<WorkflowPhase> {
-  let phase = (await deriveWorkflow(campaign)).phase;
+  let snapshot = await deriveWorkflow(campaign.records());
+  let phase = snapshot.phase;
   for (;;) {
     if (phase.kind === "accepted" || phase.kind === "turn-limit") {
       return phase;
@@ -420,13 +430,20 @@ export async function runWorkflow(
     dependencies.status?.(phase.kind);
     const wasVerifier = phase.kind === "verifier";
     if (phase.kind === "explorer") {
+      if (await freezeExplorerGuidance(campaign, snapshot.explorerAfter!)) {
+        snapshot = await deriveWorkflow(campaign.records());
+        phase = snapshot.phase;
+        if (phase.kind !== "explorer")
+          throw new Error("explorer boundary changed");
+      }
       await roles.explorer(phase.input);
     } else if (phase.kind === "coordinator") {
       await roles.coordinator(phase.input);
     } else {
       await roles.verifier(phase.input, phase.candidate);
     }
-    phase = (await deriveWorkflow(campaign)).phase;
+    snapshot = await deriveWorkflow(campaign.records());
+    phase = snapshot.phase;
     if (wasVerifier && phase.kind === "verifier") return phase;
   }
 }

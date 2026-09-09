@@ -34,29 +34,23 @@ const note = {
   ],
 };
 
-test("the explorer's guidance follows its fixed instructions", () => {
-  const input = { task, objective: "Extend P.", notes: [], support: [] };
-  expect(
-    explorerCall({ ...input, guidance: ["Say G.", "Then H."] }).system,
-  ).toContain(
-    "as support. Say G. Then H. Do not use web search or external tools.",
-  );
-  expect(explorerCall({ ...input, guidance: [] }).system).toContain(
-    "as support. Do not use web search or external tools.",
-  );
-});
-
-test("abandonment guidance is confined to the explorer treatment", () => {
-  const input = { task, objective: "Extend P.", notes: [], support: [] };
+test("guidance is per-turn advice without changing the task or fixed role instructions", () => {
+  const input = { task, notes: [], support: [] };
   const guidance =
-    "Abandon approaches whose remaining gaps are hard to repair.";
-  const baseline = explorerCall({ ...input, guidance: [] });
-  const treatment = explorerCall({ ...input, guidance: [guidance] });
-  expect(treatment.system.replace(`${guidance} `, "")).toBe(baseline.system);
-  expect(treatment.prompt).toBe(baseline.prompt);
+    "Consider replacing the approach if its remaining gap is hard to repair.";
+  const baseline = explorerCall({ ...input, explorerGuidance: "" });
+  const treatment = explorerCall({ ...input, explorerGuidance: guidance });
+  expect(treatment.system).toBe(baseline.system);
+  expect(treatment.system).toContain(
+    "Treat explorer guidance as fallible advice for this turn.",
+  );
+  expect(treatment.system).toContain(
+    "Completing a suggested intermediate step is not a reason to stop",
+  );
+  expect(treatment.prompt).toContain(guidance);
+  expect(treatment.prompt).toContain(task.problem);
+  expect(treatment.prompt).toContain(task.completionCriteria);
   const coordinator = coordinatorCall({ task, notes: [note] });
-  expect(coordinator.system).not.toContain("is abandoned");
-  expect(coordinator.system).not.toContain("asks for a different one");
   expect(coordinator.system).not.toContain(guidance);
 });
 
@@ -92,8 +86,7 @@ test("selected support contributes its metadata once and its full proof once", (
   );
   const call = explorerCall({
     task,
-    objective: "Prove the remaining case.",
-    guidance: [],
+    explorerGuidance: "Prove the remaining case.",
     notes: headings,
     support: [first, third],
   });
@@ -113,30 +106,34 @@ test("selected support contributes its metadata once and its full proof once", (
   expect(call.prompt).toContain("Your first note is n4.");
 });
 
-test("the objective carries the mathematical gap while note fields carry current verification state", () => {
+test("the coordinator gives fallible guidance while the original task and note flags remain authoritative", () => {
   const coordinator = coordinatorCall({ task, notes: [note] });
   expect(coordinator.system).toContain(
-    "The objective states the mathematical gap remaining for completion and leaves verification state to the note fields.",
+    "Recommend useful mathematical work toward the original task",
   );
-  expect(coordinator.system).not.toContain(
-    "The objective says what the completion criteria still need and which verified notes can be built on",
+  expect(coordinator.system).toContain(
+    "The explorer may reject your diagnosis",
+  );
+  expect(coordinator.system).toContain(
+    "Your advice does not replace the original completion criteria.",
   );
   const { text, ...heading } = note;
-  const objective = "Prove the remaining case using the bound in n1.";
+  const explorerGuidance = "Prove the remaining case using the bound in n1.";
   const explorer = explorerCall({
     task,
-    objective,
-    guidance: [],
+    explorerGuidance,
     notes: [heading],
     support: [note],
   });
   expect(explorer.system).toContain(
     "Read verification state from the notes' current fields.",
   );
-  expect(explorer.prompt).toContain(`Objective:\n${objective}`);
+  expect(explorer.prompt).toContain(
+    `Explorer guidance (fallible advice):\n${explorerGuidance}`,
+  );
 });
 
-test("correctness permits valid partial claims and reserves task completion for requirements", () => {
+test("correctness permits valid partial claims and reserves task completion for requirements", async () => {
   const partial = {
     ...note,
     id: "n14",
@@ -154,9 +151,11 @@ test("correctness permits valid partial claims and reserves task completion for 
     notes: [partial],
     support: [],
   };
-  const correctness = verifierCall("correctness", verification, ["n14"]);
-  const requirements = verifierCall("requirements", verification, ["n14"]);
-  const source = verifierCall("source", verification, ["n14"]);
+  const correctness = await verifierCall("correctness", verification, ["n14"]);
+  const requirements = await verifierCall("requirements", verification, [
+    "n14",
+  ]);
+  const source = await verifierCall("source", verification, ["n14"]);
   for (const call of [correctness, requirements, source]) {
     expect(call.system).toContain(
       "Only the requirements verifier judges whether the note completes the task.",
@@ -178,7 +177,7 @@ test("correctness permits valid partial claims and reserves task completion for 
   );
 });
 
-test("prompt bytes are frozen with the workflow schema version", () => {
+test("prompt bytes are frozen with the workflow schema version", async () => {
   const { text, ...heading } = note;
   const second = {
     ...note,
@@ -196,23 +195,27 @@ test("prompt bytes are frozen with the workflow schema version", () => {
   const calls: { label: string; system: string; prompt: string }[] = [
     explorerCall({
       task,
-      guidance: ["Test the degenerate instances first."],
-      objective: "Extend P.",
+      explorerGuidance: "Extend P. Test the degenerate instances first.",
       notes: [heading],
       support: [note],
     }),
     coordinatorCall({ task, notes: [note, second] }),
-    verifierCall("source", verification, ["n2"]),
-    verifierCall("correctness", verification, ["n2"]),
-    verifierCall("requirements", verification, ["n2"]),
+    await verifierCall("source", verification, ["n2"]),
+    await verifierCall("correctness", verification, ["n2"]),
+    await verifierCall("requirements", verification, ["n2"]),
   ];
   const stated = { statement: "P holds." };
   calls.push(
-    statementCall(verification, second),
-    proofCall(verification, second, stated),
-    reconstructionCall(verification, second, stated, "Independent proof of P."),
-    proofCall(verification, second, stated, 42 as EntryId),
-    reconstructionCall(
+    await statementCall(verification, second),
+    await proofCall(verification, second, stated),
+    await reconstructionCall(
+      verification,
+      second,
+      stated,
+      "Independent proof of P.",
+    ),
+    await proofCall(verification, second, stated, 42 as EntryId),
+    await reconstructionCall(
       verification,
       second,
       stated,
@@ -220,7 +223,7 @@ test("prompt bytes are frozen with the workflow schema version", () => {
       42 as EntryId,
     ),
   );
-  const source = sourceCall(
+  const source = await sourceCall(
     { provider: "codex", model: "codex-model", reasoning: "low", search: true },
     verification,
     ["n2"],
@@ -229,7 +232,7 @@ test("prompt bytes are frozen with the workflow schema version", () => {
   for (const call of calls) {
     digest.update(`${call.label}\n${call.system}\n${call.prompt}\n`);
   }
-  const offline = sourceCall(
+  const offline = await sourceCall(
     {
       provider: "codex",
       model: "codex-model",
@@ -247,8 +250,8 @@ test("prompt bytes are frozen with the workflow schema version", () => {
   // Changing any role prompt changes the bytes the workflow fold matches
   // against journals, so bump workflowSchemaVersion and update this digest
   // in the same change.
-  expect(workflowSchemaVersion).toBe(23);
+  expect(workflowSchemaVersion).toBe(24);
   expect(digest.digest("hex")).toBe(
-    "3ef73f43460e64a648d574af34211dafc9d9305a5cebcaa07e65fe7be7277e5c",
+    "5778f219b6827edf3218591e053eaccf00fcadd2a88ea931b7201b87915356f5",
   );
 });
