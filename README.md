@@ -48,6 +48,7 @@ The API and campaign schema are experimental. Campaigns are accepted only when t
 
 | Question | Authority |
 | --- | --- |
+| Why is Elenx designed this way? | [`docs/philosophy.md`](docs/philosophy.md) |
 | What does the kernel guarantee? | [`SPEC.md`](SPEC.md) |
 | Which words name which concepts? | [`docs/terms.md`](docs/terms.md) |
 | How do I run the solver? | [`packages/solve/README.md`](packages/solve/README.md) |
@@ -87,7 +88,7 @@ Run the hermetic role boundary from the repository root:
 bun run e2e:roles
 ```
 
-Documentation covers installation, usage, integration, and current contracts. Keep measurements, run logs, internal reviews, and research drafts in ignored local artifacts under `runs/`.
+Documentation covers design philosophy, installation, usage, integration, and current contracts. Keep measurements, run logs, internal reviews, and research drafts in ignored local artifacts under `runs/`.
 
 ## License
 
