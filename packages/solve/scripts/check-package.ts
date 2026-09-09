@@ -70,6 +70,14 @@ try {
     [process.execPath, "run", "node_modules/elenx-solve/solve.ts", "--help"],
     consumer,
   );
+  await Bun.write(
+    join(consumer, "check-runtime.ts"),
+    `${await Bun.file(join(solver, "tests/fixtures/no-coding-agent-entrypoint.ts")).text()}
+import { createModelRuntime } from "./node_modules/elenx-solve/runtime.ts";
+await createModelRuntime({ modelsPath: null, authPath: "./auth.json", refreshOnCreate: false });
+`,
+  );
+  await run([process.execPath, "run", "check-runtime.ts"], consumer);
   await run(
     [
       process.execPath,

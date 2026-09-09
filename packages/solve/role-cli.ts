@@ -43,6 +43,7 @@ import {
   type RoleName,
 } from "./roles";
 import {
+  createModelRuntime,
   modelRegistryPath,
   requireCredentials,
   withCampaignLock,
@@ -290,8 +291,7 @@ export async function runRoleCommand(
   if (command === "explorer") explorerInput.parse(input);
   else if (command === "coordinator") coordinatorInput.parse(input);
   else await verifierInput.parseAsync(input);
-  const { ModelRuntime } = await import("@earendil-works/pi-coding-agent");
-  const runtime = await ModelRuntime.create({
+  const runtime = await createModelRuntime({
     modelsPath: modelRegistryPath(process.env),
   });
   await requireCredentials(runtime, piProviders(settings, command));

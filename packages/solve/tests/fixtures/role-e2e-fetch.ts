@@ -1,5 +1,7 @@
 import { appendFileSync } from "node:fs";
 
+import "./no-coding-agent-entrypoint";
+
 globalThis.fetch = (async (input, init) => {
   const url = new URL(
     input instanceof Request ? input.url : input instanceof URL ? input : input,

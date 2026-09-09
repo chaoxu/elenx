@@ -14,7 +14,11 @@ import {
 } from "./role-cli";
 import { run, settings, type RunDependencies, type Settings } from "./runner";
 import { task } from "./roles";
-import { modelRegistryPath, type SolveModels } from "./runtime";
+import {
+  createModelRuntime,
+  modelRegistryPath,
+  type SolveModels,
+} from "./runtime";
 import { withSerialToolCalls } from "./serial-tools";
 
 export { executionContract, guideCampaign, run, settings };
@@ -145,10 +149,8 @@ async function main(args: readonly string[]): Promise<void> {
       },
       {
         models: async () => {
-          const { ModelRuntime } =
-            await import("@earendil-works/pi-coding-agent");
           return withSerialToolCalls(
-            await ModelRuntime.create(modelRuntimeOptions(process.env)),
+            await createModelRuntime(modelRuntimeOptions(process.env)),
           );
         },
         signal: controller.signal,

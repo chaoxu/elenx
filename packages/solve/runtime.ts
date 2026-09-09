@@ -2,12 +2,28 @@ import { Database, SQLiteError } from "bun:sqlite";
 import { realpathSync } from "node:fs";
 import { basename, dirname, isAbsolute, join } from "node:path";
 
+import type { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { builtinPi } from "elenx/pi";
 
 export type SolveModels = Pick<
   ReturnType<typeof builtinPi>,
   "getModel" | "streamSimple"
 > & { readonly checkAuth?: (provider: string) => Promise<unknown> };
+
+export async function createModelRuntime(
+  options: Parameters<typeof ModelRuntime.create>[0],
+): Promise<ModelRuntime> {
+  // Pi 0.85.1 has no public runtime subpath. Keep its pinned layout here so
+  // model setup does not load the coding-agent CLI and terminal UI.
+  const url = new URL(
+    "./core/model-runtime.js",
+    import.meta.resolve("@earendil-works/pi-coding-agent"),
+  );
+  const { ModelRuntime: Runtime } = (await import(url.href)) as {
+    ModelRuntime: typeof ModelRuntime;
+  };
+  return Runtime.create(options);
+}
 
 export function codexCommand(environment: NodeJS.ProcessEnv): string {
   return environment["ELENX_CODEX_COMMAND"] ?? "codex";
