@@ -111,6 +111,7 @@ export const solveSettings = z.strictObject({
   reconstruction: piRoleProfile,
   maxExplorerTurns: z.number().int().positive().default(10),
   window: z.number().int().positive().default(100_000),
+  coordinatorStrategy: z.enum(["free", "repertoire"]).default("free"),
 });
 export type SolveSettings = z.output<typeof solveSettings>;
 
@@ -203,6 +204,7 @@ export function explorerCall(
 
 export function coordinatorCall(
   input: CoordinatorInput,
+  strategy: SolveSettings["coordinatorStrategy"] = "free",
 ): RoleCall<ReturnType<typeof coordinatorResultFor>> {
   return {
     role: "coordinator",
@@ -216,6 +218,11 @@ export function coordinatorCall(
       completionText,
       "A note may be listed only after every note in its support is verified or listed earlier with the correctness verifier. A dead note is never listed again: it is replaced by a new note. An INCONCLUSIVE check stays in its current verification and resumes there with its successful checks preserved. When a note restates a verified note's result, have the explorer name that note as support instead.",
       "You have no correctness authority.",
+      ...(strategy === "repertoire"
+        ? [
+            "Choose one primary recommendation from this repertoire and name it in explorerGuidance, explaining its evidence and uncertainty: Continue: give a promising approach more work when valid progress leaves an unresolved step; difficulty alone is not a refutation. Repair: address a recorded defect that appears local and repairable while retaining valid results. Reconsider the bridge: reconsider whether an intermediate statement is too strong, indirect, or mismatched to the original target. Replace the route: suggest another approach when a central premise is refuted or a defect appears hard to repair, while retaining valid results. Revisit failure evidence: select the relevant existing notes in support when their full text may help the explorer understand a failed proof or its refutation; a dead note may be read but never used as an established premise. Continue is valid when evidence is insufficient for an intervention. These choices guide your recommendation, not the explorer's mathematical method. The explorer may reject your assessment, and the original completion criteria and remaining turn budget stay fixed.",
+          ]
+        : []),
       "Call submit_coordination exactly once.",
     ].join(" "),
     prompt: [
@@ -515,7 +522,10 @@ export function createPiRoles(
       ).value;
     },
     async coordinator(inputValue) {
-      const roleCall = coordinatorCall(coordinatorInput.parse(inputValue));
+      const roleCall = coordinatorCall(
+        coordinatorInput.parse(inputValue),
+        profiles.coordinatorStrategy,
+      );
       return (
         await runCall(campaign, profiles.coordinator, roleCall, dependencies)
       ).value;

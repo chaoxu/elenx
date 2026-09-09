@@ -57,6 +57,7 @@ export function roleSettings(): SolveSettings {
     reasoning: "high" as const,
   };
   return {
+    coordinatorStrategy: "free",
     maxExplorerTurns: 4,
     window: 100_000,
     explorer: profile,
