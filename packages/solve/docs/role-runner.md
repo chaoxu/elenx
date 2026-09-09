@@ -16,9 +16,15 @@ The fold builds the projection on every derivation: an in-memory Cozo database o
 
 A verdict names the verifier that produced it, the note it is about, `PASS`, `FAIL`, or `INCONCLUSIVE`, and a report. It always names a note under verification: support is established and not under review. Verdicts accumulate on the note they name, so a reader can weigh a note by the verdicts it carries. A note is verified when one verification passed source and correctness, every note in its support is verified, and it is not dead. A note is dead when correctness, source, or reconstruction failed it or a note in its support is dead. A note is accepted when one verification passed all four verifiers and the note is verified over verified support.
 
+The journal, typed inputs, and inspection retain every report. Model prompts include the verdict and verifier for a PASS, with its explanation omitted. FAIL and INCONCLUSIVE reports remain complete. Note summaries retain the statement's hypotheses and limitations and cannot enlarge a result through a verifier's explanation.
+
 ## Explorer
 
 `ExplorerInput` contains the task, one `explorerGuidance` string, every note without its text, and the support notes in full. Guidance is empty on the first turn unless external advice was submitted. The original task remains the goal. Advice is fallible, and the Explorer may reject it or move beyond a suggested step. `ExplorerResult` contains new notes, each a text with its support. Notes are numbered after those the Explorer received, in returned order, and a note may name an earlier note of the same turn. Support names no dead note, and a text names a note by id only when that note is its support. The Explorer chooses the mathematics, splits its work into notes, says when a note meets the completion criteria, and writes no summaries.
+
+The workflow includes the complete closure of the coordinator's selected support, with each full proof once. This provides inherited definitions without another model call. It does not fetch an unrelated note newly chosen during reasoning. The model prompt places changing guidance after the notes and supporting proofs. Verifier prompts place supporting proofs before the changing notes under verification. Verdict tool schemas use the same note-ID shape for every candidate, while runtime validation requires exactly the judged IDs, once each.
+
+A nonroutine imported theorem is stated as a separate note with its hypotheses, conclusion, and source before another note applies it. Both can be submitted in the same Explorer turn and verified through the existing ordered verification. The source verifier catches missing substantive dependencies before correctness and reconstruction. A note stating the external theorem may cite the source directly, and routine facts need no separate note. No additional verifier or theorem registry is used.
 
 ## Durable Explorer guidance
 
@@ -28,7 +34,7 @@ The coordinator's `explorerGuidance` and pending external advice share the Explo
 
 Before a new Explorer turn with pending advice, the runner records a local `elenx-solve/explorer-guidance` call with `{schemaVersion: 1, after, through}`. `after` identifies the journal boundary before that turn, and `through` is the last entry in the snapshot used to freeze its input. The fold includes external guidance after the previous delivery cutoff and at most `through`, joined after the coordinator's text. New messages arriving after that snapshot wait for a later turn. A boundary remains authoritative after a crash and through retries. A previously started turn retains its original input. Consumed advice is omitted from subsequent turns.
 
-The command records advice without checking or changing the workflow phase. Advice on a terminal campaign remains pending. This avoids coordinating command submission with workflow completion. No delivery record is added when there is no pending advice. Workflow schema 24 records the renamed role field, removed persistent setting, and advisory prompts. The external execution contract stays at schema 8. [Agent usage](agent-usage.md) describes submission and recovery.
+The command records advice without checking or changing the workflow phase. Advice on a terminal campaign remains pending. This avoids coordinating command submission with workflow completion. No delivery record is added when there is no pending advice. Workflow schema 25 preserves advisory guidance and records the compact verdict presentation, prompt ordering, support closure, and earlier dependency check. The external execution contract stays at schema 8. [Agent usage](agent-usage.md) describes submission and recovery.
 
 ## Coordinator
 
@@ -76,6 +82,6 @@ Explorer results number the notes `n1`, `n2`, and so on in order. Note verdicts 
 
 Each inspection captures the journal once. Workflow phase, notes, calls, guidance delivery, pause reports, and accounting are derived from that same entry array, so a concurrent append cannot mix different journal prefixes in one report.
 
-Cozo derives support closure through the single query in `support.ts`. Verifier-input validation, verification-window calculation, individual verifier prompts, and accepted export all use it. TypeScript checks duplicate IDs, missing notes, and the requirement that support precede its note, then sorts the result in numeric ID order. The Cozo Node binding is asynchronous, so verifier-input validation and verifier prompt construction await that query internally. Role fields and prompt bytes are unchanged.
+Cozo derives support closure through the single query in `support.ts`. Explorer support selection, verifier-input validation, verification-window calculation, individual verifier prompts, and accepted export all use it. TypeScript checks duplicate IDs, missing notes, and the requirement that support precede its note, then sorts the result in numeric ID order. The Cozo Node binding is asynchronous, so verifier-input validation and verifier prompt construction await that query internally. The public role-input fields are unchanged. Changed prompt bytes belong to workflow schema 25.
 
 The status projection rebuilds its temporary Cozo relations from journal evidence. Closure queries use the supplied note graph in a short-lived in-memory Cozo database, which also allows standalone role commands to use the same calculation. SQLite remains the durable source of truth. Guidance stays in ordinary journal calls and does not enter the note graph.

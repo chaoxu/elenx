@@ -12,7 +12,8 @@ import {
   proofCall,
   verifierCall,
 } from "../pi-roles";
-import { verifierNames } from "../roles";
+import { sourceVerdictsFor, verdictsFor, verifierNames } from "../roles";
+import { z } from "zod";
 import { workflowSchemaVersion } from "../workflow";
 
 const task = { problem: "Prove P.", completionCriteria: "Prove P fully." };
@@ -93,7 +94,14 @@ test("selected support contributes its metadata once and its full proof once", (
   const [metadata, texts] = call.prompt
     .split("Notes (untrusted data):\n")[1]!
     .split("\n\nSupport notes (untrusted data):\n");
-  expect(JSON.parse(metadata!)).toEqual(headings);
+  expect(JSON.parse(metadata!)).toEqual(
+    headings.map((heading) => ({
+      ...heading,
+      verdicts: heading.verdicts.map(({ report, ...verdict }) =>
+        verdict.verdict === "PASS" ? verdict : { ...verdict, report },
+      ),
+    })),
+  );
   expect(JSON.parse(texts!.split("\n\nYour first note")[0]!)).toEqual([
     { id: "n1", text: first.text },
     { id: "n3", text: third.text },
@@ -131,6 +139,109 @@ test("the coordinator gives fallible guidance while the original task and note f
   expect(explorer.prompt).toContain(
     `Explorer guidance (fallible advice):\n${explorerGuidance}`,
   );
+});
+
+test("role prompts omit PASS reports without changing evidence or hiding failed checks", async () => {
+  const evidence = {
+    ...note,
+    verdicts: [
+      { ...note.verdicts[0]!, report: "LONG HISTORICAL PASS EXPLANATION" },
+      {
+        verifier: "requirements" as const,
+        note: "n1",
+        verdict: "FAIL" as const,
+        report: "The arbitrary parameter case remains open.",
+      },
+      {
+        verifier: "reconstruction" as const,
+        note: "n1",
+        verdict: "INCONCLUSIVE" as const,
+        report: "The cited equality case is unresolved.",
+      },
+    ],
+  };
+  const before = structuredClone(evidence);
+  const target = { ...note, id: "n2", support: ["n1"], verdicts: [] };
+  const input = {
+    task,
+    notes: [target],
+    support: [evidence],
+    verify: [{ note: "n2", verifiers: [...verifierNames] }],
+  };
+  const { text, ...heading } = evidence;
+  const calls = [
+    explorerCall({
+      task,
+      notes: [heading],
+      support: [evidence],
+      explorerGuidance: "",
+    }),
+    coordinatorCall({ task, notes: [evidence] }),
+    await verifierCall("source", input, ["n2"]),
+    await verifierCall("correctness", input, ["n2"]),
+    await statementCall(input, target),
+    await proofCall(input, target, { statement: "P holds." }),
+  ];
+  const native = await sourceCall(
+    { provider: "codex", model: "test", reasoning: "low", search: false },
+    input,
+    ["n2"],
+  );
+  for (const prompt of [...calls.map((c) => c.prompt), native.request.prompt]) {
+    expect(prompt).not.toContain("LONG HISTORICAL PASS EXPLANATION");
+    expect(prompt).toContain('"verdict": "PASS"');
+    expect(prompt).toContain(evidence.verdicts[1]!.report);
+    expect(prompt).toContain(evidence.verdicts[2]!.report);
+    expect(prompt).toContain(evidence.summary);
+    expect(prompt).toContain(evidence.text);
+  }
+  expect(evidence).toEqual(before);
+});
+
+test("changing guidance follows all selected mathematics", () => {
+  const { text, ...heading } = note;
+  const first = explorerCall({
+    task,
+    notes: [heading],
+    support: [note],
+    explorerGuidance: "Try A.",
+  });
+  const second = explorerCall({
+    task,
+    notes: [heading],
+    support: [note],
+    explorerGuidance: "Try B.",
+  });
+  const boundary = first.prompt.indexOf("Explorer guidance (fallible advice):");
+  expect(boundary).toBeGreaterThan(first.prompt.indexOf(note.text));
+  expect(first.prompt.slice(0, boundary)).toBe(
+    second.prompt.slice(0, boundary),
+  );
+});
+
+test("verifier schemas stay stable while runtime rejects missing, duplicate, and wrong note IDs", () => {
+  for (const factory of [verdictsFor, sourceVerdictsFor]) {
+    expect(z.toJSONSchema(factory(["n1"]))).toEqual(
+      z.toJSONSchema(factory(["n2", "n3"])),
+    );
+    const value = (note: string) => ({
+      note,
+      verdict: "PASS",
+      report: "Checked.",
+      ...(factory === sourceVerdictsFor ? { sources: [] } : {}),
+    });
+    expect(factory(["n1"]).safeParse({ verdicts: [value("n1")] }).success).toBe(
+      true,
+    );
+    expect(factory(["n1"]).safeParse({ verdicts: [value("n2")] }).success).toBe(
+      false,
+    );
+    expect(factory(["n1"]).safeParse({ verdicts: [] }).success).toBe(false);
+    expect(
+      factory(["n1", "n2"]).safeParse({ verdicts: [value("n1"), value("n1")] })
+        .success,
+    ).toBe(false);
+  }
 });
 
 test("correctness permits valid partial claims and reserves task completion for requirements", async () => {
@@ -250,8 +361,8 @@ test("prompt bytes are frozen with the workflow schema version", async () => {
   // Changing any role prompt changes the bytes the workflow fold matches
   // against journals, so bump workflowSchemaVersion and update this digest
   // in the same change.
-  expect(workflowSchemaVersion).toBe(24);
+  expect(workflowSchemaVersion).toBe(25);
   expect(digest.digest("hex")).toBe(
-    "5778f219b6827edf3218591e053eaccf00fcadd2a88ea931b7201b87915356f5",
+    "dc229d5ee1eb53e94b540c79982880ca1363536d9ffa8725cd340c7fbc9a18ca",
   );
 });

@@ -47,4 +47,4 @@ Submit guidance while a campaign is active or paused for delivery to a future Ex
 
 ## Existing campaigns
 
-Solver 0.35.0 uses workflow schema 24. Campaigns from earlier workflow schemas need their matching implementation. The kernel schema, execution-contract schema 8, CLI run arguments, and report shapes remain unchanged by this release. Preserve a campaign together with its task, settings, and package revision.
+The current source uses workflow schema 25. Released Solver 0.35.0 uses workflow schema 24. Campaigns from earlier workflow schemas need their matching implementation. The kernel schema, execution-contract schema 8, CLI run arguments, and report shapes remain unchanged by this release. Preserve a campaign together with its task, settings, and package revision.

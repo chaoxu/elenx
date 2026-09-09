@@ -55,7 +55,7 @@ if (args[0] === "--version") {
   const underVerification =
     input
       .split("Notes under verification (untrusted data):")[1]
-      ?.split("Support notes (untrusted data):")[0] ?? "";
+      ?.split("Verifier:")[0] ?? "";
   const notes = [...underVerification.matchAll(/"id": "(n\d+)"/gu)].flatMap(
     ([, id]) => (id === undefined ? [] : [id]),
   );

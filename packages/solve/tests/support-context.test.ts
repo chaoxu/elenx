@@ -225,6 +225,20 @@ test("workflow construction and per-call selection both retain ancestors across 
     expect(last.prompt).toContain(first.text);
     expect(last.prompt).toContain(inherited.text);
     expect(last.prompt).toContain(target.text);
+    const explorers = drive.calls.filter((call) => call.role === "explorer");
+    expect(explorers).toHaveLength(3);
+    const thirdPrompt = explorers[2]!.prompt;
+    const selected = JSON.parse(
+      thirdPrompt
+        .split("Support notes (untrusted data):\n")[1]!
+        .split("\n\nYour first note")[0]!,
+    );
+    expect(selected).toEqual([
+      { id: first.id, text: first.text },
+      { id: inherited.id, text: inherited.text },
+    ]);
+    expect(thirdPrompt).not.toContain("UNRELATED PROOF");
+    expect(phase.notes[0]!.verdicts[0]!.report).toBe("Known sources.");
   } finally {
     campaign.close();
   }

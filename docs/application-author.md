@@ -153,6 +153,8 @@ The campaign artifact stores candidate bytes, requests, prompts, transcripts, to
 
 `derivePiSpend(records)` returns settled provider operations, per-call and campaign totals, unaccounted Pi calls, and redacted completed request checkpoints that may represent unknown spend. Provider-reported token buckets and estimated cost remain separate; missing usage is `null`, not zero. It reads one record snapshot and writes nothing.
 
+`inspectCoreCampaign` separates `spend.requests.first` from `spend.requests.continuation`, with `cachedInputShare` when measured input is available. `spend.recoveredRequestErrors` counts provider errors inside Pi calls that ultimately succeeded. Full call observations include `pi.accounting.recoveredErrors`, with the one-based request position and available saved error name and message. A healthy final call can contain recovered errors. Missing request usage remains unknown in both partitions.
+
 ## Resume and read safely
 
 Use `openCampaign(path)` only after the prior writer has terminated or closed, then derive the next application action from `campaign.records()`. Close every handle in `finally`; copying an open database is unsupported. Calls and tool calls without matching results require external reconciliation and are not automatically replayable. Use `openReader(path)` for read-only inspection. Recovery, copying, rollback-journal, and rejected WAL-state rules are defined in [`../SPEC.md`](../SPEC.md#campaign-artifact).

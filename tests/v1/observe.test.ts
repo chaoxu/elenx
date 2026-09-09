@@ -40,6 +40,7 @@ function piResult(
     string,
     string | number | boolean
   >[] = [],
+  errors: readonly (string | undefined)[] = [],
 ) {
   return {
     state: "succeeded" as const,
@@ -63,7 +64,13 @@ function piResult(
           name: "pi.ai.request",
           attributes: operation,
           events: [],
-          status: { status: "ok" as const },
+          status:
+            errors[at] === undefined
+              ? { status: "ok" as const }
+              : {
+                  status: "error" as const,
+                  error: { name: "ProviderError", message: errors[at] },
+                },
           settled: true,
         })),
       ],
@@ -297,7 +304,7 @@ test("keeps understood spend when another Pi telemetry record is unsupported", a
     "available",
     "unsupported",
   ]);
-  expect(observation.spend).toEqual({
+  expect(observation.spend).toMatchObject({
     logicalProviderRequests: 1,
     requestErrors: 0,
     unmeasuredRequests: 0,
@@ -331,7 +338,7 @@ test("reports missing usage as unmeasured instead of zero", async () => {
     campaign.close();
   }
 
-  expect(inspectCoreCampaign(path).spend).toEqual({
+  expect(inspectCoreCampaign(path).spend).toMatchObject({
     logicalProviderRequests: 1,
     requestErrors: 0,
     unmeasuredRequests: 1,
@@ -364,4 +371,225 @@ test("distinguishes an unsettled Pi call from unsupported telemetry", async () =
     await pending;
     campaign.close();
   }
+});
+
+test.each([
+  "stream_incomplete: Upstream closed stream without completion",
+  "Response incomplete: max_messages",
+])("separates fresh-call cache coverage from recovered %s", async (failure) => {
+  const path = campaignPath();
+  const campaign = createCampaign(path, "recovered-workflow", null);
+  const unmeasured = {
+    "pi.ai.provider": "provider",
+    "pi.ai.model": "model",
+    "pi.ai.api": "responses",
+    "pi.ai.response.stop_reason": "error",
+  };
+  const cached = {
+    input: 1,
+    output: 5,
+    cacheRead: 9,
+    cacheWrite: 0,
+    reasoning: 3,
+    totalTokens: 15,
+    cost: {
+      input: 0.01,
+      output: 0.25,
+      cacheRead: 0.009,
+      cacheWrite: 0,
+      total: 0.269,
+    },
+  };
+  const fresh = {
+    input: 17,
+    output: 0,
+    cacheRead: 0,
+    cacheWrite: 0,
+    reasoning: 0,
+    totalTokens: 17,
+    cost: { input: 0.17, output: 0, cacheRead: 0, cacheWrite: 0, total: 0.17 },
+  };
+  try {
+    await campaign.call(
+      { label: "workflow/recovered", request: piRequest() },
+      async () => piResult(unmeasured, [], [attributes(cached)], [failure]),
+    );
+    await campaign.call(
+      { label: "workflow/fresh", request: piRequest() },
+      async () => piResult(attributes(fresh)),
+    );
+  } finally {
+    campaign.close();
+  }
+
+  const observation = inspectCoreCampaign(path);
+  const recovered = observation.calls[0]!.pi;
+  expect(recovered?.outcome).toBe("succeeded");
+  expect(recovered?.accounting).toMatchObject({
+    state: "available",
+    recoveredErrors: [{ request: 1, name: "ProviderError", message: failure }],
+    spend: {
+      recoveredRequestErrors: 1,
+      requests: {
+        first: {
+          logicalProviderRequests: 1,
+          requestErrors: 1,
+          unmeasuredRequests: 1,
+        },
+        continuation: {
+          logicalProviderRequests: 1,
+          unmeasuredRequests: 0,
+          cachedInputShare: 0.9,
+        },
+      },
+    },
+  });
+  if (recovered?.accounting.state !== "available")
+    throw new Error("missing accounting");
+  expect(recovered.accounting.spend.requests?.first).not.toHaveProperty(
+    "measuredUsage",
+  );
+  expect(recovered.accounting.spend.requests?.first).not.toHaveProperty(
+    "cachedInputShare",
+  );
+  expect(observation.spend).toMatchObject({
+    logicalProviderRequests: 3,
+    requestErrors: 1,
+    unmeasuredRequests: 1,
+    recoveredRequestErrors: 1,
+    requests: {
+      first: {
+        logicalProviderRequests: 2,
+        requestErrors: 1,
+        unmeasuredRequests: 1,
+        cachedInputShare: 0,
+        measuredUsage: { input: 17, cacheRead: 0 },
+      },
+      continuation: { logicalProviderRequests: 1, cachedInputShare: 0.9 },
+    },
+  });
+  const summary = inspectCoreCampaignSummary(path);
+  expect(summary.spend.requests).toEqual(observation.spend.requests);
+  expect(summary.spend.recoveredRequestErrors).toBe(1);
+  expect(JSON.stringify(summary)).not.toContain(failure);
+});
+
+test("keeps terminal provider failures separate from recovered errors", async () => {
+  const path = campaignPath();
+  const campaign = createCampaign(path, "failed-workflow", null);
+  const unmeasured = {
+    "pi.ai.provider": "provider",
+    "pi.ai.model": "model",
+    "pi.ai.api": "responses",
+    "pi.ai.response.stop_reason": "error",
+  };
+  try {
+    await campaign.call(
+      { label: "workflow/failed", request: piRequest() },
+      async () => ({
+        ...piResult(
+          unmeasured,
+          [],
+          [unmeasured],
+          [
+            "Response incomplete: max_messages",
+            "Response incomplete: max_messages",
+          ],
+        ),
+        state: "failed" as const,
+        error: "Response incomplete: max_messages",
+        providerRetryable: true,
+        truncated: false,
+      }),
+    );
+  } finally {
+    campaign.close();
+  }
+
+  const observation = inspectCoreCampaign(path);
+  expect(observation.calls[0]!.pi).toMatchObject({
+    outcome: "failed",
+    accounting: { state: "available", spend: { recoveredRequestErrors: 0 } },
+  });
+  expect(observation.calls[0]!.pi?.accounting).not.toHaveProperty(
+    "recoveredErrors",
+  );
+  expect(observation.spend).toMatchObject({
+    requestErrors: 2,
+    unmeasuredRequests: 2,
+    recoveredRequestErrors: 0,
+  });
+  expect(observation.spend).not.toHaveProperty("measuredUsage");
+  expect(observation.spend.requests?.first).not.toHaveProperty(
+    "cachedInputShare",
+  );
+  expect(observation.spend.requests?.continuation).not.toHaveProperty(
+    "cachedInputShare",
+  );
+});
+
+test("keeps measured zero usage distinct from missing usage in each request phase", async () => {
+  const path = campaignPath();
+  const campaign = createCampaign(path, "zero-workflow", null);
+  const zero = {
+    input: 0,
+    output: 0,
+    cacheRead: 0,
+    cacheWrite: 0,
+    reasoning: 0,
+    totalTokens: 0,
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+  };
+  try {
+    await campaign.call(
+      { label: "workflow/zero", request: piRequest() },
+      async () => piResult(attributes(zero)),
+    );
+  } finally {
+    campaign.close();
+  }
+
+  const requests = inspectCoreCampaign(path).spend.requests;
+  expect(requests?.first).toMatchObject({
+    logicalProviderRequests: 1,
+    unmeasuredRequests: 0,
+    measuredUsage: { input: 0, cacheRead: 0, estimatedCostUsd: 0 },
+  });
+  expect(requests?.first).not.toHaveProperty("cachedInputShare");
+  expect(requests?.continuation).toEqual({
+    logicalProviderRequests: 0,
+    requestErrors: 0,
+    unmeasuredRequests: 0,
+  });
+});
+
+test("cache-read share counts fresh tokens and cache writes in the prompt denominator", async () => {
+  const path = campaignPath();
+  const campaign = createCampaign(path, "cache-write-workflow", null);
+  const usage = {
+    input: 10,
+    output: 5,
+    cacheRead: 30,
+    cacheWrite: 20,
+    reasoning: 0,
+    totalTokens: 65,
+    cost: {
+      input: 0.01,
+      output: 0.01,
+      cacheRead: 0.003,
+      cacheWrite: 0.025,
+      total: 0.048,
+    },
+  };
+  try {
+    await campaign.call(
+      { label: "workflow/cache-write", request: piRequest() },
+      async () => piResult(attributes(usage)),
+    );
+  } finally {
+    campaign.close();
+  }
+  expect(inspectCoreCampaign(path).spend.requests?.first.cachedInputShare).toBe(
+    0.5,
+  );
 });

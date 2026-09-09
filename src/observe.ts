@@ -29,7 +29,26 @@ export interface PiUsageBreakdownV1 {
 
 export type PiObservationSpendV1 = PiSpendSummary & {
   readonly breakdown?: PiUsageBreakdownV1;
+  /** Derived from accounted calls only. Later requests may be retries or ordinary tool continuations. */
+  readonly requests?: {
+    readonly first: PiRequestPhaseSpendV1;
+    readonly continuation: PiRequestPhaseSpendV1;
+  };
+  /** Errors in provider requests whose enclosing Pi call ultimately succeeded. */
+  readonly recoveredRequestErrors?: number;
 };
+
+export type PiRequestPhaseSpendV1 = PiSpendSummary & {
+  /** cacheRead / (input + cacheRead + cacheWrite), omitted without measured input. */
+  readonly cachedInputShare?: number;
+};
+
+export interface PiRecoveredErrorObservationV1 {
+  /** One-based provider request position within the logical Pi call. */
+  readonly request: number;
+  readonly name?: string;
+  readonly message?: string;
+}
 
 export interface CoreCampaignObservationV1 {
   readonly schema: "elenx.core-observation/v1";
@@ -97,6 +116,7 @@ export type PiAccountingObservationV1 =
       readonly state: "available";
       readonly operations: readonly PiSpendOperation[];
       readonly spend: PiObservationSpendV1;
+      readonly recoveredErrors?: readonly PiRecoveredErrorObservationV1[];
     }
   | { readonly state: "unaccounted" }
   | { readonly state: "unsupported" };
@@ -274,6 +294,39 @@ function observedSpend(
   };
 }
 
+function requestPhaseSpend(
+  operations: readonly PiSpendOperation[],
+): PiRequestPhaseSpendV1 {
+  const spend = summarizePiSpend(operations);
+  if (!("measuredUsage" in spend)) return spend;
+  const { input, cacheRead, cacheWrite } = spend.measuredUsage;
+  const promptTokens = input + cacheRead + cacheWrite;
+  return {
+    ...spend,
+    ...(promptTokens === 0
+      ? {}
+      : { cachedInputShare: cacheRead / promptTokens }),
+  };
+}
+
+function recoveredErrors(
+  stored: z.output<typeof piStoredResult>,
+): readonly PiRecoveredErrorObservationV1[] {
+  if (stored.state !== "succeeded") return [];
+  const root = stored.telemetry.spans.find(
+    ({ name, parentId }) => name === "elenx.pi.run" && parentId === null,
+  );
+  return stored.telemetry.spans
+    .filter(
+      ({ name, parentId }) => name === "pi.ai.request" && parentId === root?.id,
+    )
+    .flatMap(({ status }, index) =>
+      status.status === "error"
+        ? [{ request: index + 1, ...status.error }]
+        : [],
+    );
+}
+
 export function inspectCoreCampaign(path: string): CoreCampaignObservationV1 {
   const reader = openReader(path);
   try {
@@ -412,6 +465,9 @@ function indexAccounting(index: RecordIndex): AccountingIndex {
   const byCall = new Map<EntryId, PiAccountingObservationV1>();
   const understoodOperations: PiSpendOperation[] = [];
   const understoodTranscript: Json[] = [];
+  const firstOperations: PiSpendOperation[] = [];
+  const continuationOperations: PiSpendOperation[] = [];
+  let recoveredRequestErrors = 0;
   const unsupportedCalls: EntryId[] = [];
   const unaccountedCalls: EntryId[] = [];
   for (const call of index.calls) {
@@ -429,12 +485,26 @@ function indexAccounting(index: RecordIndex): AccountingIndex {
       if (row === undefined)
         throw new Error("settled Pi call was not accounted");
       const { operations, call: _, ...spend } = row;
+      const recovered = recoveredErrors(stored);
+      const first = operations.slice(0, 1);
+      const continuation = operations.slice(1);
       understoodOperations.push(...operations);
       understoodTranscript.push(...stored.transcript);
+      firstOperations.push(...first);
+      continuationOperations.push(...continuation);
+      recoveredRequestErrors += recovered.length;
       byCall.set(call.seq, {
         state: "available",
         operations,
-        spend: observedSpend(spend, stored.transcript),
+        spend: {
+          ...observedSpend(spend, stored.transcript),
+          recoveredRequestErrors: recovered.length,
+          requests: {
+            first: requestPhaseSpend(first),
+            continuation: requestPhaseSpend(continuation),
+          },
+        },
+        ...(recovered.length === 0 ? {} : { recoveredErrors: recovered }),
       });
     } catch {
       byCall.set(call.seq, { state: "unsupported" });
@@ -443,10 +513,21 @@ function indexAccounting(index: RecordIndex): AccountingIndex {
   }
   return {
     byCall,
-    spend: observedSpend(
-      summarizePiSpend(understoodOperations),
-      understoodTranscript,
-    ),
+    spend: {
+      ...observedSpend(
+        summarizePiSpend(understoodOperations),
+        understoodTranscript,
+      ),
+      ...(byCall.size === unsupportedCalls.length + unaccountedCalls.length
+        ? {}
+        : {
+            recoveredRequestErrors,
+            requests: {
+              first: requestPhaseSpend(firstOperations),
+              continuation: requestPhaseSpend(continuationOperations),
+            },
+          }),
+    },
     unsupportedCalls,
     unaccountedCalls,
   };

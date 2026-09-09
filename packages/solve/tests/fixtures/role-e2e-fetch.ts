@@ -110,7 +110,7 @@ function submissionFor(tool: string, request: string): unknown {
     const verifier = /Verifier:\\n(\w+)/u.exec(request)?.[1];
     const underVerification = request
       .split("Notes under verification (untrusted data):")[1]
-      ?.split("Support notes (untrusted data):")[0];
+      ?.split("Verifier:")[0];
     const notes = [
       ...(underVerification ?? "").matchAll(/\\"id\\": \\"(n\d+)\\"/gu),
     ].map(([, id]) => id);

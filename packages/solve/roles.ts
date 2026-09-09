@@ -453,10 +453,11 @@ function verdictsOver<T extends z.ZodRawShape>(
   entry: z.ZodObject<T>,
   judged: readonly string[],
 ) {
-  const ids = [...judged] as [string, ...string[]];
   const expected = [...judged].sort(byId).join(",");
+  // Keep the provider schema stable across candidates. The runtime still
+  // requires exactly the requested note IDs, once each, before recording.
   return z
-    .strictObject({ verdicts: z.array(entry.extend({ note: z.enum(ids) })) })
+    .strictObject({ verdicts: z.array(entry.extend({ note: noteId })) })
     .refine(
       (value) =>
         (

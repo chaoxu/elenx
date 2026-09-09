@@ -3,7 +3,7 @@ import { z } from "zod";
 
 import { Projection } from "./projection";
 import { explorerGuidance, freezeExplorerGuidance } from "./guidance";
-import { supportClosure } from "./support";
+import { byId, supportClosure } from "./support";
 import {
   codexSource,
   coordinatorCall,
@@ -40,7 +40,7 @@ import {
   type VerifierInput,
 } from "./roles";
 
-export const workflowSchemaVersion = 24;
+export const workflowSchemaVersion = 25;
 export const workflowConfig = z.strictObject({
   kind: z.literal("workflow"),
   schemaVersion: z.literal(workflowSchemaVersion),
@@ -201,7 +201,17 @@ export async function deriveWorkflow(
         task: config.task,
         explorerGuidance: explorerGuidance(records, cursor, guidance),
         notes: known.map(({ text, ...rest }) => rest),
-        support: support.map((id) => pick(known, id)),
+        support: [
+          ...new Set([
+            ...support,
+            ...(await supportClosure(
+              support.map((id) => pick(known, id)),
+              known,
+            )),
+          ]),
+        ]
+          .sort(byId)
+          .map((id) => pick(known, id)),
       });
       const explored = settledCall(
         records,

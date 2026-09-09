@@ -323,9 +323,9 @@ test("one verification judges several notes, kills the failed one, and accepts o
   expect(drive.calls[3]?.prompt).toContain(`"verified": true`);
   expect(drive.calls[3]?.prompt).not.toContain(`"text": "Lemma L."`);
   const correctness = drive.calls[5]!.prompt;
-  const [underVerification, support] = correctness
-    .split("Notes under verification (untrusted data):\n")[1]!
-    .split("\n\nSupport notes (untrusted data):\n");
+  const [support, underVerification] = correctness
+    .split("Support notes (untrusted data):\n")[1]!
+    .split("\n\nNotes under verification (untrusted data):\n");
   expect(underVerification).toContain("P from L, wrong.");
   expect(underVerification).toContain(`"id": "n3"`);
   expect(support).toContain(`"text": "Lemma L."`);
