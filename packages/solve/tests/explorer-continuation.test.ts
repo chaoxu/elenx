@@ -43,7 +43,7 @@ test("Explorer continuation defaults off and only its enabled schema requires a 
   expect(off.submissionGate).toBeUndefined();
   expect(on.submissionGate).toEqual({
     completeArgument: "solution",
-    reserveTokens: 16_384,
+    contextBudgetTokens: 400_000,
   });
   expect(ordinary.schema.safeParse({ notes: [note] }).success).toBe(true);
   expect(
@@ -115,7 +115,7 @@ test("only enabled Explorer calls receive the gate; a solution claim still goes 
     expect(result.kind).toBe("turn-limit");
     expect(drive.calls[0]?.submissionGate).toEqual({
       completeArgument: "solution",
-      reserveTokens: 16_384,
+      contextBudgetTokens: 400_000,
     });
     expect(
       drive.calls.slice(1).every((call) => call.submissionGate === undefined),
@@ -181,7 +181,10 @@ test("explicitly disabled Explorer omits the kernel gate", async () => {
   }
 });
 
-test("continuation remains part of the exact frozen settings on resume", async () => {
+test.each([
+  { explorerContinuation: false },
+  { explorerContextBudgetTokens: 500_000 },
+])("continuation settings remain frozen on resume: %j", async (change) => {
   const path = campaignPath(),
     settings = { ...roleSettings(), explorerContinuation: true };
   await init({ task, campaignPath: path, settings });
@@ -191,7 +194,7 @@ test("continuation remains part of the exact frozen settings on resume", async (
       {
         task,
         campaignPath: path,
-        settings: { ...settings, explorerContinuation: false },
+        settings: { ...settings, ...change },
       },
       {
         models: async () => {
@@ -204,4 +207,51 @@ test("continuation remains part of the exact frozen settings on resume", async (
   expect(await init({ task, campaignPath: path, settings })).toMatchObject({
     created: false,
   });
+});
+
+test("a custom Explorer context budget reaches execution and journal replay", async () => {
+  const config = workflowConfiguration({
+    task,
+    settings: {
+      ...roleSettings(),
+      maxExplorerTurns: 1,
+      explorerContinuation: true,
+      explorerContextBudgetTokens: 80_000,
+    },
+  });
+  const campaign = createCampaign(campaignPath(), applicationId, config);
+  const drive = dependencies([
+    { submission: { notes: [note], solution: false } },
+    {
+      submission: {
+        filings: [{ note: "n1", summary: "Partial work." }],
+        explorerGuidance: "Continue.",
+        support: [],
+        verify: [],
+      },
+    },
+  ]);
+  try {
+    await runWorkflow(
+      campaign,
+      createPiRoles(campaign, config.settings, drive),
+    );
+    expect(drive.calls[0]?.submissionGate?.contextBudgetTokens).toBe(80_000);
+    expect((await deriveWorkflow(campaign.records())).phase.kind).toBe(
+      "turn-limit",
+    );
+    const call = campaign
+      .records()
+      .find((entry) => entry.kind === "call" && entry.role === "explorer");
+    if (call?.kind !== "call") throw new Error("missing Explorer call");
+    const initial = { ...input, explorerGuidance: "" };
+    expect(sameRequest(call.request, explorerCall(initial, true, 80_000))).toBe(
+      true,
+    );
+    expect(sameRequest(call.request, explorerCall(initial, true, 90_000))).toBe(
+      false,
+    );
+  } finally {
+    campaign.close();
+  }
 });

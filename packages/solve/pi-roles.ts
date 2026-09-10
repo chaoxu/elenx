@@ -8,13 +8,7 @@ import {
   type EntryId,
   type Json,
 } from "elenx";
-import {
-  DEFAULT_COMPACTION_SETTINGS,
-  piReasoning,
-  piRequest,
-  runPi,
-  type PiSubmissionGate,
-} from "elenx/pi";
+import { piReasoning, piRequest, runPi, type PiSubmissionGate } from "elenx/pi";
 import { z } from "zod";
 
 import {
@@ -119,6 +113,7 @@ export const solveSettings = z.strictObject({
   maxExplorerTurns: z.number().int().positive().default(10),
   window: z.number().int().positive().default(100_000),
   explorerContinuation: z.boolean().optional(),
+  explorerContextBudgetTokens: z.number().int().positive().optional(),
 });
 export type SolveSettings = z.output<typeof solveSettings>;
 
@@ -199,6 +194,7 @@ const completionText =
 export function explorerCall(
   input: ExplorerInput,
   continuation = false,
+  contextBudgetTokens = 400_000,
 ): RoleCall<ReturnType<typeof explorerResultFor>> {
   return {
     role: "explorer",
@@ -235,7 +231,7 @@ export function explorerCall(
     submissionGate: continuation
       ? {
           completeArgument: "solution",
-          reserveTokens: DEFAULT_COMPACTION_SETTINGS.reserveTokens,
+          contextBudgetTokens,
         }
       : undefined,
   };
@@ -555,6 +551,7 @@ export function createPiRoles(
       const roleCall = explorerCall(
         explorerInput.parse(inputValue),
         profiles.explorerContinuation === true,
+        profiles.explorerContextBudgetTokens,
       );
       return (
         await runCall(campaign, profiles.explorer, roleCall, dependencies)

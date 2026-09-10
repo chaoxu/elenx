@@ -65,7 +65,8 @@ export const piReasoning = z.enum(reasoningLevels);
 
 const piSubmissionGate = z.strictObject({
   completeArgument: z.string().regex(/\S/u),
-  reserveTokens: z.number().int().positive(),
+  reserveTokens: z.number().int().positive().optional(),
+  contextBudgetTokens: z.number().int().positive().optional(),
 });
 export type PiSubmissionGate = z.output<typeof piSubmissionGate>;
 
@@ -594,9 +595,20 @@ function submissionContext(
   model: Model<Api>,
   context: Context,
 ) {
+  const reserveTokens = gate.reserveTokens ?? model.maxTokens;
+  const budgetedModel = {
+    ...model,
+    contextWindow: Math.min(
+      model.contextWindow,
+      gate.contextBudgetTokens ?? model.contextWindow,
+    ),
+  };
   const threshold =
-    clampMaxTokensToContext(model, { messages: [] }, model.contextWindow) -
-    gate.reserveTokens;
+    clampMaxTokensToContext(
+      budgetedModel,
+      { messages: [] },
+      budgetedModel.contextWindow,
+    ) - reserveTokens;
   if (!(threshold > 0))
     throw new Error(
       "submission reserve and native safety margin leave no usable context",
@@ -604,8 +616,11 @@ function submissionContext(
   const { tokens } = estimateContextTokens(context);
   const maxTokens = clampMaxTokensToContext(
     tokens < threshold
-      ? { ...model, contextWindow: model.contextWindow - gate.reserveTokens }
-      : model,
+      ? {
+          ...budgetedModel,
+          contextWindow: budgetedModel.contextWindow - reserveTokens,
+        }
+      : budgetedModel,
     context,
     model.maxTokens,
   );

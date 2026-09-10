@@ -355,6 +355,93 @@ test("submission gate keeps an early partial in context and commits only the nea
   ).toBe(true);
 });
 
+test.each([
+  [378_000, "toolUse", 1_520, 16_384, 379_520],
+  [379_600, "stop", 16_304, 16_384, 379_700],
+  [266_000, "toolUse", 1_904, undefined, 267_904],
+  [268_000, "stop", 127_904, undefined, 268_100],
+] as const)(
+  "a 400k context budget preserves finalization space after %i tokens and %s",
+  async (tokens, stop, nextMaxTokens, reserveTokens, settledTokens) => {
+    const requests: (number | undefined)[] = [];
+    const replies = [
+      gateReply(1, tokens, false, stop),
+      gateReply(2, settledTokens, false),
+    ];
+    const c = campaign();
+    const largeModel = {
+      ...model,
+      contextWindow: 1_050_000,
+      maxTokens: 128_000,
+    };
+    try {
+      const result = await runPi(c, {
+        models: models(replies, (_context, options) => {
+          replies[requests.length]!.timestamp = Date.now();
+          requests.push(options?.maxTokens);
+        }),
+        model: largeModel,
+        label: "budgeted-explorer",
+        prompt: "Do useful work, then submit partial notes.",
+        tools: [gatedTool],
+        stopAfterToolResult: true,
+        submissionGate: {
+          completeArgument: "solution",
+          ...(reserveTokens === undefined ? {} : { reserveTokens }),
+          contextBudgetTokens: 400_000,
+        },
+      });
+      expect(result.state).toBe("succeeded");
+      expect(requests).toHaveLength(2);
+      expect(requests[0]).toBe(128_000);
+      // Native estimation also charges the intervening tool/steering feedback.
+      expect(requests[1]).toBeGreaterThan(nextMaxTokens - 256);
+      expect(requests[1]).toBeLessThanOrEqual(nextMaxTokens);
+      const records = c.records();
+      expect(
+        records.filter((entry) => entry.kind === "tool-call"),
+      ).toHaveLength(1);
+      expect(
+        records.find(
+          (entry) =>
+            entry.kind === "call" && entry.label === "budgeted-explorer",
+        ),
+      ).toMatchObject({
+        request: {
+          modelProfile: { contextWindow: 1_050_000 },
+          submissionGate: { contextBudgetTokens: 400_000 },
+        },
+      });
+    } finally {
+      c.close();
+    }
+  },
+);
+
+test("a submission budget above model capacity still respects the model window", async () => {
+  const c = campaign();
+  let requests = 0;
+  const reply = gateReply(1, 4_000, false);
+  try {
+    const result = await runPi(c, {
+      models: models([reply], () => {
+        reply.timestamp = Date.now();
+        requests += 1;
+      }),
+      model,
+      label: "small-model-budget",
+      prompt: "Work.",
+      tools: [gatedTool],
+      stopAfterToolResult: true,
+      submissionGate: { ...submissionGate, contextBudgetTokens: 400_000 },
+    });
+    expect(result.state).toBe("succeeded");
+    expect(requests).toBe(1);
+  } finally {
+    c.close();
+  }
+});
+
 test.each(["toolUse", "stop"] as const)(
   "a claimed solution terminates on native %s without another request",
   async (stopReason) => {
