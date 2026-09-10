@@ -627,7 +627,45 @@ test.each(["stop", "length"] as const)(
   },
 );
 
-test("the submission gate preserves the separate transient-error recovery budget", async () => {
+test("successful responses reset the consecutive provider-error budget even when partial submissions are declined", async () => {
+  const failure = {
+    ...assistant([], "error"),
+    errorMessage: "upstream_error: Codex upstream request failed",
+  };
+  const { result, requests } = await gatedRun(
+    [
+      failure,
+      gateReply(1, 1000, false),
+      { ...failure },
+      gateReply(2, 2000, true),
+    ],
+    true,
+    1,
+  );
+  expect(result.state).toBe("succeeded");
+  expect(requests).toHaveLength(4);
+});
+
+test("a length-truncated response does not reset the consecutive error budget", async () => {
+  const failure = {
+    ...assistant([], "error"),
+    errorMessage: "upstream_error: Codex upstream request failed",
+  };
+  const { result, requests } = await gatedRun(
+    [
+      failure,
+      gateReply(1, 1000, false, "length"),
+      { ...failure },
+      gateReply(2, 2000, true),
+    ],
+    true,
+    1,
+  );
+  expect(result.state).toBe("failed");
+  expect(requests).toHaveLength(3);
+});
+
+test("the submission gate preserves the consecutive transient-error recovery budget", async () => {
   const replies = Array.from({ length: 3 }, () => ({
     ...assistant([], "error"),
     rawStopReason: "incomplete.max_messages",

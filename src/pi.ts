@@ -290,8 +290,8 @@ function isRetryableProviderError(message: AssistantMessage): boolean {
   }
   if (isRetryableAssistantError(message)) return true;
   if (message.stopReason !== "error") return false;
-  // Pi treats the Responses message limit as an error. Recover within the
-  // existing error budget; ReasoningRecovery admits only completed reasoning.
+  // Pi reports the Responses message limit as an error. Completed reasoning
+  // may advance past it; otherwise the ordinary error budget applies.
   if (
     ["openai-responses", "openai-codex-responses"].includes(message.api) &&
     message.rawStopReason === "incomplete.max_messages"
@@ -1069,6 +1069,7 @@ async function runPiBody(
     },
     async (span) => {
       let turns = 0;
+      let errorRecoveries = 0;
       const gate = exact.submissionGate;
       let steering: AgentMessage[] = [];
       const contextState = (context: AgentContext) =>
@@ -1076,6 +1077,19 @@ async function runPiBody(
           ...context,
           messages: convertToLlm(recovery.forModel(context.messages)),
         });
+      const agentContext = (
+        messages: readonly AgentMessage[],
+      ): AgentContext => ({
+        systemPrompt: exact.system ?? "",
+        messages: [...messages],
+        ...(tools.length === 0
+          ? {}
+          : {
+              tools: tools.map((tool) =>
+                piTool(tool, exact.stopAfterToolResult === true),
+              ),
+            }),
+      });
       const loop = (
         content: string | undefined,
         prior: readonly AgentMessage[],
@@ -1084,17 +1098,7 @@ async function runPiBody(
           content === undefined
             ? []
             : [{ role: "user", content, timestamp: Date.now() }],
-          {
-            systemPrompt: exact.system ?? "",
-            messages: [...prior],
-            ...(tools.length === 0
-              ? {}
-              : {
-                  tools: tools.map((tool) =>
-                    piTool(tool, exact.stopAfterToolResult === true),
-                  ),
-                }),
-          },
+          agentContext(prior),
           {
             model: options.model,
             convertToLlm: (messages) =>
@@ -1106,6 +1110,11 @@ async function runPiBody(
               : { transport: options.transport }),
             telemetryContext: span,
             shouldStopAfterTurn: async ({ message, context, toolResults }) => {
+              if (
+                message.stopReason === "stop" ||
+                message.stopReason === "toolUse"
+              )
+                errorRecoveries = 0;
               turns += 1;
               if (gate === undefined)
                 return turns >= 32 || message.stopReason === "length";
@@ -1193,7 +1202,6 @@ async function runPiBody(
         );
       let messages = await loop(exact.prompt, []);
       let legacyRecoveries = 0;
-      let errorRecoveries = 0;
       let lengthContinuations = 0;
       for (;;) {
         if (gate === undefined && turns >= 32) break;
@@ -1209,7 +1217,33 @@ async function runPiBody(
           !isContextOverflow(final, options.model.contextWindow) &&
           (retry || (gate === undefined && final.stopReason === "length"));
         if (!interrupted) break;
-        if (exact.maxLengthContinuations === undefined) {
+        const projected =
+          retry && final.rawStopReason === "incomplete.max_messages"
+            ? recovery.forModel(messages)
+            : undefined;
+        const advances =
+          projected !== undefined &&
+          projected.length >
+            recovery.forModel(messages.slice(0, messages.lastIndexOf(final)))
+              .length;
+        if (advances) {
+          // Reuse the recovery projection: empty or duplicate checkpoints do
+          // not advance it and must spend the ordinary retry allowance.
+          if (
+            gate !== undefined
+              ? contextState(agentContext(messages)).exhausted
+              : clampMaxTokensToContext(
+                  options.model,
+                  {
+                    ...agentContext(messages),
+                    messages: convertToLlm(projected),
+                  },
+                  options.model.maxTokens,
+                ) === 1
+          )
+            break;
+          errorRecoveries = 0;
+        } else if (exact.maxLengthContinuations === undefined) {
           if (legacyRecoveries >= (exact.maxRecoveries ?? 0)) break;
           legacyRecoveries += 1;
         } else if (retry) {

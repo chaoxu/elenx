@@ -299,13 +299,121 @@ describe.each([platformModel, codexModel])(
       },
     );
 
-    test("bounds max_messages recovery with the error budget even when length continuations remain", async () => {
+    test.each([false, true])(
+      "max_messages with new completed reasoning continues beyond the error budget (gate=%s)",
+      async (gated) => {
+        const checkpoints = Array.from({ length: 10 }, (_, index) =>
+          reasoning(`rs_limit_${index}`),
+        );
+        const terminal = {
+          ...toolItem("completed_limit", 7),
+          arguments: JSON.stringify({ value: 7, solution: true }),
+        };
+        const adapter = scriptedAdapter(model, [
+          ...checkpoints.map((checkpoint) => [
+            ...itemDone(checkpoint, 0),
+            incomplete("max_messages", [checkpoint]),
+          ]),
+          [...itemDone(terminal, 0), completed([terminal])],
+        ]);
+        const executed: number[] = [];
+        const store = campaign();
+        const result = await runPi(store, {
+          models: adapter.models,
+          model,
+          label: "recovery/message-limit-progress",
+          prompt: "Record 7 after reasoning",
+          tools: [
+            defineTool({
+              name: "record",
+              description: "Record the completed result",
+              input: z.strictObject({
+                value: z.number(),
+                solution: z.boolean(),
+              }),
+              replay: "safe",
+              async run({ value }) {
+                executed.push(value);
+                return null;
+              },
+            }),
+          ],
+          stopAfterToolResult: true,
+          maxRecoveries: 1,
+          maxLengthContinuations: 1,
+          ...(gated
+            ? {
+                submissionGate: {
+                  completeArgument: "solution",
+                  reserveTokens: 2000,
+                },
+              }
+            : {}),
+        });
+        expect(result.state).toBe("succeeded");
+        expect(adapter.sent).toHaveLength(11);
+        expect(input(adapter.sent.at(-1))).toEqual([
+          ...input(adapter.sent[0]),
+          ...checkpoints,
+        ]);
+        expect(executed).toEqual([7]);
+        expect(derivePiSpend(store.records()).summary.requestErrors).toBe(10);
+      },
+    );
+
+    test.each([false, true])(
+      "max_messages with a checkpoint stops at exhausted context (gate=%s)",
+      async (gated) => {
+        const checkpoint = reasoning("rs_limit_full");
+        const ending = incomplete("max_messages", [checkpoint]);
+        (ending.response as WireItem).usage = {
+          input_tokens: model.contextWindow,
+          output_tokens: 5,
+          total_tokens: model.contextWindow + 5,
+        };
+        const adapter = scriptedAdapter(model, [
+          [...itemDone(checkpoint, 0), ending],
+        ]);
+        const result = await runPi(campaign(), {
+          models: adapter.models,
+          model,
+          label: "recovery/message-limit-full",
+          prompt: "Reason",
+          maxRecoveries: 1,
+          maxLengthContinuations: 1,
+          ...(gated
+            ? {
+                tools: [
+                  defineTool({
+                    name: "record",
+                    description: "Record",
+                    input: z.strictObject({ solution: z.boolean() }),
+                    replay: "safe",
+                    async run() {
+                      return null;
+                    },
+                  }),
+                ],
+                stopAfterToolResult: true,
+                submissionGate: {
+                  completeArgument: "solution",
+                  reserveTokens: 2000,
+                },
+              }
+            : {}),
+        });
+        expect(result.state).toBe("failed");
+        expect(adapter.sent).toHaveLength(1);
+      },
+    );
+
+    test("repeated max_messages checkpoints exhaust the no-progress error budget", async () => {
       const store = campaign();
       const first = reasoning("rs_limit_first");
-      const second = reasoning("rs_limit_second");
       const adapter = scriptedAdapter(model, [
         [...itemDone(first, 0), incomplete("max_messages", [first])],
-        [...itemDone(second, 0), incomplete("max_messages", [second])],
+        [...itemDone(first, 0), incomplete("max_messages", [first])],
+        [...itemDone(first, 0), incomplete("max_messages", [first])],
       ]);
       const result = await runPi(store, {
         models: adapter.models,
@@ -322,7 +430,7 @@ describe.each([platformModel, codexModel])(
         error: "Response incomplete: max_messages",
         text: "",
       });
-      expect(adapter.sent).toHaveLength(2);
+      expect(adapter.sent).toHaveLength(3);
       expect(input(adapter.sent[1])).toEqual([
         ...input(adapter.sent[0]),
         first,
@@ -331,8 +439,10 @@ describe.each([platformModel, codexModel])(
         { role: "user" },
         { stopReason: "error", rawStopReason: "incomplete.max_messages" },
         { stopReason: "error", rawStopReason: "incomplete.max_messages" },
+        { stopReason: "error", rawStopReason: "incomplete.max_messages" },
       ]);
-      expect(piRequestAttempts(store.records(), result.call)).toHaveLength(2);
+      expect(input(adapter.sent[2])).toEqual(input(adapter.sent[1]));
+      expect(piRequestAttempts(store.records(), result.call)).toHaveLength(3);
     });
 
     test.each(["content_filter", "unknown_limit"])(
