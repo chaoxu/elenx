@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { isDeepStrictEqual } from "node:util";
 
-import { createCampaign, openCampaign, type Campaign } from "elenx";
+import { createCampaign, openCampaign, openReader, type Campaign } from "elenx";
 import { builtinPi } from "elenx/pi";
 import { getSupportedThinkingLevels } from "@earendil-works/pi-ai";
 import { z } from "zod";
@@ -59,6 +59,39 @@ export type RunResult =
       readonly reason?: string;
     };
 
+/** Create or match the workflow declaration without resolving any provider. */
+export async function init(input: z.input<typeof runRequest>) {
+  const request = runRequest.parse(input);
+  const config = workflowConfiguration({
+    task: request.task,
+    settings: request.settings,
+  });
+  return withCampaignLock(request.campaignPath, async () => {
+    const existing = existsSync(request.campaignPath);
+    const campaign = existing
+      ? openReader(request.campaignPath)
+      : createCampaign(request.campaignPath, applicationId, config);
+    try {
+      const declaration = campaign.records()[0];
+      if (
+        declaration?.kind !== "campaign" ||
+        declaration.application !== applicationId
+      )
+        throw new Error("not a current Elenx solver journal");
+      const frozen = workflowConfig.parse(declaration.config);
+      if (!isDeepStrictEqual(frozen, config))
+        throw new Error("task or settings disagree with the workflow journal");
+      return {
+        application: applicationId,
+        campaignPath: request.campaignPath,
+        created: !existing,
+      };
+    } finally {
+      campaign.close();
+    }
+  });
+}
+
 async function drive(
   campaign: Campaign,
   config: WorkflowConfig,
@@ -112,6 +145,11 @@ export async function run(
     try {
       if (campaign !== undefined) {
         const declaration = campaign.records()[0];
+        if (
+          declaration?.kind !== "campaign" ||
+          declaration.application !== applicationId
+        )
+          throw new Error("not a current Elenx solver journal");
         const frozen = workflowConfig.parse(
           declaration?.kind === "campaign" ? declaration.config : undefined,
         );

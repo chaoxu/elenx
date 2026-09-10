@@ -36,7 +36,7 @@ test("run starts, resumes, inspects, and exports one workflow", async () => {
   const first = await cli(directory, "run", task, campaign, settings);
   expect(first.code).toBe(0);
   expect(JSON.parse(first.stdout)).toMatchObject({
-    schemaVersion: 8,
+    schemaVersion: 9,
     application: "elenx-solve",
     protocol: "workflow",
     outcome: "accepted",
@@ -174,7 +174,7 @@ test("guided CLI workflow retains its verification, accounting, and execution re
   const result = await cli(directory, "run", task, campaign, settings);
   expect(result.code, result.stderr).toBe(0);
   expect(JSON.parse(result.stdout)).toMatchObject({
-    schemaVersion: 8,
+    schemaVersion: 9,
     application: "elenx-solve",
     protocol: "workflow",
     outcome: "accepted",

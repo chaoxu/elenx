@@ -1,0 +1,507 @@
+import { afterEach, expect, test } from "bun:test";
+
+import { openReader } from "elenx";
+
+import { inspectCampaign, submitNotes } from "../role-cli";
+import { init, run } from "../runner";
+import {
+  explorerResultFor,
+  verifierNames,
+  type Note,
+  type Verification,
+} from "../roles";
+import { workflowSchemaVersion } from "../workflow";
+import {
+  campaignPath,
+  cleanupCampaigns,
+  dependencies,
+  roleSettings,
+  type Reply,
+} from "./harness";
+
+afterEach(cleanupCampaigns);
+
+const task = { problem: "Prove P.", completionCriteria: "Prove P fully." };
+const externalText = "A separately supplied lemma with its full proof.";
+const attestation = {
+  source: "Independent human proof review",
+  report: "The stated lemma and its hypotheses were checked in full.",
+};
+const partial = { text: "An independent partial result.", support: [] };
+const lemmaVerifiers: Verification["verifiers"] = ["source", "correctness"];
+
+async function setup(turns = 1) {
+  const campaign = campaignPath();
+  const profiles = roleSettings();
+  const request = {
+    task,
+    campaignPath: campaign,
+    settings: {
+      ...profiles,
+      source: profiles.explorer,
+      maxExplorerTurns: turns,
+    },
+  };
+  await init(request);
+  return { path: campaign, request };
+}
+
+function records(path: string) {
+  const reader = openReader(path);
+  try {
+    return [...reader.records()];
+  } finally {
+    reader.close();
+  }
+}
+
+type Inspection = {
+  phase: string;
+  notes: Note[];
+  result?: unknown;
+  submissions?: unknown[];
+};
+
+async function inspect(path: string, includeSubmissions = false) {
+  return (await inspectCampaign(path, {
+    includeSubmissions,
+  })) as unknown as Inspection;
+}
+
+function coordinate(
+  ids: string[],
+  support: string[] = [],
+  verify: Verification[] = [],
+): Reply {
+  return {
+    submission: {
+      filings: ids.map((note) => ({ note, summary: `Statement of ${note}.` })),
+      explorerGuidance: "Prove the remaining implication.",
+      support,
+      verify,
+    },
+  };
+}
+
+function verdict(note: string, name: string, result = "PASS"): Reply {
+  return {
+    submission: {
+      ...(name === "reconstruction" ? { statement: null } : {}),
+      verdicts: [{ note, verdict: result, report: `${name}: ${result}.` }],
+    },
+  };
+}
+
+function coordinatorNotes(prompt: string): Note[] {
+  const marker = "Notes (untrusted data):\n";
+  const at = prompt.lastIndexOf(marker);
+  expect(at).toBeGreaterThanOrEqual(0);
+  return JSON.parse(prompt.slice(at + marker.length));
+}
+
+test("init creates only a workflow declaration without resolving test-only providers", async () => {
+  const { path, request } = await setup();
+  expect(workflowSchemaVersion).toBe(27);
+  const before = records(path);
+  expect(before).toHaveLength(1);
+  expect(before[0]).toMatchObject({
+    kind: "campaign",
+    application: "elenx-solve",
+    config: { schemaVersion: 27, task },
+  });
+  await init(request);
+  expect(records(path)).toEqual(before);
+  expect((await inspect(path)).phase).toBe("explorer");
+  await expect(
+    init({ ...request, task: { ...task, problem: "A different task." } }),
+  ).rejects.toThrow();
+  expect(records(path)).toEqual(before);
+});
+
+test("unchecked initial notes reach coordinator and verification before the first explorer", async () => {
+  const { path, request } = await setup();
+  await submitNotes(
+    path,
+    { notes: [{ text: externalText, support: [] }] },
+    "initial-lemma",
+  );
+  const before = records(path);
+  expect(before.some((entry) => entry.kind === "verdict")).toBe(false);
+  expect((await inspect(path)).submissions).toBeUndefined();
+  expect((await inspect(path, true)).submissions).toHaveLength(1);
+  const drive = dependencies([
+    coordinate(["n1"], ["n1"], [{ note: "n1", verifiers: lemmaVerifiers }]),
+    verdict("n1", "source"),
+    verdict("n1", "correctness"),
+    {
+      submission: {
+        notes: [{ text: "Using n1, another partial result.", support: ["n1"] }],
+      },
+    },
+    coordinate(["n2"]),
+  ]);
+  expect(await run(request, drive)).toMatchObject({
+    outcome: "turn-limit",
+    turns: 1,
+  });
+  expect(drive.calls.map((call) => call.role)).toEqual([
+    "coordinator",
+    "verifier",
+    "verifier",
+    "explorer",
+    "coordinator",
+  ]);
+  expect(coordinatorNotes(drive.calls[0]!.prompt)).toMatchObject([
+    { id: "n1", text: externalText, verified: false, verdicts: [] },
+  ]);
+  expect(drive.calls[3]!.prompt).toContain(externalText);
+  expect(drive.calls[3]!.prompt).toContain("Your first note is n2.");
+  const report = await inspect(path);
+  expect(report.notes.map((note) => [note.id, note.verified])).toEqual([
+    ["n1", true],
+    ["n2", false],
+  ]);
+  expect(records(path).slice(0, before.length)).toEqual(before);
+});
+
+test("a note arriving during explorer is numbered after explorer notes in the following coordinator", async () => {
+  const { path, request } = await setup();
+  const drive = dependencies([
+    {
+      submission: { notes: [partial] },
+      onStarted: async () => {
+        const active = records(path).find(
+          (entry) => entry.kind === "call" && entry.role === "explorer",
+        )!;
+        await submitNotes(
+          path,
+          { notes: [{ text: externalText, support: [] }] },
+          "during-explorer",
+        );
+        expect(records(path).find((entry) => entry.seq === active.seq)).toEqual(
+          active,
+        );
+      },
+    },
+    coordinate(["n1", "n2"]),
+  ]);
+  expect(await run(request, drive)).toMatchObject({
+    outcome: "turn-limit",
+    turns: 1,
+  });
+  expect(drive.calls.map((call) => call.role)).toEqual([
+    "explorer",
+    "coordinator",
+  ]);
+  expect(drive.calls[0]!.prompt).not.toContain(externalText);
+  expect(
+    coordinatorNotes(drive.calls[1]!.prompt).map((note) => [
+      note.id,
+      note.text,
+    ]),
+  ).toEqual([
+    ["n1", partial.text],
+    ["n2", externalText],
+  ]);
+  expect((await inspect(path)).notes.map((note) => note.id)).toEqual([
+    "n1",
+    "n2",
+  ]);
+  expect((await inspect(path, true)).submissions).toMatchObject([
+    { id: "during-explorer", pending: false, noteIds: ["n2"] },
+  ]);
+});
+
+test("a frozen coordinator retries identical input while a later note waits for the next coordinator cycle", async () => {
+  const { path, request } = await setup(2);
+  const initial = dependencies([
+    { submission: { notes: [partial] } },
+    {
+      state: "failed",
+      error: "coordinator transport interrupted",
+      onStarted: async () => {
+        await submitNotes(
+          path,
+          { notes: [{ text: externalText, support: [] }] },
+          "during-coordinator",
+        );
+      },
+    },
+  ]);
+  expect(await run(request, initial)).toMatchObject({
+    outcome: "call-failure",
+    at: "coordinator",
+  });
+  const before = records(path);
+  const rest = dependencies([
+    coordinate(["n1"]),
+    coordinate(["n2"], ["n2"]),
+    { submission: { notes: [partial] } },
+    coordinate(["n3"]),
+  ]);
+  expect(await run(request, rest)).toMatchObject({
+    outcome: "turn-limit",
+    turns: 2,
+  });
+  expect(rest.calls.map((call) => call.role)).toEqual([
+    "coordinator",
+    "coordinator",
+    "explorer",
+    "coordinator",
+  ]);
+  expect(rest.calls[0]!.prompt).toBe(initial.calls[1]!.prompt);
+  expect(rest.calls[0]!.system).toBe(initial.calls[1]!.system);
+  expect(rest.calls[0]!.prompt).not.toContain(externalText);
+  expect(
+    coordinatorNotes(rest.calls[1]!.prompt).map((note) => note.id),
+  ).toEqual(["n1", "n2"]);
+  expect(rest.calls[2]!.prompt).toContain(externalText);
+  expect(rest.calls[2]!.prompt).toContain("Your first note is n3.");
+  expect(records(path).slice(0, before.length)).toEqual(before);
+});
+
+test("external verification establishes support without inventing verdicts or accepting the final result", async () => {
+  const { path, request } = await setup();
+  await submitNotes(
+    path,
+    { notes: [{ text: externalText, support: [], verification: attestation }] },
+    "reviewed-lemma",
+  );
+  const intake = dependencies([coordinate(["n1"], ["n1"])]);
+  expect(
+    await run(request, {
+      ...intake,
+      pauseRequested: () => intake.calls.length === 1,
+    }),
+  ).toMatchObject({ outcome: "paused", at: "explorer" });
+  const support = (await inspect(path)).notes[0]!;
+  expect(support).toMatchObject({
+    id: "n1",
+    verified: true,
+    dead: false,
+    verdicts: [],
+    verification: attestation,
+  });
+  expect((await inspect(path)).phase).not.toBe("accepted");
+  expect(records(path).some((entry) => entry.kind === "verdict")).toBe(false);
+
+  const drive = dependencies([
+    {
+      submission: {
+        notes: [{ text: "Using n1, complete proof of P.", support: ["n1"] }],
+      },
+    },
+    coordinate(["n2"], ["n2"], [{ note: "n2", verifiers: [...verifierNames] }]),
+    verdict("n2", "source"),
+    verdict("n2", "correctness"),
+    verdict("n2", "requirements"),
+    { submission: { statement: "P holds." } },
+    { submission: { proof: "P follows from the supplied lemma." } },
+    verdict("n2", "reconstruction"),
+  ]);
+  expect(await run(request, drive)).toMatchObject({
+    outcome: "accepted",
+    turns: 1,
+    note: { id: "n2" },
+  });
+  expect(
+    drive.calls.filter((call) => call.label === "elenx-solve/verifier/source"),
+  ).toHaveLength(1);
+  expect(
+    drive.calls.filter(
+      (call) => call.label === "elenx-solve/verifier/correctness",
+    ),
+  ).toHaveLength(1);
+  expect(
+    drive.calls.find(
+      (call) => call.label === "elenx-solve/verifier/reconstruction/proof",
+    )!.prompt,
+  ).toContain(externalText);
+  const notes = (await inspect(path)).notes;
+  expect(notes[0]!.verdicts).toEqual([]);
+  expect(
+    notes[1]!.verdicts.map((entry) => [entry.verifier, entry.verdict]),
+  ).toEqual(verifierNames.map((name) => [name, "PASS"]));
+});
+
+test("a supplied complete proof still needs all four checks and accepts with zero explorer turns", async () => {
+  const { path, request } = await setup();
+  await submitNotes(
+    path,
+    {
+      notes: [
+        {
+          text: "A complete externally supplied proof of P.",
+          support: [],
+          verification: attestation,
+        },
+      ],
+    },
+    "complete-proof",
+  );
+  expect((await inspect(path)).phase).not.toBe("accepted");
+  const drive = dependencies([
+    coordinate(["n1"], ["n1"], [{ note: "n1", verifiers: [...verifierNames] }]),
+    verdict("n1", "source"),
+    verdict("n1", "correctness"),
+    verdict("n1", "requirements"),
+    { submission: { statement: "P holds." } },
+    { submission: { proof: "Independent complete proof of P." } },
+    verdict("n1", "reconstruction"),
+  ]);
+  expect(await run(request, drive)).toMatchObject({
+    outcome: "accepted",
+    turns: 0,
+    note: { id: "n1" },
+  });
+  expect(drive.calls.map((call) => call.label)).toEqual([
+    "elenx-solve/coordinator",
+    "elenx-solve/verifier/source",
+    "elenx-solve/verifier/correctness",
+    "elenx-solve/verifier/requirements",
+    "elenx-solve/verifier/reconstruction/statement",
+    "elenx-solve/verifier/reconstruction/proof",
+    "elenx-solve/verifier/reconstruction",
+  ]);
+  expect((await inspect(path)).notes[0]!.verdicts).toHaveLength(4);
+});
+
+test("an explorer cannot issue its own external verification attestation", () => {
+  expect(
+    explorerResultFor([]).safeParse({
+      notes: [{ ...partial, verification: attestation }],
+    }).success,
+  ).toBe(false);
+});
+
+for (const result of ["PASS", "FAIL"] as const) {
+  test(`external verification cannot bypass a support dependency whose check returns ${result}`, async () => {
+    const { path, request } = await setup();
+    await submitNotes(
+      path,
+      { notes: [{ text: "An unchecked prerequisite.", support: [] }] },
+      "prerequisite",
+    );
+    const first = dependencies([coordinate(["n1"])]);
+    expect(
+      await run(request, {
+        ...first,
+        pauseRequested: () => first.calls.length === 1,
+      }),
+    ).toMatchObject({ outcome: "paused", at: "explorer" });
+    await submitNotes(
+      path,
+      {
+        notes: [
+          {
+            text: "A lemma depending on n1.",
+            support: ["n1"],
+            verification: attestation,
+          },
+        ],
+      },
+      "dependent-lemma",
+    );
+    const drive = dependencies([
+      coordinate(["n2"], [], [{ note: "n1", verifiers: lemmaVerifiers }]),
+      verdict("n1", "source"),
+      verdict("n1", "correctness", result),
+    ]);
+    expect(
+      await run(request, {
+        ...drive,
+        pauseRequested: () => drive.calls.length === 3,
+      }),
+    ).toMatchObject({ outcome: "paused", at: "explorer" });
+    expect(
+      coordinatorNotes(drive.calls[0]!.prompt).find((note) => note.id === "n2"),
+    ).toMatchObject({ verified: false, dead: false, verdicts: [] });
+    expect(
+      (await inspect(path)).notes.find((note) => note.id === "n2"),
+    ).toMatchObject({
+      verified: result === "PASS",
+      dead: result === "FAIL",
+      verdicts: [],
+      verification: attestation,
+    });
+    expect(drive.calls.filter((call) => call.role === "explorer")).toHaveLength(
+      0,
+    );
+  });
+}
+
+test("same-id submissions are idempotent and invalid fields never append journal entries", async () => {
+  const { path } = await setup();
+  const input = {
+    notes: [{ text: externalText, support: [], verification: attestation }],
+  };
+  const receipt = await submitNotes(path, input, "one-note");
+  const before = records(path);
+  expect(await submitNotes(path, input, "one-note")).toEqual(receipt);
+  await expect(
+    submitNotes(path, { notes: [partial] }, "one-note"),
+  ).rejects.toThrow();
+  for (const invalid of [
+    { notes: [] },
+    { notes: [{ ...partial, id: "n99" }] },
+    { notes: [{ ...partial, verified: true }] },
+    { notes: [{ ...partial, support: ["n1", "n1"] }] },
+    {
+      notes: [{ ...partial, verification: { source: "", report: "Checked." } }],
+    },
+    {
+      notes: [{ ...partial, verification: { source: "Reviewer", report: "" } }],
+    },
+    {
+      notes: [
+        { ...partial, verification: { ...attestation, verdict: "PASS" } },
+      ],
+    },
+  ]) {
+    await expect(
+      submitNotes(path, invalid as never, "invalid"),
+    ).rejects.toThrow();
+    expect(records(path)).toEqual(before);
+  }
+  expect((await inspect(path, true)).submissions).toHaveLength(1);
+});
+
+test("reinitializing a terminal campaign neither changes its result nor resolves providers", async () => {
+  const { path, request } = await setup();
+  const drive = dependencies([
+    { submission: { notes: [partial] } },
+    coordinate(["n1"]),
+  ]);
+  const result = await run(request, drive);
+  expect(result).toMatchObject({ outcome: "turn-limit", turns: 1 });
+  const before = records(path);
+  await init(request);
+  expect(
+    await run(request, {
+      models: async () => {
+        throw new Error("terminal run must not load providers");
+      },
+    }),
+  ).toEqual(result);
+  expect(records(path)).toEqual(before);
+  const terminal = await inspect(path);
+  await submitNotes(
+    path,
+    { notes: [{ text: externalText, support: [] }] },
+    "after-terminal",
+  );
+  const after = await inspect(path, true);
+  expect(after.result).toEqual(terminal.result);
+  expect(after.notes).toEqual(terminal.notes);
+  expect(after.submissions).toMatchObject([
+    { id: "after-terminal", pending: true },
+  ]);
+  expect(records(path).slice(0, before.length)).toEqual(before);
+  expect(
+    await run(request, {
+      models: async () => {
+        throw new Error("submitted notes must not reopen a terminal run");
+      },
+    }),
+  ).toEqual(result);
+});

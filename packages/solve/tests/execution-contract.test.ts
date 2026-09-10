@@ -14,14 +14,14 @@ const note = {
 
 test("publishes one workflow execution contract", () => {
   expect(executionContract).toEqual({
-    schemaVersion: 8,
+    schemaVersion: 9,
     application: "elenx-solve",
     protocol: "workflow",
     run: {
       command: "run",
       arguments: ["task", "campaign", "settings"],
       report: {
-        schemaVersion: 8,
+        schemaVersion: 9,
         outcomes: [
           "accepted",
           "turn-limit",
@@ -42,7 +42,7 @@ test("publishes one workflow execution contract", () => {
       candidate: 7,
     }),
   ).toMatchObject({
-    schemaVersion: 8,
+    schemaVersion: 9,
     application: "elenx-solve",
     protocol: "workflow",
     outcome: "accepted",

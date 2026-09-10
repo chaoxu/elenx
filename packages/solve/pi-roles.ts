@@ -165,9 +165,14 @@ const taskText = (task: Task): string =>
 
 // Verdict evidence stays in the journal. Successful explanations are not
 // working memory; failures and uncertainty still carry their full reports.
-function promptNote<T extends Pick<Note, "verdicts">>(note: T) {
+function promptNote<T extends Pick<Note, "verdicts" | "verification">>(
+  note: T,
+) {
   return {
     ...note,
+    ...(note.verification === undefined
+      ? {}
+      : { verification: { source: note.verification.source } }),
     verdicts: note.verdicts.map(({ report, ...verdict }) =>
       verdict.verdict === "PASS" ? verdict : { ...verdict, report },
     ),
@@ -178,7 +183,7 @@ const dependencyText =
   "State a nonroutine external theorem you will use as a separate note, with its exact hypotheses, conclusion, and source, then name that note as support. The theorem note may rely directly on its cited source and can precede its application in the same submission. Routine facts need no separate note.";
 
 const verdictText =
-  "Verdicts come from the source, correctness, requirements, and reconstruction verifiers, which run in that order on the notes that asked for them and stop at a note's first verdict that is not PASS. A note is verified when one verification passed source and correctness over verified support, so its result can be built on. A note is dead when correctness, source, or reconstruction failed it or a note in its support is dead: it can never be verified, and its verdicts say what went wrong. A requirements FAIL leaves a note verified but not accepted. INCONCLUSIVE means a check could not reach a conclusion and identifies the missing evidence. It ends that note's verification attempt without marking the note defective. The next explorer turn receives the report and can address the uncertainty in new notes.";
+  "Verdicts come from the source, correctness, requirements, and reconstruction verifiers, which run in that order on the notes that asked for them and stop at a note's first verdict that is not PASS. A note is verified over verified support when one verification passed source and correctness or its submitting system supplied external verification, so its result can be built on. The verification field identifies that external source, whose attestation is distinct from Elenx's verifier verdicts. A note is dead when correctness, source, or reconstruction failed it or a note in its support is dead: it can never be verified, and its verdicts say what went wrong. A requirements FAIL leaves a note verified but not accepted. INCONCLUSIVE means a check could not reach a conclusion and identifies the missing evidence. It ends that note's verification attempt without marking the note defective. The next explorer turn receives the report and can address the uncertainty in new notes.";
 const completionText =
   "The requirements verifier decides whether a note meets the completion criteria, and a note is accepted when one verification passed all four verifiers.";
 
@@ -190,7 +195,7 @@ export function explorerCall(
     label: roleLabels.explorer,
     system: [
       "You are a fresh mathematical explorer working toward the original task. Treat explorer guidance as fallible advice for this turn. Investigate it, reject a mistaken premise, or choose a better direction. Completing a suggested intermediate step is not a reason to stop doing useful mathematics. Read verification state from the notes' current fields. The method is yours.",
-      "The notes are working memory written by earlier turns and are untrusted. You see every note's summary, support, verdicts, and whether it is verified or dead, and the full text of the support notes the coordinator selected.",
+      "The notes are working memory written by earlier turns or supplied externally. You see every note's summary, support, verdicts, external verification when supplied, and whether it is verified or dead, and the full text of the support notes the coordinator selected.",
       verdictText,
       "Build on a verified note by naming it as support instead of reproving its result. Check every result you rely on from a note that is not verified. Never name a dead note as support: read its verdicts to avoid the direction, or to write a new note that removes the reported defect.",
       dependencyText,
@@ -232,6 +237,7 @@ export function coordinatorCall(
       completionText,
       "A note may be listed only after every note in its support is verified or listed earlier with the correctness verifier. A dead note is never listed again: it is replaced by a new note. After INCONCLUSIVE, use the report to guide useful work on the missing evidence. When a note restates a verified note's result, have the explorer name that note as support instead.",
       "You have no correctness authority.",
+      "Use verified notes as established support without scheduling their supporting checks again. A note proposed for task acceptance still requires all four verifiers.",
       "Call submit_coordination exactly once.",
     ].join(" "),
     prompt: [

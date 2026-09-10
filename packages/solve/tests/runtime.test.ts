@@ -162,7 +162,7 @@ test("run honors an injected source executor instead of invoking the CLI", async
     expect(await inspectCampaign(path)).toMatchObject({
       phase: "turn-limit",
       result: {
-        schemaVersion: 8,
+        schemaVersion: 9,
         application: "elenx-solve",
         protocol: "workflow",
         outcome: "turn-limit",

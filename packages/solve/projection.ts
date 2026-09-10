@@ -13,21 +13,23 @@ const relations = [
   ":create note {id: String => seq: Int, text: String}",
   ":create summary {note: String => seq: Int, summary: String}",
   ":create support {note: String, support: String}",
+  ":create external_verification {note: String => source: String, report: String}",
   ":create verdict {seq: Int, note: String => candidate: Int, verifier: String, verdict: String, report: String}",
 ];
 
-// Verified, dead, and accepted are derived from the verdict rows and the
-// support edges alone. A note is dead when correctness, source, or
-// reconstruction failed it or a note in its support is dead; verified when
-// one candidate passed source and correctness over verified support and it is
-// not dead; accepted when one candidate passed every verifier.
+// Verified, dead, and accepted are derived from recorded evidence and support.
+// A note is dead when correctness, source, or
+// reconstruction failed it or a note in its support is dead; verified after
+// source and correctness pass or external verification is supplied, over
+// verified support, and it is not dead; accepted after every verifier passes.
 const derivedRules = `passed[candidate, note, verifier] := *verdict{seq, candidate, verifier, note, verdict: "PASS"}, seq <= $seq
 dead[note] := *verdict{seq, verifier, note, verdict: "FAIL"}, seq <= $seq, verifier != "requirements"
 dead[note] := *support{note, support}, dead[support]
-passed_source_correctness[note] := passed[candidate, note, "correctness"], passed[candidate, note, "source"]
-unverified[note] := *note{id: note, seq}, seq <= $seq, not passed_source_correctness[note]
+established[note] := passed[candidate, note, "correctness"], passed[candidate, note, "source"]
+established[note] := *external_verification{note}, *note{id: note, seq}, seq <= $seq
+unverified[note] := *note{id: note, seq}, seq <= $seq, not established[note]
 unverified[note] := *support{note, support}, unverified[support]
-verified[note] := passed_source_correctness[note], not unverified[note], not dead[note]
+verified[note] := established[note], not unverified[note], not dead[note]
 accepted[note] := passed[candidate, note, "correctness"], passed[candidate, note, "source"], passed[candidate, note, "requirements"], passed[candidate, note, "reconstruction"], verified[note]`;
 
 export class Projection {
@@ -64,6 +66,7 @@ export class Projection {
       readonly id: string;
       readonly text: string;
       readonly support: readonly string[];
+      readonly verification?: Note["verification"];
     }[],
     seq: EntryId,
   ): Promise<void> {
@@ -81,6 +84,17 @@ export class Projection {
         },
       );
     }
+    const external = entries.flatMap(({ id, verification }) =>
+      verification === undefined
+        ? []
+        : [[id, verification.source, verification.report]],
+    );
+    if (external.length > 0) {
+      await this.db.run(
+        "?[note, source, report] <- $rows :put external_verification {note => source, report}",
+        { rows: external },
+      );
+    }
   }
 
   async file(
@@ -96,24 +110,30 @@ export class Projection {
 
   /** Every note that exists at `seq`, with the summary, verdicts, and flags derived by then, in id order. */
   async at(seq: EntryId): Promise<Note[]> {
-    const [notes, summaries, support, verdicts, flags] = await Promise.all([
-      this.db.run("?[id, text] := *note{id, seq, text}, seq <= $seq", { seq }),
-      this.db.run(
-        "?[note, summary] := *summary{note, seq, summary}, seq <= $seq",
-        { seq },
-      ),
-      this.db.run("?[note, support] := *support{note, support}"),
-      this.db.run(
-        "?[seq, verifier, note, verdict, report] := *verdict{seq, note, verifier, verdict, report}, seq <= $seq :order seq, note",
-        { seq },
-      ),
-      this.db.run(
-        `${derivedRules}
+    const [notes, summaries, support, verdicts, flags, external] =
+      await Promise.all([
+        this.db.run("?[id, text] := *note{id, seq, text}, seq <= $seq", {
+          seq,
+        }),
+        this.db.run(
+          "?[note, summary] := *summary{note, seq, summary}, seq <= $seq",
+          { seq },
+        ),
+        this.db.run("?[note, support] := *support{note, support}"),
+        this.db.run(
+          "?[seq, verifier, note, verdict, report] := *verdict{seq, note, verifier, verdict, report}, seq <= $seq :order seq, note",
+          { seq },
+        ),
+        this.db.run(
+          `${derivedRules}
 ?[note, flag] := verified[note], flag = "verified"
 ?[note, flag] := dead[note], flag = "dead"`,
-        { seq },
-      ),
-    ]);
+          { seq },
+        ),
+        this.db.run(
+          "?[note, source, report] := *external_verification{note, source, report}",
+        ),
+      ]);
     const flagged = (flag: string): Set<unknown> =>
       new Set(
         flags.rows.filter(([, value]) => value === flag).map(([note]) => note),
@@ -122,6 +142,9 @@ export class Projection {
     const deadNotes = flagged("dead");
     const summaryOf = new Map(
       summaries.rows.map(([note, summary]) => [note, summary]),
+    );
+    const verificationOf = new Map(
+      external.rows.map(([id, source, report]) => [id, { source, report }]),
     );
     return notes.rows
       .map(([id, text]) =>
@@ -143,6 +166,9 @@ export class Projection {
             })),
           verified: verifiedNotes.has(id),
           dead: deadNotes.has(id),
+          ...(verificationOf.has(id)
+            ? { verification: verificationOf.get(id) }
+            : {}),
         }),
       )
       .sort((left, right) => byId(left.id, right.id));

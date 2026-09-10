@@ -93,12 +93,31 @@ const distinctSupport = [
   (value: { readonly support: readonly string[] }) => boolean,
   { message: string; path: string[] },
 ];
-// The projection derives the two flags from the verdict rows and the support
-// edges. A note is verified when one verification passed source and
-// correctness over verified support and it is not dead; it is dead when
-// correctness, source, or reconstruction failed it or a note in its support
+// The projection derives the flags from verifier evidence, caller attestations,
+// and support edges. A note is verified after source and correctness pass or
+// external verification is supplied, over verified support, and is not dead.
+// It is dead when correctness, source, or reconstruction failed it or its support
 // is dead, so it can never be verified. A note is accepted when one
 // verification passed every verifier.
+export const externalVerification = z.strictObject({
+  source: nonblank,
+  report: nonblank,
+});
+
+export const submittedNotes = z.strictObject({
+  notes: z
+    .array(
+      z
+        .strictObject({
+          text: nonblank,
+          support: z.array(noteId),
+          verification: externalVerification.optional(),
+        })
+        .refine(...distinctSupport),
+    )
+    .min(1),
+});
+
 const noteFields = z.strictObject({
   id: noteId,
   summary: nonblank.optional(),
@@ -107,6 +126,7 @@ const noteFields = z.strictObject({
   verdicts: z.array(verdict),
   verified: z.boolean(),
   dead: z.boolean(),
+  verification: externalVerification.optional(),
 });
 export const note = noteFields.refine(...distinctSupport);
 export type Note = z.output<typeof note>;

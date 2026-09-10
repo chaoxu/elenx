@@ -1,6 +1,6 @@
 # Use Elenx from another agent
 
-An agent operates Elenx through command-line calls and JSON output. It can read progress and append Explorer guidance while a run is active. Elenx stores the advice and the Explorer inputs that use it in the campaign database.
+An agent operates Elenx through command-line calls and JSON output. It can read progress, supply mathematical notes, and append Explorer guidance while a run is active. Elenx stores the submissions and their delivery boundaries in the campaign database.
 
 The examples below run from the repository root with Bun. [Installation](installation.md) covers released packages and provider credentials. In an installed project, use `bun run elenx-solve` in place of `bun packages/solve/solve.ts`, and find the examples under `node_modules/elenx-solve/examples/`.
 
@@ -20,6 +20,84 @@ bun packages/solve/solve.ts inspect --include-requests campaign.db
 ```
 
 The report contains the task, phase, notes and verdicts, role calls and submissions, and accounting. Use the journal-derived `result` when it is present. `accepted` and `turn-limit` are terminal. `paused`, `call-failure`, and `interrupted` leave unfinished work resumable. An inconclusive check ends that note's verification attempt. Explorer receives its full report on the next turn and can supply missing evidence or pursue another argument within the existing turn limit.
+
+## Supply mathematical notes
+
+Use `init` to create the campaign before any paid work, then submit the notes and start the usual runner:
+
+```sh
+bun packages/solve/solve.ts init task.json campaign.db settings.json
+bun packages/solve/solve.ts submit --id initial-results campaign.db notes.json
+bun packages/solve/solve.ts run task.json campaign.db settings.json
+```
+
+`init` matches the exact task and settings if the campaign already exists. It returns `{application, campaignPath, created}` and makes no provider setup or model call. `submit` requires an existing campaign and also makes no model call. It accepts this JSON shape:
+
+```json
+{
+  "notes": [
+    {
+      "text": "A possible route is to express both even integers as multiples of two.",
+      "support": []
+    }
+  ]
+}
+```
+
+Each note has nonblank `text` and distinct `support` IDs. Its text is persisted exactly. Without `verification`, it enters as ordinary unchecked mathematical work. The coordinator writes its summary and selects any checks or later use through the usual note workflow.
+
+The caller can explicitly mark a result as externally verified by adding `verification`:
+
+```json
+{
+  "notes": [
+    {
+      "text": "For integers a and b, 2a + 2b = 2(a + b). Since a + b is an integer, the sum is even.",
+      "support": [],
+      "verification": {
+        "source": "caller",
+        "report": "Checked the algebraic identity and closure of the integers under addition."
+      }
+    }
+  ]
+}
+```
+
+Choose this field only when the caller intends to supply an established result. `verification.source` identifies the reviewer or caller, and `verification.report` records the basis of that verification. This is separate from the literature source verifier. The attestation makes the note usable as verified support only when its own support is verified and it is not dead. Ordinary source, correctness, or reconstruction failures still make it dead. A requirements failure still prevents acceptance. A supplied complete proof needs all four normal verifiers to pass, even with an attestation. It can then be accepted with zero Explorer turns.
+
+Support IDs name existing notes in this campaign that are not dead. Obtain them from `inspect`, and list every existing note whose result the submitted text uses. A submission cannot reference guessed future IDs or another note in that same submission. When transferring material from another run, the caller selects the useful work and rewrites dependencies to existing destination IDs. The solver assigns new note IDs when it takes the submission into the workflow.
+
+Use `-` for standard input, or call the exported function from TypeScript:
+
+```sh
+bun packages/solve/solve.ts submit --id initial-results campaign.db - < notes.json
+```
+
+```ts
+import { submitNotes } from "elenx-solve";
+
+const receipt = await submitNotes(
+  "campaign.db",
+  { notes: [{ text: "Try the integer parametrization a = 2m.", support: [] }] },
+  "integer-parametrization",
+);
+```
+
+The receipt contains `call`, `atMs`, `schemaVersion`, `id`, and `notes`. Repeating the same id with the same note texts, support, and verification returns the original receipt. A changed submission with that id fails. Omitting the id creates a new submission on every call. Keep a stable id when retrying after an interrupted command.
+
+The caller prepares text from PDFs, CSVs, retrieved sources, datasets, or prior runs and includes enough statements, evidence, and limitations for its intended use. Elenx accepts text notes. Conversion, retrieval, and data analysis remain with the caller and add no model role to the solver.
+
+## When notes take effect
+
+Notes enter the next coordinator intake whose input has not been frozen. Before the first Explorer call, `init` followed by `submit` lets the coordinator file and consider them first. During an Explorer call, the runner preserves that Explorer's assigned IDs, appends the supplied notes after its output, and passes both to the next coordinator. A coordinator or verifier that has already started retains its original input. Later notes wait until another intake boundary. The same boundary and IDs survive retries and reopening.
+
+`submit` can run while the runner holds its lock. It stores work without starting or resuming execution. A paused campaign still needs `run`. A terminal campaign retains later submissions as pending and keeps its terminal result.
+
+```sh
+bun packages/solve/solve.ts inspect --include-submissions campaign.db
+```
+
+The opt-in `submissions` array adds `pending`, `boundary`, `coordinatorCall`, and, once assigned, `noteIds` to each receipt. `boundary` is the journal call that froze intake. `coordinatorCall` identifies the first coordinator request receiving it. `pending: false` confirms that request has started, not that a model verified the text. Read the note's verdicts and the campaign result for verification and acceptance. Submitted notes use the existing support selection, transitive closure, and deduplicated proof formatting.
 
 ## Submit advice
 
@@ -92,13 +170,13 @@ Send one `SIGINT` or `SIGTERM` to pause after the active role call settles. A se
 bun packages/solve/solve.ts run task.json campaign.db settings.json
 ```
 
-Guidance is already in the campaign. Leave the original settings file unchanged. The command resumes the first missing role call and preserves completed work. Durability supports continuation from recorded state. Rewinding a campaign or reopening a terminal result is outside this command's behavior.
+Guidance and submitted notes are already in the campaign. Leave the original settings file unchanged. The command resumes the first missing role call and preserves completed work. Durability supports continuation from recorded state. Rewinding a campaign or reopening a terminal result is outside this command's behavior.
 
-Workflow schema 26 keeps `explorerGuidance` as per-turn advice and lets inconclusive verification return to Explorer. The note retains the full report, while acceptance still requires every required check to pass. Preserve older journals with the exact implementation that wrote them. The updated solver deliberately refuses to replay them against changed prompts. Start a fresh campaign to use the new role contract.
+Workflow schema 27 adds supplied notes and durable coordinator intake. `explorerGuidance` remains per-turn advice, and inconclusive verification returns its report to Explorer. Preserve older journals with the exact implementation that wrote them. The updated solver deliberately refuses to replay them against changed prompts. Start a fresh campaign to use the new role contract.
 
-The `run` arguments, execution-contract schema 8, and top-level inspection fields stay unchanged. Consumers that read coordinator submissions should use `explorerGuidance`. `--include-guidance` is an explicit inspection option. Runs with no external advice add no guidance delivery records.
+The `run` arguments stay unchanged. Execution-contract schema 9 adds optional external `verification` on notes and permits accepted results with zero Explorer turns. Consumers that read coordinator submissions should use `explorerGuidance`. `--include-guidance` and `--include-submissions` are explicit inspection options. Runs with no external input add no delivery records for it.
 
-All guidance and delivery boundaries live in `campaign.db`. The `.runner.lock` and `.guidance.lock` files only coordinate processes and hold no campaign state. Copy a campaign after its handles close, or use SQLite's backup facilities for a live snapshot. See the kernel [durability contract](../../../SPEC.md) for recovery and copy rules.
+All notes, guidance, and delivery boundaries live in `campaign.db`. The `.runner.lock`, `.guidance.lock`, and `.notes.lock` files only coordinate processes and hold no campaign state. Copy a campaign after its handles close, or use SQLite's backup facilities for a live snapshot. See the kernel [durability contract](../../../SPEC.md) for recovery and copy rules.
 
 ## Export and review
 

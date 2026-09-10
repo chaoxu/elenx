@@ -203,7 +203,7 @@ test("the durable workflow accepts a note every verifier passed", async () => {
     }[];
   };
   expect(inspection.phase).toBe("accepted");
-  expect(inspection.result.schemaVersion).toBe(8);
+  expect(inspection.result.schemaVersion).toBe(9);
   expect(inspection.result.candidate).toBe(phase.candidate);
   expect(inspection.result.note.text).toBe(good.text);
   expect(inspection.notes[0]).toMatchObject({ verified: true, dead: false });

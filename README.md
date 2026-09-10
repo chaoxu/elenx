@@ -1,6 +1,6 @@
 # Elenx
 
-Elenx runs mathematical exploration with durable notes, verification, and guidance from people or other agents. The included solver saves its work in a SQLite campaign. You can inspect its progress, submit advice for upcoming Explorer turns, and resume an interrupted run from its recorded work.
+Elenx runs mathematical exploration with durable notes, verification, and guidance from people or other agents. The included solver saves its work in a SQLite campaign. You can inspect its progress, supply mathematical notes or advice, and resume an interrupted run from its recorded work.
 
 The underlying kernel is also a library for agent applications. It stores exact candidate bytes, records calls, tool invocations, settled tool results, and unknown tool outcomes through an append-only campaign API, binds verdicts to fresh candidate-scoped calls, and derives verification status from the recorded evidence.
 
@@ -30,6 +30,16 @@ bun packages/solve/solve.ts inspect --include-guidance campaign.db
 
 Guidance is saved immediately and delivered to the next Explorer turn whose input has not been frozen. It applies to that turn only, including its retries. The task, completion criteria, and verification rules stay fixed. See [using Elenx from another agent](packages/solve/docs/agent-usage.md) for submission receipts, delivery, and recovery.
 
+To supply mathematical work before exploration, create the campaign and submit text notes first:
+
+```sh
+bun packages/solve/solve.ts init task.json campaign.db settings.json
+bun packages/solve/solve.ts submit --id initial-notes campaign.db notes.json
+bun packages/solve/solve.ts run task.json campaign.db settings.json
+```
+
+`init` and `submit` make no model calls. Submitted notes enter the coordinator for filing and verification. A caller can explicitly attach external verification to a supporting result. Acceptance of a complete proof still requires all four normal verifiers. The [note submission guide](packages/solve/docs/agent-usage.md#supply-mathematical-notes) gives the JSON format and explains how to add notes during a run.
+
 ## Install
 
 For the packaged solver, follow [installation and provider setup](packages/solve/docs/installation.md). Release `v0.9.4` includes kernel 0.9.4 and solver 0.35.0, with OpenAI API and Codex subscription examples.
@@ -52,7 +62,7 @@ The API and campaign schema are experimental. Campaigns are accepted only when t
 | What does the kernel guarantee? | [`SPEC.md`](SPEC.md) |
 | Which words name which concepts? | [`docs/terms.md`](docs/terms.md) |
 | How do I run the solver? | [`packages/solve/README.md`](packages/solve/README.md) |
-| How can another agent inspect and guide a run? | [`packages/solve/docs/agent-usage.md`](packages/solve/docs/agent-usage.md) |
+| How can another agent inspect a run, supply notes, or give advice? | [`packages/solve/docs/agent-usage.md`](packages/solve/docs/agent-usage.md) |
 | How do the solver roles and replay behave? | [`packages/solve/docs/role-runner.md`](packages/solve/docs/role-runner.md) |
 | How do I build an application? | [`docs/application-author.md`](docs/application-author.md) |
 | How do I install packages and configure a provider? | [`packages/solve/docs/installation.md`](packages/solve/docs/installation.md) |
@@ -71,7 +81,7 @@ The deterministic verifier example is [`examples/v1/scripted-verifier.ts`](examp
 }
 ```
 
-The explorer writes notes. The coordinator files them, gives `explorerGuidance` for the next turn, selects supporting texts, and lists the notes to verify. The source, correctness, requirements, and reconstruction verifiers record verdicts on those notes. The workflow ends when all four pass one note. `inspect` derives the phase, notes, and terminal result from the journal. The [solver guide](packages/solve/README.md#run) documents the commands and their results.
+The explorer writes notes, and callers can submit additional notes. The coordinator files them, gives `explorerGuidance` for the next turn, selects supporting texts, and lists the notes to verify. The source, correctness, requirements, and reconstruction verifiers record verdicts on those notes. The workflow ends when all four pass one note, including a supplied proof verified before the first Explorer turn. `inspect` derives the phase, notes, and terminal result from the journal. The [solver guide](packages/solve/README.md#run) documents the commands and their results.
 
 ## Development
 

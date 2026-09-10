@@ -213,7 +213,7 @@ test("reopening after an inconclusive source check lets Explorer supply a new pr
   campaign.close();
   expect(await inspectCampaign(path)).toMatchObject({
     result: {
-      schemaVersion: 8,
+      schemaVersion: 9,
       outcome: "accepted",
       turns: 2,
       note: { id: "n2" },
@@ -249,7 +249,7 @@ test("an inconclusive native source check respects the last Explorer turn", asyn
   campaign.close();
 
   expect(await inspectCampaign(path)).toMatchObject({
-    result: { schemaVersion: 8, outcome: "turn-limit", turns: 1 },
+    result: { schemaVersion: 9, outcome: "turn-limit", turns: 1 },
   });
 });
 

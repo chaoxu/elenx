@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { Projection } from "./projection";
 import { explorerGuidance, freezeExplorerGuidance } from "./guidance";
+import { freezeSubmittedNotes, submittedNotesBoundary } from "./notes";
 import { byId, supportClosure } from "./support";
 import {
   codexSource,
@@ -38,7 +39,7 @@ import {
   type VerifierInput,
 } from "./roles";
 
-export const workflowSchemaVersion = 26;
+export const workflowSchemaVersion = 27;
 export const workflowConfig = z.strictObject({
   kind: z.literal("workflow"),
   schemaVersion: z.literal(workflowSchemaVersion),
@@ -83,6 +84,12 @@ export interface WorkflowSnapshot {
   readonly phase: WorkflowPhase;
   /** Journal boundary before the next explorer turn, used only by the driver. */
   readonly explorerAfter?: EntryId;
+  /** An unfrozen boundary where submitted notes may enter the coordinator. */
+  readonly notesAfter?: EntryId;
+  readonly noteSubmissions: readonly {
+    readonly call: EntryId;
+    readonly noteIds: readonly string[];
+  }[];
 }
 
 function parseConfig(declaration: Entry | undefined): WorkflowConfig {
@@ -193,45 +200,75 @@ export async function deriveWorkflow(
     let cursor = records[0]!.seq;
     let guidance = "";
     let support: readonly string[] = [];
-    for (let turn = 1; turn <= config.settings.maxExplorerTurns; turn += 1) {
-      const known = await projection.at(cursor);
-      const explorerRequest = explorerInput.parse({
-        task: config.task,
-        explorerGuidance: explorerGuidance(records, cursor, guidance),
-        notes: known.map(({ text, ...rest }) => rest),
-        support: [
-          ...new Set([
-            ...support,
-            ...(await supportClosure(
-              support.map((id) => pick(known, id)),
-              known,
-            )),
-          ]),
-        ]
-          .sort(byId)
-          .map((id) => pick(known, id)),
-      });
-      const explored = settledCall(
-        records,
-        cursor,
-        explorerCall(explorerRequest),
-      );
-      if (explored === undefined) {
-        return {
-          config,
-          notes: known,
-          phase: { kind: "explorer", input: explorerRequest },
-          explorerAfter: cursor,
-        };
-      }
-      cursor = explored.settled;
-      await projection.add(
-        explored.value.notes.map((entry, position) => ({
-          id: noteIdAfter(known.length, position),
+    let turns = 0;
+    const noteSubmissions: { call: EntryId; noteIds: string[] }[] = [];
+    const includeSubmitted = async (after: EntryId) => {
+      const boundary = submittedNotesBoundary(records, after);
+      if (boundary === undefined) return false;
+      let count = (await projection.at(after)).length;
+      for (const submission of boundary.submissions) {
+        const entries = submission.notes.map((entry, index) => ({
+          id: noteIdAfter(count, index),
           ...entry,
-        })),
-        cursor,
-      );
+        }));
+        await projection.add(entries, boundary.call);
+        noteSubmissions.push({
+          call: submission.call,
+          noteIds: entries.map(({ id }) => id),
+        });
+        count += entries.length;
+      }
+      cursor = boundary.call;
+      return true;
+    };
+    while (turns < config.settings.maxExplorerTurns) {
+      // A submitted note goes directly to the coordinator. Otherwise the
+      // next explorer writes notes, which may be joined by pending submissions.
+      let included = await includeSubmitted(cursor);
+      if (!included) {
+        const known = await projection.at(cursor);
+        const explorerRequest = explorerInput.parse({
+          task: config.task,
+          explorerGuidance: explorerGuidance(records, cursor, guidance),
+          notes: known.map(({ text, ...rest }) => rest),
+          support: [
+            ...new Set([
+              ...support,
+              ...(await supportClosure(
+                support.map((id) => pick(known, id)),
+                known,
+              )),
+            ]),
+          ]
+            .sort(byId)
+            .map((id) => pick(known, id)),
+        });
+        const explored = settledCall(
+          records,
+          cursor,
+          explorerCall(explorerRequest),
+        );
+        if (explored === undefined) {
+          return {
+            config,
+            noteSubmissions,
+            notes: known,
+            phase: { kind: "explorer", input: explorerRequest },
+            explorerAfter: cursor,
+            notesAfter: cursor,
+          };
+        }
+        cursor = explored.settled;
+        turns += 1;
+        await projection.add(
+          explored.value.notes.map((entry, position) => ({
+            id: noteIdAfter(known.length, position),
+            ...entry,
+          })),
+          cursor,
+        );
+        included = await includeSubmitted(cursor);
+      }
       const coordinatorRequest = coordinatorInput.parse({
         task: config.task,
         notes: await projection.at(cursor),
@@ -244,8 +281,10 @@ export async function deriveWorkflow(
       if (coordinated === undefined) {
         return {
           config,
+          noteSubmissions,
           notes: coordinatorRequest.notes,
           phase: { kind: "coordinator", input: coordinatorRequest },
+          ...(included ? {} : { notesAfter: cursor }),
         };
       }
       cursor = coordinated.settled;
@@ -292,6 +331,7 @@ export async function deriveWorkflow(
       if (first === undefined) {
         return {
           config,
+          noteSubmissions,
           notes: filed,
           phase: { kind: "verifier", input: verifierRequest },
         };
@@ -314,10 +354,11 @@ export async function deriveWorkflow(
         const notes = await projection.at(cursor);
         return {
           config,
+          noteSubmissions,
           notes,
           phase: {
             kind: "accepted",
-            turns: turn,
+            turns,
             note: pick(notes, acceptedId),
             notes,
             candidate,
@@ -333,6 +374,7 @@ export async function deriveWorkflow(
       ) {
         return {
           config,
+          noteSubmissions,
           notes: await projection.at(cursor),
           phase: { kind: "verifier", input: verifierRequest, candidate },
         };
@@ -341,6 +383,7 @@ export async function deriveWorkflow(
     const ended = await projection.at(cursor);
     return {
       config,
+      noteSubmissions,
       notes: ended,
       phase: {
         kind: "turn-limit",
@@ -379,6 +422,14 @@ export async function runWorkflow(
       return phase;
     }
     if (dependencies.pauseRequested?.()) return phase;
+    if (
+      snapshot.notesAfter !== undefined &&
+      (await freezeSubmittedNotes(campaign, snapshot.notesAfter))
+    ) {
+      snapshot = await deriveWorkflow(campaign.records());
+      phase = snapshot.phase;
+      continue;
+    }
     dependencies.status?.(phase.kind);
     const wasVerifier = phase.kind === "verifier";
     if (phase.kind === "explorer") {

@@ -11,8 +11,15 @@ import {
   isRoleCommand,
   readSettings,
   runRoleCommand,
+  submitNotes,
 } from "./role-cli";
-import { run, settings, type RunDependencies, type Settings } from "./runner";
+import {
+  init,
+  run,
+  settings,
+  type RunDependencies,
+  type Settings,
+} from "./runner";
 import { task } from "./roles";
 import {
   createModelRuntime,
@@ -21,23 +28,28 @@ import {
 } from "./runtime";
 import { withSerialToolCalls } from "./serial-tools";
 
-export { executionContract, guideCampaign, run, settings };
+export { executionContract, guideCampaign, init, run, settings, submitNotes };
 export type { ExecutionContract, ExecutionReport } from "./execution-contract";
 export type { RunDependencies, Settings, SolveModels };
 
 const usage = `Usage:
   elenx-solve contract
+  elenx-solve init TASK.json CAMPAIGN.db SETTINGS.json
   elenx-solve run TASK.json CAMPAIGN.db SETTINGS.json
   elenx-solve explorer INPUT.json CAMPAIGN.db SETTINGS.json
   elenx-solve coordinator INPUT.json CAMPAIGN.db SETTINGS.json
   elenx-solve verifier INPUT.json CAMPAIGN.db SETTINGS.json
   elenx-solve guide [--id ID] CAMPAIGN.db GUIDANCE.txt
-  elenx-solve inspect [--include-requests] [--include-guidance] CAMPAIGN.db
+  elenx-solve submit [--id ID] CAMPAIGN.db NOTES.json
+  elenx-solve inspect [--include-requests] [--include-guidance] [--include-submissions] CAMPAIGN.db
   elenx-solve export CAMPAIGN.db
 
 run starts or resumes the durable explorer, coordinator, and verifier workflow.
+init creates or matches its declaration without provider setup or model calls.
 guide appends explorer guidance from a UTF-8 file (or - for stdin).
 Guidance takes effect at the next unfrozen explorer turn. Reuse --id for retries.
+submit appends text notes and optional external verification receipts from JSON (or - for stdin).
+Submitted notes reach a coordinator before the next unfrozen explorer turn. Terminal runs stay terminal.
 Standalone role commands execute the same role boundaries independently.`;
 
 export function modelRuntimeOptions(environment: NodeJS.ProcessEnv): {
@@ -59,6 +71,7 @@ async function main(args: readonly string[]): Promise<void> {
       help: { type: "boolean", short: "h" },
       "include-requests": { type: "boolean" },
       "include-guidance": { type: "boolean" },
+      "include-submissions": { type: "boolean" },
       id: { type: "string" },
     },
   });
@@ -69,16 +82,30 @@ async function main(args: readonly string[]): Promise<void> {
   const [command, ...positionals] = parsed.positionals;
   if (parsed.values["include-guidance"] === true && command !== "inspect")
     throw new Error(usage);
-  if (parsed.values.id !== undefined && command !== "guide")
+  if (parsed.values["include-submissions"] === true && command !== "inspect")
     throw new Error(usage);
-  if (command === "guide") {
+  if (
+    parsed.values.id !== undefined &&
+    command !== "guide" &&
+    command !== "submit"
+  )
+    throw new Error(usage);
+  if (command === "guide" || command === "submit") {
     if (positionals.length !== 2 || parsed.values["include-requests"] === true)
       throw new Error(usage);
     const text =
       positionals[1] === "-"
         ? await Bun.stdin.text()
         : await readFile(positionals[1]!, "utf8");
-    writeJson(await guideCampaign(positionals[0]!, text, parsed.values.id));
+    writeJson(
+      command === "guide"
+        ? await guideCampaign(positionals[0]!, text, parsed.values.id)
+        : await submitNotes(
+            positionals[0]!,
+            JSON.parse(text),
+            parsed.values.id,
+          ),
+    );
     return;
   }
   if (isRoleCommand(command)) {
@@ -102,6 +129,7 @@ async function main(args: readonly string[]): Promise<void> {
       await inspectCampaign(positionals[0]!, {
         includeRequests: parsed.values["include-requests"] === true,
         includeGuidance: parsed.values["include-guidance"] === true,
+        includeSubmissions: parsed.values["include-submissions"] === true,
       }),
     );
     return;
@@ -117,7 +145,7 @@ async function main(args: readonly string[]): Promise<void> {
     return;
   }
   if (
-    command !== "run" ||
+    (command !== "run" && command !== "init") ||
     positionals.length !== 3 ||
     parsed.values["include-requests"] === true
   ) {
@@ -128,6 +156,15 @@ async function main(args: readonly string[]): Promise<void> {
   const campaignPath = positionals[1]!;
   const settingsPath = positionals[2]!;
   const workflowSettings = await readSettings(settingsPath);
+  const request = {
+    task: task.parse(await readJson(taskPath)),
+    campaignPath,
+    settings: workflowSettings,
+  };
+  if (command === "init") {
+    writeJson(await init(request));
+    return;
+  }
   const controller = new AbortController();
   let pauseRequested = false;
   const stop = () => {
@@ -141,23 +178,16 @@ async function main(args: readonly string[]): Promise<void> {
   process.on("SIGINT", stop);
   process.on("SIGTERM", stop);
   try {
-    const result = await run(
-      {
-        task: task.parse(await readJson(taskPath)),
-        campaignPath,
-        settings: workflowSettings,
+    const result = await run(request, {
+      models: async () => {
+        return withSerialToolCalls(
+          await createModelRuntime(modelRuntimeOptions(process.env)),
+        );
       },
-      {
-        models: async () => {
-          return withSerialToolCalls(
-            await createModelRuntime(modelRuntimeOptions(process.env)),
-          );
-        },
-        signal: controller.signal,
-        pauseRequested: () => pauseRequested,
-        status: (phase) => console.error(phase),
-      },
-    );
+      signal: controller.signal,
+      pauseRequested: () => pauseRequested,
+      status: (phase) => console.error(phase),
+    });
     writeJson(executionReport(result));
     if (result.outcome === "interrupted") process.exitCode = 130;
     if (result.outcome === "call-failure") process.exitCode = 1;

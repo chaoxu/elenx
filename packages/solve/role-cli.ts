@@ -14,6 +14,7 @@ import { z } from "zod";
 
 import { campaignAccounting } from "./accounting";
 import { appendGuidance, inspectGuidance } from "./guidance";
+import { appendSubmittedNotes, inspectSubmittedNotes } from "./notes";
 import { executionReport } from "./execution-contract";
 import {
   createPiRoles,
@@ -37,6 +38,7 @@ import {
   sourceVerdicts,
   statement,
   succeededSubmission,
+  submittedNotes,
   verdicts,
   verifierFromLabel,
   verifierInput,
@@ -145,6 +147,7 @@ export async function inspectCampaign(
   options: {
     readonly includeRequests?: boolean;
     readonly includeGuidance?: boolean;
+    readonly includeSubmissions?: boolean;
   } = {},
 ): Promise<Json> {
   const reader = openReader(path);
@@ -220,6 +223,14 @@ export async function inspectCampaign(
         ...(options.includeGuidance === true
           ? { guidance: inspectGuidance(records) }
           : {}),
+        ...(options.includeSubmissions === true
+          ? {
+              submissions: inspectSubmittedNotes(
+                records,
+                snapshot?.noteSubmissions,
+              ),
+            }
+          : {}),
       }),
     ) as Json;
   } finally {
@@ -240,6 +251,53 @@ export async function guideCampaign(
       declaration?.kind === "campaign" ? declaration.config : undefined,
     );
     return await appendGuidance(path, campaign, text, id);
+  } finally {
+    campaign.close();
+  }
+}
+
+/** Submit ordinary note text and optional caller attestation without inference. */
+export async function submitNotes(
+  path: string,
+  input: unknown,
+  id: string = crypto.randomUUID(),
+) {
+  const value = submittedNotes.parse(input);
+  const campaign = openCampaign(path);
+  try {
+    const declaration = campaign.records()[0];
+    assertApplication(declaration);
+    workflowConfig.parse(
+      declaration?.kind === "campaign" ? declaration.config : undefined,
+    );
+    return await appendSubmittedNotes(
+      path,
+      campaign,
+      value,
+      id,
+      async (records) => {
+        const snapshot = await deriveWorkflow(records);
+        const live = new Set(
+          snapshot.notes.filter((note) => !note.dead).map((note) => note.id),
+        );
+        for (const note of value.notes) {
+          if (
+            new Set(note.support).size !== note.support.length ||
+            note.support.some((support) => !live.has(support))
+          )
+            throw new Error(
+              "submitted support must name distinct existing notes that are not dead",
+            );
+          const omitted = [
+            ...new Set(note.text.match(/\bn[1-9][0-9]*\b/gu) ?? []),
+          ].filter((id) => live.has(id) && !note.support.includes(id));
+          if (omitted.length)
+            throw new Error(
+              `the submitted text names ${omitted.join(", ")} but its support does not`,
+            );
+        }
+      },
+    );
   } finally {
     campaign.close();
   }

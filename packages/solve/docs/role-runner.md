@@ -10,11 +10,11 @@ VerifierInput    -> VerifierResult
 
 ## Notes and verdicts
 
-A note is `id`, `summary`, `text`, `support`, `verdicts`, `verified`, and `dead`. The explorer writes the text and names the support, the notes whose results the text uses without proving them; the coordinator writes the summary; the verifiers write the verdicts; the projection derives the two flags. Notes are immutable: a change is a new note. Every role receives notes in this one shape.
+A note is `id`, `summary`, `text`, `support`, `verdicts`, `verified`, and `dead`, with optional external `verification`. Explorer or the caller supplies the text and names the support, the notes whose results the text uses without proving them. The coordinator writes the summary, the verifiers write the verdicts, and the projection derives the two flags. Notes are immutable: a change is a new note. Every role receives notes in this one shape.
 
 The fold builds the projection on every derivation: an in-memory Cozo database of notes, summaries, and verdicts, each carrying the journal sequence that produced it, and support edges. Which notes exist at a journal sequence, which are verified, dead, or accepted, and a note's closure, are queries against the projection. Nothing is persisted there; the journal is the only source of truth.
 
-A verdict names the verifier that produced it, the note it is about, `PASS`, `FAIL`, or `INCONCLUSIVE`, and a report. It always names a note under verification: support is established and not under review. Verdicts accumulate on the note they name, so a reader can weigh a note by the verdicts it carries. A note is verified when one verification passed source and correctness, every note in its support is verified, and it is not dead. A note is dead when correctness, source, or reconstruction failed it or a note in its support is dead. A note is accepted when one verification passed all four verifiers and the note is verified over verified support.
+A verdict names the verifier that produced it, the note it is about, `PASS`, `FAIL`, or `INCONCLUSIVE`, and a report. It always names a note under verification: support is established and not under review. Verdicts accumulate on the note they name, so a reader can weigh a note by the verdicts it carries. A note is verified when source and correctness passed in one verification or the caller supplied external verification, provided every note in its support is verified and it is not dead. A note is dead when correctness, source, or reconstruction failed it or a note in its support is dead. This takes precedence over external verification. A note is accepted when one verification passed all four normal verifiers and the note is verified over verified support.
 
 The journal, typed inputs, and inspection retain every report. Model prompts include the verdict and verifier for a PASS, with its explanation omitted. FAIL and INCONCLUSIVE reports remain complete. Note summaries retain the statement's hypotheses and limitations and cannot enlarge a result through a verifier's explanation.
 
@@ -26,6 +26,18 @@ The workflow includes the complete closure of the coordinator's selected support
 
 A nonroutine imported theorem is stated as a separate note with its hypotheses, conclusion, and source before another note applies it. Both can be submitted in the same Explorer turn and verified through the existing ordered verification. The source verifier catches missing substantive dependencies before correctness and reconstruction. A note stating the external theorem may cite the source directly, and routine facts need no separate note. No additional verifier or theorem registry is used.
 
+## Durable submitted notes
+
+`init TASK.json CAMPAIGN.db SETTINGS.json` creates the workflow declaration or checks an existing declaration against the exact task and settings. It resolves no provider and makes no model call. `submit [--id ID] CAMPAIGN.db NOTES.json` appends `{notes: [{text, support, verification?}]}` to an existing campaign. Standard input is accepted as `-`. Every text is stored exactly. The command uses a local `elenx-solve/notes` call with request `{schemaVersion: 1, id, notes}`. The request is the durable receipt, including when the submitting process stops before its local call-result. A short independent notes lock serializes submission IDs alongside an active runner. Retrying an id with identical note content returns its receipt, while different content fails.
+
+Submitted support IDs must name distinct existing campaign notes that are not dead. A caller cannot refer to a future note or another note in the same submission. Explorer's existing ability to name earlier notes in its own output is unchanged. Assignment happens at intake, and `inspect --include-submissions` exposes the resulting note IDs for later submissions.
+
+An optional `verification: {source, report}` records the caller's explicit external verification. `source` identifies the reviewer or caller and `report` gives its basis. The projection can then establish that note over verified support. This creates no model-verifier verdict and cannot accept the campaign. A supplied complete proof must pass all four normal verifiers, so a campaign can be accepted with zero Explorer turns. The literature source verifier remains a separate check with its existing obligation.
+
+Before the next available coordinator input, `elenx-solve/coordinator-notes` freezes pending submissions in a local call with `{schemaVersion: 1, after, through}`. The fold assigns note IDs in submission order after the notes already present at `after`. When an Explorer is active, its returned notes receive their IDs first, followed by submitted notes at the boundary before its coordinator. Intake before the first Explorer enters the coordinator directly. Already frozen coordinator and verifier requests remain unchanged, and later submissions wait for another intake boundary. Reopening reuses the recorded boundary and assignment. Terminal campaigns retain later submissions as pending.
+
+The coordinator files submitted notes and chooses their verification or use through its existing schema. Ordinary submissions start unchecked. Externally verified supporting notes use the same selection, support closure, and compact prompt formatting as other verified notes. The caller handles file conversion, retrieval, dataset analysis, and prior-run selection before supplying text. No additional model role is involved.
+
 ## Durable Explorer guidance
 
 The coordinator's `explorerGuidance` and pending external advice share the Explorer's field of the same name. Its settled submission already records its recommendation. No duplicate coordinator record is needed. The field holds a recommendation and its reasons, while `support` selects full-text evidence.
@@ -34,7 +46,7 @@ The coordinator's `explorerGuidance` and pending external advice share the Explo
 
 Before a new Explorer turn with pending advice, the runner records a local `elenx-solve/explorer-guidance` call with `{schemaVersion: 1, after, through}`. `after` identifies the journal boundary before that turn, and `through` is the last entry in the snapshot used to freeze its input. The fold includes external guidance after the previous delivery cutoff and at most `through`, joined after the coordinator's text. New messages arriving after that snapshot wait for a later turn. A boundary remains authoritative after a crash and through retries. A previously started turn retains its original input. Consumed advice is omitted from subsequent turns.
 
-The command records advice without checking or changing the workflow phase. Advice on a terminal campaign remains pending. This avoids coordinating command submission with workflow completion. No delivery record is added when there is no pending advice. Workflow schema 26 preserves advisory guidance and returns inconclusive verification reports to Explorer within the existing turn limit. The external execution contract stays at schema 8. [Agent usage](agent-usage.md) describes submission and recovery.
+The command records advice without checking or changing the workflow phase. Advice on a terminal campaign remains pending. This avoids coordinating command submission with workflow completion. No delivery record is added when there is no pending advice. Workflow schema 27 records submitted notes alongside advisory guidance. Execution-contract schema 9 includes optional note verification and accepted results with zero Explorer turns. [Agent usage](agent-usage.md) describes submission and recovery.
 
 ## Coordinator
 
@@ -68,7 +80,7 @@ explorer -> coordinator -> explorer
                                     -> explorer
 ```
 
-Explorer results number the notes `n1`, `n2`, and so on in order. Note verdicts and flags are derived from the kernel verdict entries settled before each role call. Repeating `run` invokes the first role whose settled call is missing. Repeating it on a completed campaign makes no model request.
+Notes are numbered `n1`, `n2`, and so on as Explorer results and frozen submissions enter the workflow. Submitted notes can enter the coordinator before an Explorer call, so coordinator work and verification do not themselves consume Explorer turns. Note verdicts and flags are derived from the external verification, support edges, and kernel verdict entries available before each role call. Repeating `run` invokes the first role whose settled call is missing. Repeating it on a completed campaign makes no model request.
 
 `accepted` and `turn-limit` are terminal results. `paused`, `call-failure`, and `interrupted` leave the campaign resumable.
 
@@ -76,12 +88,14 @@ Explorer results number the notes `n1`, `n2`, and so on in order. Note verdicts 
 
 `inspect` reports the task, current phase, notes with verdicts and flags, every role call once with its state and submission, telemetry-derived spend, and with `--include-requests` the exact requests. A terminal campaign adds `result`, derived from the journal. Unfinished campaigns report their next phase without a terminal result. Inconclusive reports remain on their notes as the workflow advances. In-flight calls, failed calls, and correction-only judgments still need their missing verdict before that verification finishes. Each verifier call carries its verifier name and its candidate.
 
+`--include-submissions` adds each receipt with `pending`, its `boundary` call, its first `coordinatorCall`, and assigned `noteIds` when available. A started coordinator request establishes delivery, including if it later fails. Verification and acceptance remain properties of the notes and terminal result. The inspection option makes no model call.
+
 `export` returns the accepted note preceded by its closure in id order, each under a heading with its id.
 
 ## Internal derivation
 
-Each inspection captures the journal once. Workflow phase, notes, calls, guidance delivery, pause reports, and accounting are derived from that same entry array, so a concurrent append cannot mix different journal prefixes in one report.
+Each inspection captures the journal once. Workflow phase, notes, calls, guidance and note delivery, pause reports, and accounting are derived from that same entry array, so a concurrent append cannot mix different journal prefixes in one report.
 
-Cozo derives support closure through the single query in `support.ts`. Explorer support selection, verifier-input validation, verification-window calculation, individual verifier prompts, and accepted export all use it. TypeScript checks duplicate IDs, missing notes, and the requirement that support precede its note, then sorts the result in numeric ID order. The Cozo Node binding is asynchronous, so verifier-input validation and verifier prompt construction await that query internally. The public role-input fields are unchanged. Changed prompt bytes belong to workflow schema 26.
+Cozo derives support closure through the single query in `support.ts`. Explorer support selection, verifier-input validation, verification-window calculation, individual verifier prompts, and accepted export all use it. TypeScript checks duplicate IDs, missing notes, and the requirement that support precede its note, then sorts the result in numeric ID order. The Cozo Node binding is asynchronous, so verifier-input validation and verifier prompt construction await that query internally. Workflow schema 27 carries optional external verification on notes and the durable submission boundaries.
 
 The status projection rebuilds its temporary Cozo relations from journal evidence. Closure queries use the supplied note graph in a short-lived in-memory Cozo database, which also allows standalone role commands to use the same calculation. SQLite remains the durable source of truth. Guidance stays in ordinary journal calls and does not enter the note graph.
