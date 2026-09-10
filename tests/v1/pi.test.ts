@@ -402,7 +402,32 @@ test("Pi continues a length-truncated tool batch without executing its submissio
   expect(records.filter((entry) => entry.kind === "tool-call")).toHaveLength(1);
 });
 
-test("an admitted gated tool error ends the call without another submission attempt", async () => {
+test("a gated schema rejection stays in context for correction before committing", async () => {
+  const refined = {
+    ...gatedTool,
+    input: z
+      .strictObject({ solution: z.boolean(), text: z.string() })
+      .refine((value) => value.text !== "Result 1", {
+        message: "the text names n4 but its support does not",
+      }),
+  };
+  const { result, requests, records } = await gatedRun(
+    [gateReply(1, 1000, true), gateReply(2, 2000, true)],
+    true,
+    2,
+    refined,
+  );
+  expect(result.state).toBe("succeeded");
+  expect(requests).toHaveLength(2);
+  expect(JSON.stringify(requests[1]!.context.messages)).toContain(
+    "the text names n4 but its support does not",
+  );
+  expect(records.filter((entry) => entry.kind === "tool-call")).toMatchObject([
+    { input: { solution: true, text: "Result 2" } },
+  ]);
+});
+
+test("a recorded gated tool execution error ends the call without another submission attempt", async () => {
   const failing = {
     ...gatedTool,
     async run() {

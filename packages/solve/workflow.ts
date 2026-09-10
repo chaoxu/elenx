@@ -1,4 +1,5 @@
 import type { Campaign, Entry, EntryId, Json } from "elenx";
+import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
 
 import { Projection } from "./projection";
@@ -39,7 +40,7 @@ import {
   type VerifierInput,
 } from "./roles";
 
-export const workflowSchemaVersion = 29;
+export const workflowSchemaVersion = 30;
 export const workflowConfig = z.strictObject({
   kind: z.literal("workflow"),
   schemaVersion: z.literal(workflowSchemaVersion),
@@ -197,6 +198,7 @@ export async function deriveWorkflow(
   const verdicts = journalVerdicts(records);
   const projection = await Projection.open(verdicts);
   try {
+    // Replay projections use this historical cursor, not the journal's latest state.
     let cursor = records[0]!.seq;
     let guidance = "";
     let support: readonly string[] = [];
@@ -294,93 +296,109 @@ export async function deriveWorkflow(
       await projection.file(coordinated.value.filings, cursor);
       guidance = coordinated.value.explorerGuidance;
       support = coordinated.value.support;
-      if (coordinated.value.verify.length === 0) continue;
-
-      const filed = await projection.at(cursor);
-      const verify = await verificationPrefix(
-        coordinated.value.verify,
-        filed,
-        config.settings.window,
-      );
-      const listed = verify.map(({ note }) => pick(filed, note));
-      const verifierRequest = await verifierInput.parseAsync({
-        task: config.task,
-        verify,
-        notes: listed,
-        support: (await supportClosure(listed, filed)).map((id) =>
-          pick(filed, id),
-        ),
-      });
-      // The source call opens every verification: a Codex request matched
-      // exactly, or a Pi call matched by its prompt bytes.
-      const judged = judgedBy(verifierRequest, [], "source");
-      const first = firstCall(
-        records,
-        cursor,
-        "verifier",
-        verifierLabels.source,
-        codexSource(config.settings.source)
-          ? jsonSnapshot(
-              (
-                await sourceCall(
-                  config.settings.source,
-                  verifierRequest,
-                  judged,
-                )
-              ).request,
-            )
-          : await verifierCall("source", verifierRequest, judged),
-      );
-      if (first === undefined) {
-        return {
-          config,
-          noteSubmissions,
-          notes: filed,
-          phase: { kind: "verifier", input: verifierRequest },
-        };
-      }
-      const candidate = first.candidate;
-      if (candidate === undefined) {
-        throw new Error(
-          `verifier call ${first.seq} is not bound to a candidate`,
+      let remaining = coordinated.value.verify;
+      while (remaining.length > 0) {
+        const filed = await projection.at(cursor);
+        const available = new Set(
+          filed.filter(({ verified }) => verified).map(({ id }) => id),
         );
-      }
-      const recorded = verdicts.filter(
-        (entry) => entry.candidate === candidate,
-      );
-      cursor = Math.max(cursor, ...recorded.map(({ seq }) => seq));
-      const accepted = await projection.accepted(cursor);
-      const acceptedId = verify
-        .map(({ note }) => note)
-        .find((id) => accepted.includes(id));
-      if (acceptedId !== undefined) {
-        const notes = await projection.at(cursor);
-        return {
-          config,
-          noteSubmissions,
-          notes,
-          phase: {
-            kind: "accepted",
-            turns,
-            note: pick(notes, acceptedId),
+        // Earlier batches may have refuted or left support inconclusive.
+        // Retain independent work, and dependencies scheduled before their use.
+        remaining = remaining.filter(({ note, verifiers }) => {
+          const target = pick(filed, note);
+          if (target.dead || target.support.some((id) => !available.has(id)))
+            return false;
+          if (verifiers.includes("correctness")) available.add(note);
+          return true;
+        });
+        if (remaining.length === 0) break;
+        const verify = await verificationPrefix(
+          remaining,
+          filed,
+          config.settings.window,
+        );
+        const listed = verify.map(({ note }) => pick(filed, note));
+        const verifierRequest = await verifierInput.parseAsync({
+          task: config.task,
+          verify,
+          notes: listed,
+          support: (await supportClosure(listed, filed)).map((id) =>
+            pick(filed, id),
+          ),
+        });
+        // The source call opens every verification: a Codex request matched
+        // exactly, or a Pi call matched by its prompt bytes.
+        const judged = judgedBy(verifierRequest, [], "source");
+        const first = firstCall(
+          records,
+          cursor,
+          "verifier",
+          verifierLabels.source,
+          codexSource(config.settings.source)
+            ? jsonSnapshot(
+                (
+                  await sourceCall(
+                    config.settings.source,
+                    verifierRequest,
+                    judged,
+                  )
+                ).request,
+              )
+            : await verifierCall("source", verifierRequest, judged),
+        );
+        if (first === undefined) {
+          return {
+            config,
+            noteSubmissions,
+            notes: filed,
+            phase: { kind: "verifier", input: verifierRequest },
+          };
+        }
+        const candidate = first.candidate;
+        if (candidate === undefined) {
+          throw new Error(
+            `verifier call ${first.seq} is not bound to a candidate`,
+          );
+        }
+        const recorded = verdicts.filter(
+          (entry) => entry.candidate === candidate,
+        );
+        cursor = Math.max(cursor, ...recorded.map(({ seq }) => seq));
+        const accepted = await projection.accepted(cursor);
+        const acceptedId = verify
+          .map(({ note }) => note)
+          .find((id) => accepted.includes(id));
+        if (acceptedId !== undefined) {
+          const notes = await projection.at(cursor);
+          return {
+            config,
+            noteSubmissions,
             notes,
-            candidate,
-            closure: await supportClosure([pick(notes, acceptedId)], notes),
-          },
-        };
-      }
-      if (
-        !verificationComplete(
-          verifierRequest,
-          recorded.map(({ verdict }) => verdict),
-        )
-      ) {
-        return {
-          config,
-          noteSubmissions,
-          notes: await projection.at(cursor),
-          phase: { kind: "verifier", input: verifierRequest, candidate },
-        };
+            phase: {
+              kind: "accepted",
+              turns,
+              note: pick(notes, acceptedId),
+              notes,
+              candidate,
+              closure: await supportClosure([pick(notes, acceptedId)], notes),
+            },
+          };
+        }
+        if (
+          !verificationComplete(
+            verifierRequest,
+            recorded.map(({ verdict }) => verdict),
+          )
+        ) {
+          return {
+            config,
+            noteSubmissions,
+            notes: await projection.at(cursor),
+            phase: { kind: "verifier", input: verifierRequest, candidate },
+          };
+        }
+        // Completed entries leave the queue even when their verdict was not PASS.
+        remaining = remaining.slice(verify.length);
       }
     }
     const ended = await projection.at(cursor);
@@ -434,7 +452,7 @@ export async function runWorkflow(
       continue;
     }
     dependencies.status?.(phase.kind);
-    const wasVerifier = phase.kind === "verifier";
+    const verifying = phase.kind === "verifier" ? phase.input : undefined;
     if (phase.kind === "explorer") {
       if (await freezeExplorerGuidance(campaign, snapshot.explorerAfter!)) {
         snapshot = await deriveWorkflow(campaign.records());
@@ -450,7 +468,12 @@ export async function runWorkflow(
     }
     snapshot = await deriveWorkflow(campaign.records());
     phase = snapshot.phase;
-    if (wasVerifier && phase.kind === "verifier") return phase;
+    if (
+      verifying !== undefined &&
+      phase.kind === "verifier" &&
+      isDeepStrictEqual(phase.input, verifying)
+    )
+      return phase;
   }
 }
 

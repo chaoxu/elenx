@@ -1144,7 +1144,17 @@ async function runPiBody(
                       reason: submissionFeedback(gate, state),
                     };
                   },
-                  afterToolCall: async () => ({ terminate: true }),
+                  // Schema rejection before the tool-call record is safe to correct.
+                  afterToolCall: async ({ toolCall }) => ({
+                    terminate: campaign
+                      .records()
+                      .some(
+                        (entry) =>
+                          entry.kind === "tool-call" &&
+                          entry.call === call &&
+                          entry.source === toolCall.id,
+                      ),
+                  }),
                   getSteeringMessages: async () => {
                     const messages = steering;
                     steering = [];

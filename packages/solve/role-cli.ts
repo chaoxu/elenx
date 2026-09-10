@@ -9,7 +9,7 @@ import {
   type Entry,
   type Json,
 } from "elenx";
-import { derivePiSpend, piRequest } from "elenx/pi";
+import { derivePiSpend, piRequest, piStoredResult } from "elenx/pi";
 import { z } from "zod";
 
 import { campaignAccounting } from "./accounting";
@@ -52,7 +52,7 @@ import {
   withCampaignLock,
 } from "./runtime";
 import { withSerialToolCalls } from "./serial-tools";
-import { codexRequest, codexSubmission } from "./source";
+import { codexRequest, codexResult, codexSubmission } from "./source";
 import { deriveWorkflow, workflowConfig, workflowResult } from "./workflow";
 
 const callsConfig = z.strictObject({ kind: z.literal("calls") });
@@ -149,6 +149,25 @@ function visibleSubmission(
   }
 }
 
+/** Kernel settlement and provider execution outcome are separate facts. */
+function callDiagnostic(
+  call: Extract<Entry, { readonly kind: "call" }>,
+  result: Extract<Entry, { readonly kind: "call-result" }> | undefined,
+) {
+  if (result === undefined) return {};
+  if (result.state === "threw") return { error: result.error };
+  const parsed = piRequest.safeParse(call.request).success
+    ? piStoredResult.safeParse(result.output)
+    : codexRequest.safeParse(call.request).success
+      ? codexResult.safeParse(result.output)
+      : undefined;
+  if (!parsed?.success) return {};
+  return {
+    outcome: parsed.data.state,
+    ...(parsed.data.state === "succeeded" ? {} : { error: parsed.data.error }),
+  };
+}
+
 export async function inspectCampaign(
   path: string,
   options: {
@@ -195,6 +214,7 @@ export async function inspectCampaign(
                 elapsedMs: result.atMs - entry.atMs,
                 state: result.state,
               }),
+          ...callDiagnostic(entry, result),
           ...(visible === undefined ? {} : { submission: visible }),
           ...(options.includeRequests === true
             ? { request: entry.request }

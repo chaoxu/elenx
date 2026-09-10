@@ -987,6 +987,303 @@ test("a verification takes the longest prefix that fits the window, counting sha
   expect(await verificationPrefix([], notes, 5)).toEqual([]);
 });
 
+test("drains requested verification batches at the turn cap and stops at the first acceptance", async () => {
+  const path = campaignPath();
+  const workflow = workflowConfiguration({
+    task,
+    settings: { ...roleSettings(), maxExplorerTurns: 1, window: 1 },
+  });
+  const campaign = createCampaign(path, applicationId, workflow);
+  const drive = dependencies([
+    {
+      submission: {
+        notes: [
+          { text: "Lemma L.", support: [] },
+          { text: "Lemma M from L.", support: ["n1"] },
+          { text: "Complete proof of P from M.", support: ["n2"] },
+          { text: "Another complete proof of P.", support: [] },
+        ],
+      },
+    },
+    {
+      submission: coordination(["n1", "n2", "n3", "n4"], {
+        verify: [
+          { note: "n1", verifiers: lemma },
+          { note: "n2", verifiers: lemma },
+          { note: "n3", verifiers: all },
+          { note: "n4", verifiers: all },
+        ],
+      }),
+    },
+    sourceOf(["n1"]),
+    verdictsOf("correctness", ["n1"]),
+    sourceOf(["n2"]),
+    verdictsOf("correctness", ["n2"]),
+    ...passes("n3"),
+  ]);
+  const roles = createPiRoles(campaign, workflow.settings, drive);
+  const phase = await runWorkflow(campaign, roles);
+  expect(phase).toMatchObject({
+    kind: "accepted",
+    turns: 1,
+    note: { id: "n3" },
+  });
+  if (phase.kind !== "accepted") throw new Error("expected acceptance");
+  expect(shorthand(phase.notes)).toEqual([
+    ["source:PASS", "correctness:PASS"],
+    ["source:PASS", "correctness:PASS"],
+    verifierNames.map((name) => `${name}:PASS`),
+    [],
+  ]);
+  const candidates = campaign
+    .records()
+    .filter((entry) => entry.kind === "candidate");
+  expect(candidates).toHaveLength(3);
+  expect(phase.candidate).toBe(candidates[2]!.seq);
+  expect(drive.calls.filter(({ role }) => role === "explorer")).toHaveLength(1);
+  expect(drive.calls.filter(({ role }) => role === "coordinator")).toHaveLength(
+    1,
+  );
+  expect(drive.codexCalls).toHaveLength(3);
+  const settledCount = campaign.records().length;
+  expect(await runWorkflow(campaign, roles)).toEqual(phase);
+  expect(campaign.records()).toHaveLength(settledCount);
+  campaign.close();
+  expect(new TextDecoder().decode(await exportCandidate(path))).toContain(
+    "Complete proof of P from M.",
+  );
+});
+
+test.each([
+  ["source", "FAIL"],
+  ["source", "INCONCLUSIVE"],
+  ["correctness", "FAIL"],
+  ["correctness", "INCONCLUSIVE"],
+] as const)(
+  "later batches skip dependencies after %s %s and still check independent notes",
+  async (verifier, verdict) => {
+    const path = campaignPath();
+    const workflow = workflowConfiguration({
+      task,
+      settings: { ...roleSettings(), maxExplorerTurns: 1, window: 1 },
+    });
+    const campaign = createCampaign(path, applicationId, workflow);
+    const drive = dependencies([
+      {
+        submission: {
+          notes: [
+            { text: "Lemma L.", support: [] },
+            { text: "Lemma M from L.", support: ["n1"] },
+            { text: "P from M.", support: ["n2"] },
+            good,
+          ],
+        },
+      },
+      {
+        submission: coordination(["n1", "n2", "n3", "n4"], {
+          verify: [
+            { note: "n1", verifiers: lemma },
+            { note: "n2", verifiers: lemma },
+            { note: "n3", verifiers: all },
+            { note: "n4", verifiers: all },
+          ],
+        }),
+      },
+      ...(verifier === "source"
+        ? [sourceOf(["n1"], verdict)]
+        : [sourceOf(["n1"]), verdictsOf("correctness", ["n1"], verdict)]),
+      ...passes("n4"),
+    ]);
+    const phase = await runWorkflow(
+      campaign,
+      createPiRoles(campaign, workflow.settings, drive),
+    );
+    expect(phase).toMatchObject({
+      kind: "accepted",
+      turns: 1,
+      note: { id: "n4" },
+    });
+    if (phase.kind !== "accepted") throw new Error("expected acceptance");
+    expect(
+      phase.notes.slice(0, 3).map(({ verified, dead }) => ({ verified, dead })),
+    ).toEqual(
+      Array.from({ length: 3 }, () => ({
+        verified: false,
+        dead: verdict === "FAIL",
+      })),
+    );
+    expect(phase.notes[1]!.verdicts).toEqual([]);
+    expect(phase.notes[2]!.verdicts).toEqual([]);
+    expect(
+      campaign.records().filter((entry) => entry.kind === "candidate"),
+    ).toHaveLength(2);
+    expect(drive.codexCalls).toHaveLength(2);
+    campaign.close();
+  },
+);
+
+test("an interrupted later verification batch resumes on its own candidate without replaying the first batch", async () => {
+  const path = campaignPath();
+  const workflow = workflowConfiguration({
+    task,
+    settings: { ...roleSettings(), maxExplorerTurns: 1, window: 1 },
+  });
+  let campaign = createCampaign(path, applicationId, workflow);
+  const first = dependencies([
+    {
+      submission: {
+        notes: [
+          { text: "Lemma L.", support: [] },
+          { text: "P from L.", support: ["n1"] },
+        ],
+      },
+    },
+    {
+      submission: coordination(["n1", "n2"], {
+        verify: [
+          { note: "n1", verifiers: lemma },
+          { note: "n2", verifiers: all },
+        ],
+      }),
+    },
+    sourceOf(["n1"]),
+    verdictsOf("correctness", ["n1"]),
+    sourceOf(["n2"]),
+    { state: "failed", error: "provider down in second batch" },
+  ]);
+  await expect(
+    runWorkflow(campaign, createPiRoles(campaign, workflow.settings, first)),
+  ).rejects.toThrow("provider down in second batch");
+  const paused = await phaseOf(campaign);
+  expect(paused).toMatchObject({
+    kind: "verifier",
+    input: { verify: [{ note: "n2", verifiers: all }] },
+  });
+  if (paused.kind !== "verifier") throw new Error("expected verifier");
+  const candidates = campaign
+    .records()
+    .filter((entry) => entry.kind === "candidate");
+  expect(candidates).toHaveLength(2);
+  expect(paused.candidate).toBe(candidates[1]!.seq);
+  campaign.close();
+
+  campaign = openCampaign(path);
+  const rest = dependencies(passes("n2").slice(1));
+  const phase = await runWorkflow(
+    campaign,
+    createPiRoles(campaign, workflow.settings, rest),
+  );
+  expect(phase).toMatchObject({
+    kind: "accepted",
+    turns: 1,
+    candidate: paused.candidate,
+    note: { id: "n2" },
+  });
+  expect(rest.codexCalls).toHaveLength(0);
+  expect(rest.calls.map(({ label }) => label)).toEqual([
+    "elenx-solve/verifier/correctness",
+    "elenx-solve/verifier/requirements",
+    "elenx-solve/verifier/reconstruction/statement",
+    "elenx-solve/verifier/reconstruction/proof",
+    "elenx-solve/verifier/reconstruction",
+  ]);
+  expect(
+    campaign.records().filter((entry) => entry.kind === "candidate"),
+  ).toHaveLength(2);
+  campaign.close();
+});
+
+test("later batches can use verified support that failed task completion", async () => {
+  const path = campaignPath();
+  const workflow = workflowConfiguration({
+    task,
+    settings: { ...roleSettings(), maxExplorerTurns: 1, window: 1 },
+  });
+  const campaign = createCampaign(path, applicationId, workflow);
+  const drive = dependencies([
+    {
+      submission: {
+        notes: [
+          { text: "Lemma L.", support: [] },
+          { text: "P from L.", support: ["n1"] },
+        ],
+      },
+    },
+    {
+      submission: coordination(["n1", "n2"], {
+        verify: [
+          { note: "n1", verifiers: all },
+          { note: "n2", verifiers: all },
+        ],
+      }),
+    },
+    sourceOf(["n1"]),
+    verdictsOf("correctness", ["n1"]),
+    verdictsOf("requirements", ["n1"], "FAIL"),
+    ...passes("n2"),
+  ]);
+  const phase = await runWorkflow(
+    campaign,
+    createPiRoles(campaign, workflow.settings, drive),
+  );
+  expect(phase).toMatchObject({
+    kind: "accepted",
+    turns: 1,
+    note: { id: "n2" },
+  });
+  if (phase.kind !== "accepted") throw new Error("expected acceptance");
+  expect(phase.notes[0]).toMatchObject({ verified: true, dead: false });
+  expect(shorthand([phase.notes[0]!])).toEqual([
+    ["source:PASS", "correctness:PASS", "requirements:FAIL"],
+  ]);
+  campaign.close();
+});
+
+test("the next explorer starts only after all requested partial-result batches settle", async () => {
+  const path = campaignPath();
+  const workflow = workflowConfiguration({
+    task,
+    settings: { ...roleSettings(), maxExplorerTurns: 2, window: 1 },
+  });
+  const campaign = createCampaign(path, applicationId, workflow);
+  const drive = dependencies([
+    {
+      submission: {
+        notes: [
+          { text: "Lemma L.", support: [] },
+          { text: "Lemma M from L.", support: ["n1"] },
+        ],
+      },
+    },
+    {
+      submission: coordination(["n1", "n2"], {
+        verify: [
+          { note: "n1", verifiers: lemma },
+          { note: "n2", verifiers: lemma },
+        ],
+      }),
+    },
+    sourceOf(["n1"]),
+    verdictsOf("correctness", ["n1"]),
+    sourceOf(["n2"]),
+    verdictsOf("correctness", ["n2"]),
+  ]);
+  const phase = await runWorkflow(
+    campaign,
+    createPiRoles(campaign, workflow.settings, drive),
+    { pauseRequested: () => drive.calls.length === 4 },
+  );
+  expect(phase.kind).toBe("explorer");
+  if (phase.kind !== "explorer") throw new Error("expected explorer");
+  expect(phase.input.notes.map(({ verified }) => verified)).toEqual([
+    true,
+    true,
+  ]);
+  expect(drive.codexCalls).toHaveLength(2);
+  expect(drive.calls.filter(({ role }) => role === "explorer")).toHaveLength(1);
+  campaign.close();
+});
+
 test.each([false, true])(
   "source verification can use knowledge without retrieved sources (search=%s)",
   async (search) => {

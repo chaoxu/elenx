@@ -107,8 +107,8 @@ export function codexSource(
   return profile.provider === "codex";
 }
 // The window caps the characters of note and support texts one verification
-// reads; the fold verifies the longest prefix of the coordinator's verify
-// list that fits, and always its first entry.
+// reads; the fold drains the coordinator's list in fitting batches, always
+// taking at least the first entry of each batch.
 export const solveSettings = z.strictObject({
   explorer: piRoleProfile,
   coordinator: piRoleProfile,
@@ -252,7 +252,7 @@ export function coordinatorCall(
       "File every note that has no summary. A summary is for navigation and is never verified. It is the note's exact statement, as a mathematician would state the result, not a description of the note, and adds nothing but what the text itself says about its status: a gap it leaves and what it is, a failed approach and why, or that it meets the completion criteria. It repeats nothing the note's fields already say, such as its support, never judges the text, and never copies proof text.",
       "Keep the note's hypotheses and limitations exact, especially when it strengthens or corrects an earlier note. A verifier report does not enlarge what a note establishes.",
       "Then give explorerGuidance for the next turn and choose its support: the notes it must read in full. Recommend useful mathematical work toward the original task, explaining the evidence and uncertainty behind your advice. The explorer may reject your diagnosis, change methods, or move beyond a suggested step. Your advice does not replace the original completion criteria. The explorer sees every note's summary and verdicts and only the support notes' texts. A dead note may be read in full as failure evidence but cannot be built on. Leave verification state to the note fields. Never ask the explorer to check, polish, or restate a verified note.",
-      "Then list the notes to verify, in priority order, each with the verifiers to run: a prefix of source, correctness, requirements, reconstruction. A note that later work will build on gets source and correctness and ends verified. A note whose text says it meets the completion criteria gets all four. Verification runs on the longest prefix of your list that fits one verification's window, always its first entry; the rest stays unverified, so list it again next turn if it still matters.",
+      "Then list the notes to verify, in priority order, each with the verifiers to run: a prefix of source, correctness, requirements, reconstruction. A note that later work will build on gets source and correctness and ends verified. A note whose text says it meets the completion criteria gets all four. Verification drains your list in batches that fit the window, always taking the first entry of each batch, before another explorer turn or the turn cap. Notes blocked by failed or inconclusive support are skipped; independent notes are still checked. Acceptance ends the search immediately.",
       verdictText,
       completionText,
       "A note may be listed only after every note in its support is verified or listed earlier with the correctness verifier. A dead note is never listed again: it is replaced by a new note. After INCONCLUSIVE, use the report to guide useful work on the missing evidence. When a note restates a verified note's result, have the explorer name that note as support instead.",
