@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 
 import {
   defineTool,
@@ -7,7 +8,13 @@ import {
   type EntryId,
   type Json,
 } from "elenx";
-import { piReasoning, piRequest, runPi } from "elenx/pi";
+import {
+  DEFAULT_COMPACTION_SETTINGS,
+  piReasoning,
+  piRequest,
+  runPi,
+  type PiSubmissionGate,
+} from "elenx/pi";
 import { z } from "zod";
 
 import {
@@ -159,7 +166,7 @@ export interface RoleCall<S extends z.ZodType> {
   readonly tool: string;
   readonly description: string;
   readonly schema: S;
-  readonly continuation?: true;
+  readonly submissionGate?: PiSubmissionGate | undefined;
 }
 
 const taskText = (task: Task): string =>
@@ -225,7 +232,12 @@ export function explorerCall(
     tool: roleTools.explorer,
     description: "Return the notes written during this explorer turn",
     schema: explorerResultFor(input.notes, continuation),
-    ...(continuation ? { continuation: true as const } : {}),
+    submissionGate: continuation
+      ? {
+          completeArgument: "solution",
+          reserveTokens: DEFAULT_COMPACTION_SETTINGS.reserveTokens,
+        }
+      : undefined,
   };
 }
 
@@ -502,15 +514,7 @@ async function runCall<S extends z.ZodType>(
     reasoning: profile.reasoning,
     tools: [submitTool],
     stopAfterToolResult: true,
-    ...(roleCall.role === "explorer" && roleCall.continuation === true
-      ? {
-          submissionGate: {
-            tool: roleCall.tool,
-            completeArgument: "solution",
-            reserveTokens: explorerReserveTokens(model),
-          },
-        }
-      : {}),
+    submissionGate: roleCall.submissionGate,
     // Recover transient long-stream failures within this call. Missing usage
     // on an interrupted attempt is unknown spend, not evidence of no billing.
     maxRecoveries: 8,
@@ -538,16 +542,6 @@ async function runCall<S extends z.ZodType>(
     );
   }
   return { call: result.call, value: roleCall.schema.parse(submission.input) };
-}
-
-function explorerReserveTokens(model: {
-  maxTokens: number;
-  contextWindow: number;
-}) {
-  return Math.min(
-    model.maxTokens,
-    Math.max(1024, Math.ceil(model.contextWindow * 0.1)),
-  );
 }
 
 export function createPiRoles(
@@ -722,23 +716,8 @@ export function sameRequest(
   ) {
     const parsed = piRequest.safeParse(journaled);
     if (!parsed.success) return false;
-    const gate = parsed.data.submissionGate;
-    if (request.continuation === true) {
-      const profile = z
-        .object({
-          maxTokens: z.number().positive(),
-          contextWindow: z.number().positive(),
-        })
-        .safeParse(parsed.data.modelProfile);
-      if (
-        !profile.success ||
-        gate?.tool !== request.tool ||
-        gate.completeArgument !== "solution" ||
-        gate.reserveTokens !== explorerReserveTokens(profile.data)
-      )
-        return false;
-    } else if (gate !== undefined) return false;
     return (
+      isDeepStrictEqual(parsed.data.submissionGate, request.submissionGate) &&
       parsed.data.system === request.system &&
       parsed.data.prompt === request.prompt
     );

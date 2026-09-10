@@ -40,8 +40,11 @@ test("Explorer continuation defaults off and only its enabled schema requires a 
   expect(off.system).toBe(ordinary.system);
   expect(off.prompt).toBe(ordinary.prompt);
   expect(z.toJSONSchema(off.schema)).toEqual(z.toJSONSchema(ordinary.schema));
-  expect(off.continuation).toBeUndefined();
-  expect(on.continuation).toBe(true);
+  expect(off.submissionGate).toBeUndefined();
+  expect(on.submissionGate).toEqual({
+    completeArgument: "solution",
+    reserveTokens: 16_384,
+  });
   expect(ordinary.schema.safeParse({ notes: [note] }).success).toBe(true);
   expect(
     ordinary.schema.safeParse({ notes: [note], solution: false }).success,
@@ -111,9 +114,8 @@ test("only enabled Explorer calls receive the gate; a solution claim still goes 
     );
     expect(result.kind).toBe("turn-limit");
     expect(drive.calls[0]?.submissionGate).toEqual({
-      tool: "submit_notes",
       completeArgument: "solution",
-      reserveTokens: 20_000,
+      reserveTokens: 16_384,
     });
     expect(
       drive.calls.slice(1).every((call) => call.submissionGate === undefined),

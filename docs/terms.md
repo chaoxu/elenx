@@ -25,7 +25,7 @@ This is the vocabulary of Elenx and its solver. Work in this repository uses the
 | telemetry, spend | Provider request observation of Pi calls, and the summary derived from it: request counts, request errors, measured usage in tokens, and estimated cost. A Codex call's usage is on its submission. |
 | first request | The first provider operation within one logical Pi call. |
 | continuation | Any subsequent provider operation within that same logical Pi call, including recovery and length continuation. |
-| submission gate | The optional frozen Pi policy `{tool, completeArgument, reserveTokens}` for one terminal tool. It admits a submission when its declared completion field is true or Pi's context estimate reaches the reserved-headroom threshold. Earlier attempts receive tool feedback and remain in the transcript, without executing the tool. |
+| submission gate | The optional frozen Pi policy `{completeArgument, reserveTokens}` for one terminal tool. It admits a submission when its declared completion field is true or Pi's context estimate reaches the reserved-headroom threshold. Earlier attempts receive tool feedback and remain in the transcript, without executing the tool. |
 | recovered request error | A provider error inside a Pi call that ultimately succeeds. It remains an error in the journal and does not imply complete usage accounting. |
 | accounting | The inspection report of measured cost and its completeness: missing request usage, unaccounted calls and their saved request checkpoints, and calls without recorded prices. Missing cost remains unknown. |
 

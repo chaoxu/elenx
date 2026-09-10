@@ -39,7 +39,7 @@ import {
   type VerifierInput,
 } from "./roles";
 
-export const workflowSchemaVersion = 28;
+export const workflowSchemaVersion = 29;
 export const workflowConfig = z.strictObject({
   kind: z.literal("workflow"),
   schemaVersion: z.literal(workflowSchemaVersion),

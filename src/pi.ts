@@ -28,16 +28,12 @@ import {
   type Transport,
   type TSchema,
 } from "@earendil-works/pi-ai";
+import { clampMaxTokensToContext } from "@earendil-works/pi-ai/api/simple-options";
+import { estimateContextTokens } from "@earendil-works/pi-ai/utils/estimate";
 import { z } from "zod";
 
 import { entryId, json } from "./schemas";
 import { ReasoningRecovery } from "./pi-recovery";
-import {
-  piSubmissionGate,
-  submissionContext,
-  submissionFeedback,
-  type PiSubmissionGate,
-} from "./pi-submission";
 import type {
   AuditedTool,
   Campaign,
@@ -48,7 +44,7 @@ import type {
 } from "./types";
 
 export { InMemoryCredentialStore } from "@earendil-works/pi-ai";
-export type { PiSubmissionGate } from "./pi-submission";
+export { DEFAULT_COMPACTION_SETTINGS } from "@earendil-works/pi-agent-core";
 export { builtinModels as builtinPi } from "@earendil-works/pi-ai/providers/all";
 
 type PiModels = Pick<Models, "streamSimple">;
@@ -67,6 +63,12 @@ const reasoningLevels = [
 ] as const satisfies readonly ThinkingLevel[];
 export const piReasoning = z.enum(reasoningLevels);
 
+const piSubmissionGate = z.strictObject({
+  completeArgument: z.string().regex(/\S/u),
+  reserveTokens: z.number().int().positive(),
+});
+export type PiSubmissionGate = z.output<typeof piSubmissionGate>;
+
 export interface PiRunOptions {
   readonly models: PiModels;
   readonly model: Model<Api>;
@@ -80,7 +82,7 @@ export interface PiRunOptions {
   readonly stopAfterToolResult?: true;
   readonly maxRecoveries?: number;
   readonly maxLengthContinuations?: number;
-  readonly submissionGate?: PiSubmissionGate;
+  readonly submissionGate?: PiSubmissionGate | undefined;
   readonly signal?: AbortSignal;
   readonly transport?: Transport;
   readonly cacheKey?: string;
@@ -587,6 +589,44 @@ function piTool(
   };
 }
 
+function submissionContext(
+  gate: PiSubmissionGate,
+  model: Model<Api>,
+  context: Context,
+) {
+  const threshold =
+    clampMaxTokensToContext(model, { messages: [] }, model.contextWindow) -
+    gate.reserveTokens;
+  if (!(threshold > 0))
+    throw new Error(
+      "submission reserve and native safety margin leave no usable context",
+    );
+  const { tokens } = estimateContextTokens(context);
+  const maxTokens = clampMaxTokensToContext(
+    tokens < threshold
+      ? { ...model, contextWindow: model.contextWindow - gate.reserveTokens }
+      : model,
+    context,
+    model.maxTokens,
+  );
+  return {
+    tokens,
+    threshold,
+    exhausted: tokens >= threshold && maxTokens === 1,
+    maxTokens,
+  };
+}
+
+function submissionFeedback(
+  gate: PiSubmissionGate,
+  state: ReturnType<typeof submissionContext>,
+): string {
+  const occupancy = `Estimated context occupancy: ${state.tokens} tokens; submission threshold: ${state.threshold} tokens.`;
+  return state.tokens < state.threshold
+    ? `Submission declined. ${occupancy} Continue working toward the original task from the current progress without restarting. Submit when you can truthfully set ${gate.completeArgument}=true, or when the threshold is reached.`
+    : `${occupancy} Finalize now. Set ${gate.completeArgument} truthfully: true only if the task is complete, otherwise false.`;
+}
+
 function jsonSnapshot(value: unknown): Json {
   const encoded = JSON.stringify(value);
   if (encoded === undefined) throw new TypeError("Pi value is not JSON");
@@ -598,6 +638,7 @@ function result(
   stopAfterToolResult: boolean,
   signal: AbortSignal | undefined,
   contextWindow: number,
+  requireSubmission = false,
 ): PiOutcome {
   const stored = jsonSnapshot(messages) as readonly Json[];
   const final = messages.findLast(
@@ -629,7 +670,8 @@ function result(
   );
   const stoppedAfterTool =
     stopAfterToolResult &&
-    final?.stopReason === "toolUse" &&
+    (final?.stopReason === "toolUse" ||
+      (requireSubmission && final?.stopReason === "stop")) &&
     afterFinal.length > 0 &&
     afterFinal.every(
       (message) => message.role === "toolResult" && !message.isError,
@@ -639,6 +681,7 @@ function result(
   if (
     final === undefined ||
     overflow ||
+    (requireSubmission && !stoppedAfterTool) ||
     (final.stopReason !== "stop" && !stoppedAfterTool)
   ) {
     return {
@@ -658,7 +701,9 @@ function result(
           ? "Pi returned no assistant message"
           : overflow
             ? "Pi exceeded its context window"
-            : `Pi stopped with ${final.stopReason}`),
+            : requireSubmission && final.stopReason === "stop"
+              ? "Pi exhausted submission headroom without a terminal submission"
+              : `Pi stopped with ${final.stopReason}`),
     };
   }
   return { state: "succeeded", text, transcript: stored };
@@ -1010,21 +1055,12 @@ async function runPiBody(
     async (span) => {
       let turns = 0;
       const gate = exact.submissionGate;
-      let admitted = false;
-      let invalidBatch = false;
-      let occupied: ReturnType<typeof submissionContext> | undefined;
-      const updateContext = (context: AgentContext) => {
-        const modelContext: Context = {
-          systemPrompt: context.systemPrompt,
+      let steering: AgentMessage[] = [];
+      const contextState = (context: AgentContext) =>
+        submissionContext(gate!, options.model, {
+          ...context,
           messages: convertToLlm(recovery.forModel(context.messages)),
-          ...(context.tools === undefined ? {} : { tools: context.tools }),
-        };
-        return (occupied = submissionContext(
-          gate!,
-          options.model,
-          modelContext,
-        ));
-      };
+        });
       const loop = (
         content: string | undefined,
         prior: readonly AgentMessage[],
@@ -1054,16 +1090,27 @@ async function runPiBody(
               ? {}
               : { transport: options.transport }),
             telemetryContext: span,
-            shouldStopAfterTurn: async ({ message, context }) => {
+            shouldStopAfterTurn: async ({ message, context, toolResults }) => {
               turns += 1;
               if (gate === undefined)
                 return turns >= 32 || message.stopReason === "length";
-              updateContext(context);
-              return (
-                admitted ||
-                invalidBatch ||
+              const state = contextState(context);
+              if (
                 message.stopReason === "length" ||
-                occupied!.exhausted
+                (message.stopReason === "stop" && toolResults.length === 0)
+              )
+                steering = [
+                  {
+                    role: "user",
+                    content: submissionFeedback(gate, state),
+                    timestamp: Date.now(),
+                  },
+                ];
+              return (
+                state.exhausted ||
+                (message.stopReason !== "length" &&
+                  message.content.filter((block) => block.type === "toolCall")
+                    .length > 1)
               );
             },
             ...(gate === undefined
@@ -1071,12 +1118,10 @@ async function runPiBody(
               : {
                   beforeToolCall: async (entry: BeforeToolCallContext) => {
                     if (
-                      admitted ||
                       entry.assistantMessage.content.filter(
                         (block) => block.type === "toolCall",
                       ).length !== 1
                     ) {
-                      invalidBatch = true;
                       return {
                         block: true,
                         terminate: true,
@@ -1084,7 +1129,7 @@ async function runPiBody(
                           "A gated call permits exactly one admitted terminal submission.",
                       };
                     }
-                    const state = updateContext(entry.context);
+                    const state = contextState(entry.context);
                     const complete =
                       typeof entry.args === "object" &&
                       entry.args !== null &&
@@ -1092,7 +1137,6 @@ async function runPiBody(
                         gate.completeArgument
                       ] === true;
                     if (complete || state.tokens >= state.threshold) {
-                      admitted = true;
                       return undefined;
                     }
                     return {
@@ -1100,19 +1144,12 @@ async function runPiBody(
                       reason: submissionFeedback(gate, state),
                     };
                   },
-                  getFollowUpMessages: async (): Promise<AgentMessage[]> =>
-                    admitted ||
-                    invalidBatch ||
-                    signal.aborted ||
-                    occupied === undefined
-                      ? []
-                      : [
-                          {
-                            role: "user",
-                            content: submissionFeedback(gate, occupied),
-                            timestamp: Date.now(),
-                          },
-                        ],
+                  afterToolCall: async () => ({ terminate: true }),
+                  getSteeringMessages: async () => {
+                    const messages = steering;
+                    steering = [];
+                    return signal.aborted ? [] : messages;
+                  },
                 }),
             ...(exact.reasoning === undefined
               ? {}
@@ -1134,12 +1171,7 @@ async function runPiBody(
       let errorRecoveries = 0;
       let lengthContinuations = 0;
       for (;;) {
-        if (
-          gate === undefined
-            ? turns >= 32
-            : admitted || invalidBatch || occupied?.exhausted
-        )
-          break;
+        if (gate === undefined && turns >= 32) break;
         const final = messages.findLast(
           (message): message is AssistantMessage =>
             message.role === "assistant",
@@ -1150,48 +1182,31 @@ async function runPiBody(
           final !== undefined &&
           !signal?.aborted &&
           !isContextOverflow(final, options.model.contextWindow) &&
-          (final.stopReason === "length" || retry);
+          (retry || (gate === undefined && final.stopReason === "length"));
         if (!interrupted) break;
-        if (gate === undefined && exact.maxLengthContinuations === undefined) {
+        if (exact.maxLengthContinuations === undefined) {
           if (legacyRecoveries >= (exact.maxRecoveries ?? 0)) break;
           legacyRecoveries += 1;
         } else if (retry) {
           if (errorRecoveries >= (exact.maxRecoveries ?? 0)) break;
           errorRecoveries += 1;
-        } else if (gate === undefined) {
-          if (lengthContinuations >= exact.maxLengthContinuations!) break;
+        } else {
+          if (lengthContinuations >= exact.maxLengthContinuations) break;
           lengthContinuations += 1;
         }
         const prior = messages;
         messages = [
           ...prior,
-          ...(await loop(
-            retry
-              ? undefined
-              : gate === undefined
-                ? lengthContinuation
-                : submissionFeedback(gate, occupied!),
-            prior,
-          )),
+          ...(await loop(retry ? undefined : lengthContinuation, prior)),
         ];
       }
-      const completed = result(
+      const outcome = result(
         messages,
         exact.stopAfterToolResult === true,
         signal,
         options.model.contextWindow,
+        gate !== undefined,
       );
-      const outcome: PiOutcome =
-        gate !== undefined && !admitted && completed.state === "succeeded"
-          ? {
-              ...completed,
-              state: "failed",
-              error:
-                "Pi exhausted submission headroom without a terminal submission",
-              providerRetryable: false,
-              truncated: false,
-            }
-          : completed;
       span.setAttributes({ "elenx.pi.outcome": outcome.state });
       if (outcome.state !== "succeeded") {
         span.setStatus({
@@ -1239,14 +1254,8 @@ export async function runPi(
     ...(options.cacheKey === undefined ? {} : { cacheKey: options.cacheKey }),
   });
   if (parsed.submissionGate !== undefined) {
-    if (
-      !parsed.stopAfterToolResult ||
-      options.tools?.length !== 1 ||
-      options.tools[0]?.name !== parsed.submissionGate.tool
-    )
-      throw new TypeError(
-        "Pi submission gate requires one matching terminal tool",
-      );
+    if (!parsed.stopAfterToolResult || options.tools?.length !== 1)
+      throw new TypeError("Pi submission gate requires one terminal tool");
     submissionContext(parsed.submissionGate, options.model, { messages: [] });
   }
   return runPiCall(campaign, {
