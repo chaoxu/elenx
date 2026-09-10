@@ -39,7 +39,7 @@ import {
   type VerifierInput,
 } from "./roles";
 
-export const workflowSchemaVersion = 27;
+export const workflowSchemaVersion = 28;
 export const workflowConfig = z.strictObject({
   kind: z.literal("workflow"),
   schemaVersion: z.literal(workflowSchemaVersion),
@@ -246,7 +246,10 @@ export async function deriveWorkflow(
         const explored = settledCall(
           records,
           cursor,
-          explorerCall(explorerRequest),
+          explorerCall(
+            explorerRequest,
+            config.settings.explorerContinuation === true,
+          ),
         );
         if (explored === undefined) {
           return {
@@ -454,10 +457,13 @@ export async function runWorkflow(
 export function workflowConfiguration(options: {
   readonly task: Task;
   readonly settings: z.output<typeof solveSettings>;
-}): WorkflowConfig {
-  return workflowConfig.parse({
-    kind: "workflow",
-    schemaVersion: workflowSchemaVersion,
-    ...options,
-  });
+}): WorkflowConfig & Readonly<Record<string, Json>> {
+  // Omit absent optional settings before the declaration reaches the journal.
+  return jsonSnapshot(
+    workflowConfig.parse({
+      kind: "workflow",
+      schemaVersion: workflowSchemaVersion,
+      ...options,
+    }),
+  ) as WorkflowConfig & Readonly<Record<string, Json>>;
 }

@@ -111,6 +111,7 @@ export const solveSettings = z.strictObject({
   reconstruction: piRoleProfile,
   maxExplorerTurns: z.number().int().positive().default(10),
   window: z.number().int().positive().default(100_000),
+  explorerContinuation: z.boolean().optional(),
 });
 export type SolveSettings = z.output<typeof solveSettings>;
 
@@ -158,6 +159,7 @@ export interface RoleCall<S extends z.ZodType> {
   readonly tool: string;
   readonly description: string;
   readonly schema: S;
+  readonly continuation?: true;
 }
 
 const taskText = (task: Task): string =>
@@ -189,6 +191,7 @@ const completionText =
 
 export function explorerCall(
   input: ExplorerInput,
+  continuation = false,
 ): RoleCall<ReturnType<typeof explorerResultFor>> {
   return {
     role: "explorer",
@@ -202,7 +205,11 @@ export function explorerCall(
       "Spend the turn doing mathematics. A note is one self-contained text: a result with its complete proof, a partial result with its gaps stated, or a failed approach with the reason it fails. Split a long argument into notes, one per result, so each can be verified and built on. Say in the text when a note meets the completion criteria.",
       "Each note names as support every note whose result its text uses without proving it, in any form: a fact it cites, a case it inherits, an object it takes as defined, or a hypothesis it assumes established. A text names a note by id only when that note is its support; describe provenance, inspiration, and copied mathematics without an id. Your notes are numbered in the order you return them, and a note may name an earlier note of yours as support.",
       "Do not use web search or external tools.",
-      "Call submit_notes exactly once.",
+      ...(continuation
+        ? [
+            "Continue mathematical work in this same context while there is room. Submit early only when a note claims a complete solution to the original task, setting solution=true. This claim does not bypass mathematical verification. Otherwise keep exploring and set solution=false when submitting partial notes near the context limit. If an early partial submission is declined, continue from the existing work and follow the tool feedback before submitting again. Never claim a solution merely to end the call.",
+          ]
+        : ["Call submit_notes exactly once."]),
     ].join(" "),
     prompt: [
       taskText(input.task),
@@ -217,7 +224,8 @@ export function explorerCall(
     ].join("\n\n"),
     tool: roleTools.explorer,
     description: "Return the notes written during this explorer turn",
-    schema: explorerResultFor(input.notes),
+    schema: explorerResultFor(input.notes, continuation),
+    ...(continuation ? { continuation: true as const } : {}),
   };
 }
 
@@ -494,6 +502,15 @@ async function runCall<S extends z.ZodType>(
     reasoning: profile.reasoning,
     tools: [submitTool],
     stopAfterToolResult: true,
+    ...(roleCall.role === "explorer" && roleCall.continuation === true
+      ? {
+          submissionGate: {
+            tool: roleCall.tool,
+            completeArgument: "solution",
+            reserveTokens: explorerReserveTokens(model),
+          },
+        }
+      : {}),
     // Recover transient long-stream failures within this call. Missing usage
     // on an interrupted attempt is unknown spend, not evidence of no billing.
     maxRecoveries: 8,
@@ -523,6 +540,16 @@ async function runCall<S extends z.ZodType>(
   return { call: result.call, value: roleCall.schema.parse(submission.input) };
 }
 
+function explorerReserveTokens(model: {
+  maxTokens: number;
+  contextWindow: number;
+}) {
+  return Math.min(
+    model.maxTokens,
+    Math.max(1024, Math.ceil(model.contextWindow * 0.1)),
+  );
+}
+
 export function createPiRoles(
   campaign: Campaign,
   settingsValue: z.input<typeof solveSettings>,
@@ -531,7 +558,10 @@ export function createPiRoles(
   const profiles = solveSettings.parse(settingsValue);
   return {
     async explorer(inputValue) {
-      const roleCall = explorerCall(explorerInput.parse(inputValue));
+      const roleCall = explorerCall(
+        explorerInput.parse(inputValue),
+        profiles.explorerContinuation === true,
+      );
       return (
         await runCall(campaign, profiles.explorer, roleCall, dependencies)
       ).value;
@@ -691,8 +721,24 @@ export function sameRequest(
     "tool" in request
   ) {
     const parsed = piRequest.safeParse(journaled);
+    if (!parsed.success) return false;
+    const gate = parsed.data.submissionGate;
+    if (request.continuation === true) {
+      const profile = z
+        .object({
+          maxTokens: z.number().positive(),
+          contextWindow: z.number().positive(),
+        })
+        .safeParse(parsed.data.modelProfile);
+      if (
+        !profile.success ||
+        gate?.tool !== request.tool ||
+        gate.completeArgument !== "solution" ||
+        gate.reserveTokens !== explorerReserveTokens(profile.data)
+      )
+        return false;
+    } else if (gate !== undefined) return false;
     return (
-      parsed.success &&
       parsed.data.system === request.system &&
       parsed.data.prompt === request.prompt
     );

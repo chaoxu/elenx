@@ -9,7 +9,7 @@ import {
   type Entry,
   type Json,
 } from "elenx";
-import { derivePiSpend } from "elenx/pi";
+import { derivePiSpend, piRequest } from "elenx/pi";
 import { z } from "zod";
 
 import { campaignAccounting } from "./accounting";
@@ -28,6 +28,7 @@ import {
   coordinatorResult,
   explorerInput,
   explorerResult,
+  explorerContinuationResult,
   jsonSnapshot,
   roleFromLabel,
   roleNames,
@@ -128,7 +129,13 @@ function visibleSubmission(
     }
     const submission = succeededSubmission(records, call.seq, roleTools[role]);
     if (submission === undefined) return undefined;
-    if (role === "explorer") return explorerResult.parse(submission.input);
+    if (role === "explorer") {
+      return (
+        piRequest.parse(call.request).submissionGate !== undefined
+          ? explorerContinuationResult
+          : explorerResult
+      ).parse(submission.input);
+    }
     if (role === "coordinator") {
       return jsonSnapshot(coordinatorResult.parse(submission.input));
     }

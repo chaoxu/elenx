@@ -28,6 +28,7 @@ export function fakePiRequest(options: PiRunOptions): Json {
     prompt: options.prompt,
     reasoning: options.reasoning,
     stopAfterToolResult: options.stopAfterToolResult,
+    submissionGate: options.submissionGate,
     maxRecoveries: options.maxRecoveries,
     maxLengthContinuations: options.maxLengthContinuations,
     cacheKey: options.cacheKey,

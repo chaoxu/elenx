@@ -47,4 +47,4 @@ Submit guidance while a campaign is active or paused for delivery to a future Ex
 
 ## Existing campaigns
 
-The current source uses workflow schema 27 and execution-contract schema 9. Notes may carry external verification, and a supplied complete proof can be accepted after all four checks with zero Explorer turns. Released Solver 0.35.0 uses workflow schema 24 and execution-contract schema 8. The kernel schema and CLI run arguments remain unchanged. Campaigns from earlier workflow schemas need their matching implementation. Preserve a campaign together with its task, settings, and package revision.
+The current source uses workflow schema 28 and execution-contract schema 9. It supports optional Explorer continuation, externally verified notes, and acceptance of a supplied complete proof after all four checks with zero Explorer turns. Released Solver 0.35.0 uses workflow schema 24 and execution-contract schema 8. The kernel schema and CLI run arguments remain unchanged. Campaigns from earlier workflow schemas need their matching implementation. Preserve a campaign together with its task, settings, and package revision.

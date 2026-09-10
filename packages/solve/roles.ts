@@ -169,6 +169,9 @@ export const explorerResult = z.strictObject({
     .array(z.strictObject({ text: nonblank, support: z.array(noteId) }))
     .min(1),
 });
+export const explorerContinuationResult = explorerResult.extend({
+  solution: z.boolean(),
+});
 export type ExplorerResult = z.output<typeof explorerResult>;
 
 /** The explorer's notes are numbered after the notes it received, in order. */
@@ -183,8 +186,12 @@ export function noteIdAfter(count: number, position: number): string {
  * support, the note's own, a later note's, or a dead note's, are provenance
  * and pass.
  */
-export function explorerResultFor(notes: readonly Pick<Note, "id" | "dead">[]) {
-  return explorerResult.superRefine((value, ctx) => {
+export function explorerResultFor(
+  notes: readonly Pick<Note, "id" | "dead">[],
+  continuation = false,
+) {
+  const schema = continuation ? explorerContinuationResult : explorerResult;
+  return schema.superRefine((value, ctx) => {
     const allowed = new Set(
       notes.filter(({ dead }) => !dead).map(({ id }) => id),
     );

@@ -6,7 +6,7 @@ import { createCampaign, openCampaign, openReader } from "elenx";
 
 import { freezeExplorerGuidance, inspectGuidance } from "../guidance";
 import { guideCampaign, inspectCampaign } from "../role-cli";
-import { applicationId, roleLabels } from "../roles";
+import { applicationId, jsonSnapshot, roleLabels } from "../roles";
 import { run } from "../runner";
 import { deriveWorkflow, workflowConfiguration } from "../workflow";
 import {
@@ -293,7 +293,7 @@ test("a run without external advice adds no guidance calls", async () => {
   const { path, request } = setup(1);
   const drive = dependencies(turn(1));
   const start = records(path)[0];
-  expect(start).toMatchObject({ config: { schemaVersion: 27 } });
+  expect(start).toMatchObject({ config: { schemaVersion: 28 } });
   const baseline = await inspectCampaign(path);
   expect(baseline).not.toHaveProperty("guidance");
   await run(request, drive);
@@ -319,10 +319,14 @@ test("retired persistent settings and old workflow schemas are rejected without 
   ).rejects.toThrow();
   expect(readFileSync(path)).toEqual(before);
   const old = join(dirname(path), "schema-23.db");
-  createCampaign(old, applicationId, {
-    ...workflowConfiguration({ task, settings: request.settings }),
-    schemaVersion: 23,
-  }).close();
+  createCampaign(
+    old,
+    applicationId,
+    jsonSnapshot({
+      ...workflowConfiguration({ task, settings: request.settings }),
+      schemaVersion: 23,
+    }),
+  ).close();
   const oldBytes = readFileSync(old);
   await expect(guideCampaign(old, first)).rejects.toThrow();
   await expect(

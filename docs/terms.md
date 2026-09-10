@@ -25,6 +25,7 @@ This is the vocabulary of Elenx and its solver. Work in this repository uses the
 | telemetry, spend | Provider request observation of Pi calls, and the summary derived from it: request counts, request errors, measured usage in tokens, and estimated cost. A Codex call's usage is on its submission. |
 | first request | The first provider operation within one logical Pi call. |
 | continuation | Any subsequent provider operation within that same logical Pi call, including recovery and length continuation. |
+| submission gate | The optional frozen Pi policy `{tool, completeArgument, reserveTokens}` for one terminal tool. It admits a submission when its declared completion field is true or Pi's context estimate reaches the reserved-headroom threshold. Earlier attempts receive tool feedback and remain in the transcript, without executing the tool. |
 | recovered request error | A provider error inside a Pi call that ultimately succeeds. It remains an error in the journal and does not imply complete usage accounting. |
 | accounting | The inspection report of measured cost and its completeness: missing request usage, unaccounted calls and their saved request checkpoints, and calls without recorded prices. Missing cost remains unknown. |
 
@@ -41,6 +42,7 @@ This is the vocabulary of Elenx and its solver. Work in this repository uses the
 | text | The mathematics supplied by Explorer or a caller in a note, stored exactly. It names a note by id only when that note is its support. |
 | dead | A note that correctness, source, or reconstruction failed, or whose support contains a dead note, so it can never be verified. Derived by the projection from the verdicts and the support edges; nothing is stored. Every role sees dead notes with their verdicts; the explorer cannot name one as support, and the coordinator cannot list one for verification. An `INCONCLUSIVE` or a requirements `FAIL` is not death. |
 | explorer | The role that writes note texts toward the original task, choosing its mathematical work and method. |
+| explorer continuation | The optional `explorerContinuation` settings toggle. Off by default. When on, Explorer uses the submission gate to keep working in one context until it claims a complete solution or approaches the context limit. Its `solution` boolean is a completion claim and grants no verification status. |
 | coordinator | The role that files summaries, gives explorer guidance for the next turn, selects support, and lists the notes to verify with their verifiers. |
 | input | The typed value handed to a role: `ExplorerInput`, `CoordinatorInput`, `VerifierInput`. A role call's prompt is derived from it. |
 | notes | Notes as handed to a role, written by Explorer, or submitted by a caller. Explorer receives every note without its text and returns its new texts. The coordinator and `inspect` receive every note in full. The verifier receives the notes under verification in full. Prompt formatting omits PASS report explanations while typed inputs and the journal retain them. |

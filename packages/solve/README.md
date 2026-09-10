@@ -35,6 +35,16 @@ Settings select one model profile for the explorer, one for the coordinator, one
 
 The correctness, requirements, and reconstruction verifiers run through Pi on their own profiles, so a note that leans on an outside result costs one source call, a defective one adds one correctness call, and only sound notes reach the expensive calls. The source verifier runs the Codex CLI on its native credential, the only path that provides web search, when its provider is `codex`. Its `search` is true by default. Setting it to `false` keeps the call offline and assesses invoked results and their hypotheses from mathematical knowledge and supplied texts. Failed or inconclusive online lookup uses the same assessment. Known results can pass, concrete false statements or incorrect applications fail, and a specific uncertainty leaves the check `INCONCLUSIVE`. Only results confirmed in sources actually opened receive source entries. `ELENX_CODEX_COMMAND` names the binary, default `codex`. A source profile with any other provider runs the source verifier as one Pi call without web search, so a worker needs no Codex credential; that is the profile for a task that must not reach the internet. `window` is a character count over the note and support texts one verification reads, default 100000. A verification of one note normally makes one to six calls: the reconstruction verifier is three. Correcting a reconstruction statement adds a proof call and judgment, and preserves all successful checks. Spend covers the Pi calls; the source verifier's usage is on its submission.
 
+### Explorer continuation
+
+Set `"explorerContinuation": true` in settings to keep Explorer working in the same context until it claims a complete solution or approaches its context limit. Omit the setting, or set it to `false`, for ordinary Explorer handoff. Coordinator, verification, search permissions, and the Explorer-turn cap keep their existing behavior.
+
+With the toggle on, `submit_notes` includes a `solution` boolean. A true value declares that a note contains a complete solution and permits early handoff. The usual verifiers still judge the claim. An early partial submission is declined before entering the note graph, and the model receives feedback to continue from its current work. Its messages, tool feedback, and provider-supported reasoning remain in that same call. A partial submission is admitted once the context estimate reaches the threshold.
+
+Elenx uses Pi's context estimate, anchored to the latest applicable provider usage and estimated trailing messages. It reserves 10% of the configured model context for finalization, bounded below by 1,024 tokens and above by the model's output limit, plus 4,096 safety tokens. Requests ask for output caps that preserve this reserve. Providers that ignore output caps may overshoot the requested allocation, and context overflow remains an operational failure. The estimate is not cumulative reasoning usage or an exact measurement of hidden provider state.
+
+The enabled call uses context occupancy in place of the ordinary 32-request and eight-length-continuation limits. Transient-error recovery stays bounded, and interruption remains available. All these provider requests count as one Explorer turn. Use two fresh campaign databases with the same task and settings except for the toggle when comparing behavior. Compare cost and externally checked outcomes as well as turns.
+
 ## Run
 
 ```sh
@@ -107,7 +117,7 @@ The coordinator and external advice can orient the Explorer without changing its
 
 `inspect --include-guidance` adds the external receipts with `calls`, the Explorer call ids whose inputs included that guidance, and `pending`, true until an Explorer call includes it. Multiple calls can be retries of the same turn. Delivery records show what was sent to the model. The model's notes show how it used the advice. Advice recorded on a terminal campaign, or too late for another Explorer turn, remains pending. `guide` never reopens a terminal campaign or changes its result.
 
-Workflow schema 27 records submitted notes and their intake boundaries. Execution-contract schema 9 permits optional external `verification` on notes and zero Explorer turns in an accepted result. The `run` arguments remain `task`, `campaign`, and `settings`. The role field remains `explorerGuidance`, with no persistent guidance setting. Preserve older campaigns with their matching implementation. The [agent guide](docs/agent-usage.md) covers recovery and programmatic submission.
+Workflow schema 28 includes optional Explorer continuation and its conditional submission schema. Execution-contract schema 9 permits optional external `verification` on notes and zero Explorer turns in an accepted result. The `run` arguments remain `task`, `campaign`, and `settings`. The role field remains `explorerGuidance`, with no persistent guidance setting. Preserve older campaigns with their matching implementation. The [agent guide](docs/agent-usage.md) covers recovery and programmatic submission.
 
 ## External final review
 

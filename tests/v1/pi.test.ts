@@ -228,6 +228,265 @@ function models(
   } as PiModels;
 }
 
+const gatedTool = defineTool({
+  name: "submit_result",
+  description: "Return the result when complete or near the context limit",
+  input: z.strictObject({ solution: z.boolean(), text: z.string() }),
+  replay: "safe",
+  async run() {
+    return null;
+  },
+});
+const submissionGate = {
+  tool: "submit_result",
+  completeArgument: "solution",
+  reserveTokens: 2000,
+};
+
+function gateReply(
+  index: number,
+  tokens: number,
+  solution: boolean,
+  stop: "toolUse" | "stop" | "length" = "toolUse",
+) {
+  const message = assistant(
+    stop === "toolUse"
+      ? [
+          {
+            type: "thinking",
+            thinking: `Intermediate reasoning ${index}`,
+            thinkingSignature: `retained-${index}`,
+          },
+          {
+            type: "toolCall",
+            id: `result-${index}`,
+            name: gatedTool.name,
+            arguments: { solution, text: `Result ${index}` },
+          },
+        ]
+      : [{ type: "text", text: `Intermediate reasoning ${index}` }],
+    stop,
+  );
+  message.usage = {
+    ...message.usage,
+    input: Math.max(0, tokens - 50),
+    output: Math.min(50, tokens),
+    cacheRead: 0,
+    totalTokens: tokens,
+  };
+  return message;
+}
+
+async function gatedRun(
+  replies: AssistantMessage[],
+  enabled = true,
+  maxRecoveries = 2,
+  tool = gatedTool,
+) {
+  const requests: { context: Context; maxTokens: number | undefined }[] = [];
+  const wire = models(replies, (context, options) => {
+    replies[requests.length]!.timestamp = Date.now();
+    requests.push({
+      context: JSON.parse(JSON.stringify(context)),
+      maxTokens: options?.maxTokens,
+    });
+  });
+  const c = campaign();
+  try {
+    const result = await runPi(c, {
+      models: wire,
+      model,
+      label: "submission-gate",
+      prompt: "Work on the task and use submit_result.",
+      tools: [tool],
+      stopAfterToolResult: true,
+      maxRecoveries,
+      maxLengthContinuations: 8,
+      ...(enabled ? { submissionGate } : {}),
+    });
+    return { result, requests, records: [...c.records()] };
+  } finally {
+    c.close();
+  }
+}
+
+test("submission gate keeps an early partial in context and commits only the near-limit submission", async () => {
+  const { result, requests, records } = await gatedRun([
+    gateReply(1, 1000, false),
+    gateReply(2, 4000, false),
+  ]);
+  expect(result.state).toBe("succeeded");
+  expect(requests).toHaveLength(2);
+  const first = requests[1]!.context.messages.find(
+    (message) => message.role === "assistant",
+  );
+  expect(first).toMatchObject({
+    content: [
+      { type: "thinking", thinkingSignature: "retained-1" },
+      { type: "toolCall" },
+    ],
+  });
+  expect(
+    requests[1]!.context.messages.some(
+      (message) => message.role === "toolResult" && message.isError,
+    ),
+  ).toBe(true);
+  const submissions = records.filter((entry) => entry.kind === "tool-call");
+  expect(submissions).toHaveLength(1);
+  expect(submissions[0]).toMatchObject({
+    input: { solution: false, text: "Result 2" },
+  });
+  expect(
+    records.find(
+      (entry) => entry.kind === "call" && entry.label === "submission-gate",
+    ),
+  ).toMatchObject({ request: { submissionGate } });
+  expect(
+    requests.every((request) => request.maxTokens! <= model.maxTokens),
+  ).toBe(true);
+});
+
+test("a claimed solution may submit before the context threshold", async () => {
+  const { result, requests, records } = await gatedRun([
+    gateReply(1, 1000, true),
+  ]);
+  expect(result.state).toBe("succeeded");
+  expect(requests).toHaveLength(1);
+  expect(records.filter((entry) => entry.kind === "tool-call")).toHaveLength(1);
+});
+
+test("a gated model cannot execute multiple terminal submissions in one response", async () => {
+  const first = gateReply(1, 1000, true);
+  first.content.push(gateReply(2, 1000, true).content[1]!);
+  const { result, requests, records } = await gatedRun([first]);
+  expect(result.state).toBe("failed");
+  expect(requests).toHaveLength(1);
+  expect(records.filter((entry) => entry.kind === "tool-call")).toHaveLength(0);
+});
+
+test("an admitted gated tool error ends the call without another submission attempt", async () => {
+  const failing = {
+    ...gatedTool,
+    async run() {
+      throw new Error("submission failed");
+    },
+  };
+  const { result, requests, records } = await gatedRun(
+    [gateReply(1, 1000, true), gateReply(2, 2000, true)],
+    true,
+    2,
+    failing,
+  );
+  expect(result.state).toBe("failed");
+  expect(requests).toHaveLength(1);
+  expect(records.filter((entry) => entry.kind === "tool-call")).toHaveLength(1);
+  expect(records.filter((entry) => entry.kind === "tool-result")).toMatchObject(
+    [{ state: "threw" }],
+  );
+});
+
+test("without the gate, ordinary early partial submission still finishes immediately", async () => {
+  const { result, requests } = await gatedRun(
+    [gateReply(1, 1000, false)],
+    false,
+  );
+  expect(result.state).toBe("succeeded");
+  expect(requests).toHaveLength(1);
+  expect(requests[0]!.maxTokens).toBeUndefined();
+});
+
+test("plain-text early completion receives a same-context follow-up", async () => {
+  const { result, requests } = await gatedRun([
+    gateReply(1, 1000, false, "stop"),
+    gateReply(2, 2000, true),
+  ]);
+  expect(result.state).toBe("succeeded");
+  expect(requests).toHaveLength(2);
+  expect(requests[1]!.context.messages).toContainEqual(
+    expect.objectContaining({
+      role: "assistant",
+      content: [{ type: "text", text: "Intermediate reasoning 1" }],
+    }),
+  );
+  expect(requests[1]!.context.messages.at(-1)).toMatchObject({ role: "user" });
+});
+
+test("gated exploration can exceed the ordinary 32 inner turns", async () => {
+  const replies = Array.from({ length: 34 }, (_, index) =>
+    gateReply(index, (index + 1) * 100, index === 33),
+  );
+  const { result, requests, records } = await gatedRun(replies);
+  expect(result.state).toBe("succeeded");
+  expect(requests).toHaveLength(34);
+  expect(records.filter((entry) => entry.kind === "tool-call")).toHaveLength(1);
+});
+
+test("gated length continuation uses context instead of the ordinary eight-continuation cap", async () => {
+  const replies = [
+    ...Array.from({ length: 9 }, (_, index) =>
+      gateReply(index, (index + 1) * 300, false, "length"),
+    ),
+    gateReply(10, 3000, true),
+  ];
+  const { result, requests } = await gatedRun(replies);
+  expect(result.state).toBe("succeeded");
+  expect(requests).toHaveLength(10);
+  expect(
+    requests
+      .at(-1)!
+      .context.messages.filter((message) => message.role === "assistant"),
+  ).toHaveLength(9);
+});
+
+test("exhausted headroom without a submission fails rather than handing off plain text", async () => {
+  const { result, requests, records } = await gatedRun([
+    gateReply(1, 5904, false, "stop"),
+  ]);
+  expect(result).toMatchObject({
+    state: "failed",
+    error: "Pi exhausted submission headroom without a terminal submission",
+  });
+  expect(requests).toHaveLength(1);
+  expect(records.filter((entry) => entry.kind === "tool-call")).toHaveLength(0);
+});
+
+test("the submission gate preserves the separate transient-error recovery budget", async () => {
+  const replies = Array.from({ length: 3 }, () => ({
+    ...assistant([], "error"),
+    rawStopReason: "incomplete.max_messages",
+    errorMessage: "retryable provider failure",
+  }));
+  const { result, requests, records } = await gatedRun(replies);
+  expect(result.state).toBe("failed");
+  expect(requests).toHaveLength(3);
+  expect(records.filter((entry) => entry.kind === "tool-call")).toHaveLength(0);
+});
+
+test("a submission gate requires its one matching terminal tool before creating a call", async () => {
+  const c = campaign();
+  try {
+    for (const options of [
+      {},
+      { tools: [gatedTool] },
+      { tools: [submitVerdict], stopAfterToolResult: true as const },
+    ]) {
+      await expect(
+        runPi(c, {
+          models: models([]),
+          model,
+          label: "bad-gate",
+          prompt: "test",
+          submissionGate,
+          ...options,
+        }),
+      ).rejects.toThrow("one matching terminal tool");
+    }
+    expect(c.records()).toHaveLength(1);
+  } finally {
+    c.close();
+  }
+});
+
 function payloadModels(
   replies: readonly AssistantMessage[],
   payloads: readonly unknown[],
