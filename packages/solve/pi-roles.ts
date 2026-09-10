@@ -178,7 +178,7 @@ const dependencyText =
   "State a nonroutine external theorem you will use as a separate note, with its exact hypotheses, conclusion, and source, then name that note as support. The theorem note may rely directly on its cited source and can precede its application in the same submission. Routine facts need no separate note.";
 
 const verdictText =
-  "Verdicts come from the source, correctness, requirements, and reconstruction verifiers, which run in that order on the notes that asked for them and stop at a note's first verdict that is not PASS. A note is verified when one verification passed source and correctness over verified support, so its result can be built on. A note is dead when correctness, source, or reconstruction failed it or a note in its support is dead: it can never be verified, and its verdicts say what went wrong. A requirements FAIL leaves a note verified but not accepted. INCONCLUSIVE means a check could not reach a conclusion and identifies the missing evidence. It pauses verification without marking the note defective.";
+  "Verdicts come from the source, correctness, requirements, and reconstruction verifiers, which run in that order on the notes that asked for them and stop at a note's first verdict that is not PASS. A note is verified when one verification passed source and correctness over verified support, so its result can be built on. A note is dead when correctness, source, or reconstruction failed it or a note in its support is dead: it can never be verified, and its verdicts say what went wrong. A requirements FAIL leaves a note verified but not accepted. INCONCLUSIVE means a check could not reach a conclusion and identifies the missing evidence. It ends that note's verification attempt without marking the note defective. The next explorer turn receives the report and can address the uncertainty in new notes.";
 const completionText =
   "The requirements verifier decides whether a note meets the completion criteria, and a note is accepted when one verification passed all four verifiers.";
 
@@ -230,7 +230,7 @@ export function coordinatorCall(
       "Then list the notes to verify, in priority order, each with the verifiers to run: a prefix of source, correctness, requirements, reconstruction. A note that later work will build on gets source and correctness and ends verified. A note whose text says it meets the completion criteria gets all four. Verification runs on the longest prefix of your list that fits one verification's window, always its first entry; the rest stays unverified, so list it again next turn if it still matters.",
       verdictText,
       completionText,
-      "A note may be listed only after every note in its support is verified or listed earlier with the correctness verifier. A dead note is never listed again: it is replaced by a new note. An INCONCLUSIVE check stays in its current verification and resumes there with its successful checks preserved. When a note restates a verified note's result, have the explorer name that note as support instead.",
+      "A note may be listed only after every note in its support is verified or listed earlier with the correctness verifier. A dead note is never listed again: it is replaced by a new note. After INCONCLUSIVE, use the report to guide useful work on the missing evidence. When a note restates a verified note's result, have the explorer name that note as support instead.",
       "You have no correctness authority.",
       "Call submit_coordination exactly once.",
     ].join(" "),
@@ -575,16 +575,14 @@ export function createPiRoles(
       };
       for (const name of verifierNames) {
         if (name === "reconstruction") {
-          const attempted = new Set<string>();
           for (;;) {
             const have = recorded();
             const next = missingVerdicts(
               have,
               name,
               judgedBy(input, have, name),
-            ).find((id) => !attempted.has(id));
+            )[0];
             if (next === undefined) break;
-            attempted.add(next);
             const { call, value } = await runReconstruction(
               campaign,
               profiles.reconstruction,
@@ -601,14 +599,6 @@ export function createPiRoles(
         const have = recorded();
         const judged = missingVerdicts(have, name, judgedBy(input, have, name));
         if (judged.length === 0) continue;
-        const after = journalVerdicts(campaign.records())
-          .filter(
-            (entry) =>
-              entry.candidate === candidate &&
-              entry.verdict.verifier === name &&
-              judged.includes(entry.verdict.note),
-          )
-          .at(-1)?.seq;
         const codex =
           name === "source" && codexSource(profiles.source)
             ? profiles.source
@@ -626,7 +616,6 @@ export function createPiRoles(
                     codexSubmission(campaign.records(), call),
                     codex.search,
                   ),
-                after,
               ) ??
               (await runSource(
                 campaign,
@@ -644,7 +633,6 @@ export function createPiRoles(
                 await verifierCall(name, input, judged),
                 dependencies,
                 candidate,
-                after,
               );
         record(call, value.verdicts);
       }
@@ -664,13 +652,11 @@ function settled<T>(
   label: string,
   request: Json | RoleCall<z.ZodType>,
   read: (call: EntryId) => T | undefined,
-  after?: EntryId,
 ): { readonly call: EntryId; readonly value: T } | undefined {
   for (const entry of records) {
     if (
       entry.kind !== "call" ||
       entry.candidate !== candidate ||
-      (after !== undefined && entry.seq <= after) ||
       entry.label !== label ||
       !sameRequest(entry.request, request)
     ) {
@@ -731,23 +717,15 @@ function settledSubmission<S extends z.ZodType>(
   records: readonly Entry[],
   candidate: EntryId,
   roleCall: RoleCall<S>,
-  after?: EntryId,
 ): { readonly call: EntryId; readonly value: z.output<S> } | undefined {
-  return settled(
-    records,
-    candidate,
-    roleCall.label,
-    roleCall,
-    (call) => {
-      const submission = succeededSubmission(records, call, roleCall.tool);
-      const parsed =
-        submission === undefined
-          ? undefined
-          : roleCall.schema.safeParse(submission.input);
-      return parsed?.success === true ? parsed.data : undefined;
-    },
-    after,
-  );
+  return settled(records, candidate, roleCall.label, roleCall, (call) => {
+    const submission = succeededSubmission(records, call, roleCall.tool);
+    const parsed =
+      submission === undefined
+        ? undefined
+        : roleCall.schema.safeParse(submission.input);
+    return parsed?.success === true ? parsed.data : undefined;
+  });
 }
 
 /** Reuses the settled call for `roleCall` on this candidate, or makes it. */
@@ -757,10 +735,9 @@ async function settledOrRun<S extends z.ZodType>(
   roleCall: RoleCall<S>,
   dependencies: PiRoleDependencies,
   candidate: EntryId,
-  after?: EntryId,
 ): Promise<{ readonly call: EntryId; readonly value: z.output<S> }> {
   return (
-    settledSubmission(campaign.records(), candidate, roleCall, after) ??
+    settledSubmission(campaign.records(), candidate, roleCall) ??
     (await runCall(campaign, profile, roleCall, dependencies, candidate))
   );
 }
@@ -815,15 +792,6 @@ async function runReconstruction(
           "reconstruction statement remains unresolved; resume verification to use its latest correction",
         );
       }
-      continue;
-    }
-    if (
-      result.value.verdicts[0]!.verdict === "INCONCLUSIVE" &&
-      campaign
-        .records()
-        .some((entry) => entry.kind === "verdict" && entry.call === result.call)
-    ) {
-      previous = result.call;
       continue;
     }
     return result;

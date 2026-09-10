@@ -19,7 +19,7 @@ bun packages/solve/solve.ts inspect campaign.db
 bun packages/solve/solve.ts inspect --include-requests campaign.db
 ```
 
-The report contains the task, phase, notes and verdicts, role calls and submissions, and accounting. Use the journal-derived `result` when it is present. `accepted` and `turn-limit` are terminal. `paused`, `call-failure`, and `interrupted` leave unfinished work resumable. An inconclusive verification must be resolved before the workflow reaches another Explorer turn.
+The report contains the task, phase, notes and verdicts, role calls and submissions, and accounting. Use the journal-derived `result` when it is present. `accepted` and `turn-limit` are terminal. `paused`, `call-failure`, and `interrupted` leave unfinished work resumable. An inconclusive check ends that note's verification attempt. Explorer receives its full report on the next turn and can supply missing evidence or pursue another argument within the existing turn limit.
 
 ## Submit advice
 
@@ -94,9 +94,9 @@ bun packages/solve/solve.ts run task.json campaign.db settings.json
 
 Guidance is already in the campaign. Leave the original settings file unchanged. The command resumes the first missing role call and preserves completed work. Durability supports continuation from recorded state. Rewinding a campaign or reopening a terminal result is outside this command's behavior.
 
-Workflow schema 25 keeps `explorerGuidance` as per-turn advice. It compacts PASS reports in model prompts, reorders reusable content, includes the Explorer's support closure, and checks undeclared nonroutine source dependencies earlier. Preserve older journals with the exact implementation that wrote them. The updated solver deliberately refuses to replay them against changed prompts. Start a fresh campaign to use the new role contract.
+Workflow schema 26 keeps `explorerGuidance` as per-turn advice and lets inconclusive verification return to Explorer. The note retains the full report, while acceptance still requires every required check to pass. Preserve older journals with the exact implementation that wrote them. The updated solver deliberately refuses to replay them against changed prompts. Start a fresh campaign to use the new role contract.
 
-The `run` arguments, execution-contract schema 8, top-level inspection fields, and stopping rules stay unchanged. Consumers that read coordinator submissions should use `explorerGuidance`. `--include-guidance` is an explicit inspection option. Runs with no external advice add no guidance delivery records.
+The `run` arguments, execution-contract schema 8, and top-level inspection fields stay unchanged. Consumers that read coordinator submissions should use `explorerGuidance`. `--include-guidance` is an explicit inspection option. Runs with no external advice add no guidance delivery records.
 
 All guidance and delivery boundaries live in `campaign.db`. The `.runner.lock` and `.guidance.lock` files only coordinate processes and hold no campaign state. Copy a campaign after its handles close, or use SQLite's backup facilities for a live snapshot. See the kernel [durability contract](../../../SPEC.md) for recovery and copy rules.
 

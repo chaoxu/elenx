@@ -419,7 +419,7 @@ export function judgedBy(
   return judged;
 }
 
-/** Whether every reachable check has a decisive verdict. */
+/** Whether every reachable check has a verdict, including INCONCLUSIVE. */
 export function verificationComplete(
   input: Pick<VerifierInput, "verify" | "notes" | "support">,
   recorded: readonly Verdict[],
@@ -431,7 +431,7 @@ export function verificationComplete(
   );
 }
 
-/** Checks that still need a decisive verdict within one candidate. */
+/** Checks without a verdict within one candidate. */
 export function missingVerdicts(
   recorded: readonly Verdict[],
   name: VerifierName,
@@ -439,12 +439,7 @@ export function missingVerdicts(
 ): string[] {
   return notes.filter(
     (note) =>
-      !recorded.some(
-        (value) =>
-          value.verifier === name &&
-          value.note === note &&
-          value.verdict !== "INCONCLUSIVE",
-      ),
+      !recorded.some((value) => value.verifier === name && value.note === note),
   );
 }
 

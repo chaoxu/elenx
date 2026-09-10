@@ -50,12 +50,7 @@ import {
 } from "./runtime";
 import { withSerialToolCalls } from "./serial-tools";
 import { codexRequest, codexSubmission } from "./source";
-import {
-  deriveWorkflow,
-  unresolvedVerification,
-  workflowConfig,
-  workflowResult,
-} from "./workflow";
+import { deriveWorkflow, workflowConfig, workflowResult } from "./workflow";
 
 const callsConfig = z.strictObject({ kind: z.literal("calls") });
 export type RoleCommand = RoleName;
@@ -205,9 +200,7 @@ export async function inspectCampaign(
     const report =
       phase?.kind === "accepted" || phase?.kind === "turn-limit"
         ? workflowResult(phase)
-        : phase === undefined
-          ? undefined
-          : unresolvedVerification(records, phase);
+        : undefined;
     const spend = derivePiSpend(records);
     return JSON.parse(
       JSON.stringify({

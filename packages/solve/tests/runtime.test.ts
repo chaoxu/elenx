@@ -152,22 +152,21 @@ test("run honors an injected source executor instead of invoking the CLI", async
         {
           task: { problem: "Prove P.", completionCriteria: "Prove P fully." },
           campaignPath: path,
-          settings: roleSettings(),
+          settings: { ...roleSettings(), maxExplorerTurns: 1 },
         },
         drive,
       ),
-    ).toMatchObject({ outcome: "paused", at: "verifier" });
+    ).toMatchObject({ outcome: "turn-limit", turns: 1 });
     expect(drive.codexCalls).toHaveLength(1);
     expect(drive.calls).toHaveLength(2);
     expect(await inspectCampaign(path)).toMatchObject({
-      phase: "verifier",
+      phase: "turn-limit",
       result: {
         schemaVersion: 8,
         application: "elenx-solve",
         protocol: "workflow",
-        outcome: "paused",
-        at: "verifier",
-        reason: "source n1: Source unavailable.",
+        outcome: "turn-limit",
+        turns: 1,
       },
     });
   } finally {

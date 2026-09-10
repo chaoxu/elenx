@@ -898,7 +898,7 @@ test("each verifier judges the listed notes that passed the verifiers before it 
       ...passedRequirements,
       v("reconstruction", "n2", "INCONCLUSIVE"),
     ]),
-  ).toBe(false);
+  ).toBe(true);
   expect(
     verificationComplete(input, [
       ...passedCorrectness,

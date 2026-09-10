@@ -30,7 +30,6 @@ import {
   workflowConfig,
   workflowConfiguration,
   workflowResult,
-  unresolvedVerification,
   type WorkflowConfig,
   type WorkflowResult,
 } from "./workflow";
@@ -79,12 +78,7 @@ async function drive(
     if (phase.kind === "accepted" || phase.kind === "turn-limit") {
       return workflowResult(phase);
     }
-    return (
-      unresolvedVerification(campaign.records(), phase) ?? {
-        outcome: "paused",
-        at: phase.kind,
-      }
-    );
+    return { outcome: "paused", at: phase.kind };
   } catch (error) {
     let at: string;
     try {
