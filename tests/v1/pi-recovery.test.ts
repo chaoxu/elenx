@@ -407,6 +407,47 @@ describe.each([platformModel, codexModel])(
       },
     );
 
+    test("max_messages respects a gate budget below the model capacity", async () => {
+      const checkpoint = reasoning("rs_limit_budget");
+      const ending = incomplete("max_messages", [checkpoint]);
+      (ending.response as WireItem).usage = {
+        input_tokens: 20_000,
+        output_tokens: 5,
+        total_tokens: 20_005,
+      };
+      const largerModel = { ...model, contextWindow: 100_000 };
+      const adapter = scriptedAdapter(largerModel, [
+        [...itemDone(checkpoint, 0), ending],
+      ]);
+      const result = await runPi(campaign(), {
+        models: adapter.models,
+        model: largerModel,
+        label: "recovery/message-limit-budget",
+        prompt: "Reason",
+        tools: [
+          defineTool({
+            name: "record",
+            description: "Record the result",
+            input: z.strictObject({ solution: z.boolean() }),
+            replay: "safe",
+            async run() {
+              return null;
+            },
+          }),
+        ],
+        stopAfterToolResult: true,
+        maxRecoveries: 1,
+        maxLengthContinuations: 1,
+        submissionGate: {
+          completeArgument: "solution",
+          reserveTokens: 2000,
+          contextBudgetTokens: 20_000,
+        },
+      });
+      expect(result.state).toBe("failed");
+      expect(adapter.sent).toHaveLength(1);
+    });
+
     test("repeated max_messages checkpoints exhaust the no-progress error budget", async () => {
       const store = campaign();
       const first = reasoning("rs_limit_first");
