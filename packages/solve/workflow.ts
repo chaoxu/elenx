@@ -19,6 +19,7 @@ import {
 import {
   applicationId,
   coordinatorInput,
+  explorerContinuationResult,
   explorerInput,
   journalVerdicts,
   jsonSnapshot,
@@ -41,7 +42,7 @@ import {
   type VerifierInput,
 } from "./roles";
 
-export const workflowSchemaVersion = 34;
+export const workflowSchemaVersion = 35;
 export const workflowConfig = z.strictObject({
   kind: z.literal("workflow"),
   schemaVersion: z.literal(workflowSchemaVersion),
@@ -225,6 +226,7 @@ export async function deriveWorkflow(
       return true;
     };
     while (turns < config.settings.maxExplorerTurns) {
+      let emptySubmission = false;
       // A submitted note goes directly to the coordinator. Otherwise the
       // next explorer writes notes, which may be joined by pending submissions.
       let included = await includeSubmitted(cursor);
@@ -294,6 +296,17 @@ export async function deriveWorkflow(
             known = await projection.at(saved.settled);
           }
           if (completed !== undefined) {
+            const lastSubmission = records.findLast(
+              (entry) =>
+                entry.kind === "tool-call" &&
+                entry.call === call.seq &&
+                entry.tool === roleCall.tool,
+            );
+            emptySubmission =
+              config.settings.explorerContinuation === true &&
+              lastSubmission?.kind === "tool-call" &&
+              explorerContinuationResult.parse(lastSubmission.input).notes
+                .length === 0;
             cursor = completed.settled;
             turns += 1;
             break;
@@ -305,6 +318,7 @@ export async function deriveWorkflow(
       const coordinatorRequest = coordinatorInput.parse({
         task: config.task,
         notes: await projection.at(cursor),
+        ...(emptySubmission ? { emptySubmission: true } : {}),
       });
       const coordinated = settledCall(
         records,

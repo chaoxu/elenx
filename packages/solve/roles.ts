@@ -211,6 +211,7 @@ export function explorerResultFor(
 export const coordinatorInput = z.strictObject({
   task,
   notes: z.array(note),
+  emptySubmission: z.literal(true).optional(),
 });
 export type CoordinatorInput = z.output<typeof coordinatorInput>;
 

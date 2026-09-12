@@ -358,72 +358,111 @@ test("submission gate saves every partial in the same context before the near-li
   ).toBe(true);
 });
 
-test("an empty gated submission receives the frozen application prompt and retains earlier reasoning and work", async () => {
-  const saved: string[] = [];
+test.each([false, true])(
+  "an empty submission hands off only when configured: %s",
+  async (stopOnEmpty) => {
+    const saved: string[] = [];
+    const tool = defineTool({
+      name: gatedTool.name,
+      description: "Save new work while continuing the original task",
+      input: z.strictObject({
+        solution: z.boolean(),
+        notes: z.array(z.string()),
+      }),
+      replay: "safe",
+      async run({ notes }) {
+        const noteIds = notes.map((_, index) => `n${saved.length + index + 1}`);
+        saved.push(...notes);
+        return { noteIds };
+      },
+    });
+    const replies = [
+      gateReply(1, 1000, false),
+      gateReply(2, 1500, false),
+      gateReply(3, 2000, true),
+    ];
+    for (const [index, reply] of replies.entries()) {
+      const call = reply.content.find((block) => block.type === "toolCall");
+      if (call?.type !== "toolCall")
+        throw new Error("missing fixture tool call");
+      call.arguments = {
+        solution: index === 2,
+        notes: index === 1 ? [] : [`Result ${index + 1}`],
+      };
+    }
+    const gate = {
+      ...submissionGate,
+      ...(stopOnEmpty ? { emptyArgument: "notes" } : {}),
+      continuationPrompt:
+        "Begin another substantial research attempt using the saved work.",
+    };
+    const { result, requests, records } = await gatedRun(
+      replies,
+      true,
+      2,
+      tool,
+      undefined,
+      gate,
+    );
+    expect(result.state).toBe("succeeded");
+    expect(requests).toHaveLength(stopOnEmpty ? 2 : 3);
+    expect(saved).toEqual(
+      stopOnEmpty ? ["Result 1"] : ["Result 1", "Result 3"],
+    );
+    const continued = requests[1]!.context.messages;
+    expect(JSON.stringify(continued)).toContain("retained-1");
+    expect(JSON.stringify(continued)).toContain("Result 1");
+    const feedback = continued.findLast(
+      (message) => message.role === "toolResult",
+    );
+    expect(feedback).toMatchObject({ isError: false });
+    expect(JSON.stringify(feedback)).toContain("n1");
+    expect(JSON.stringify(feedback)).toContain(gate.continuationPrompt);
+    expect(
+      records.find(
+        (entry) => entry.kind === "call" && entry.label === "submission-gate",
+      ),
+    ).toMatchObject({ request: { submissionGate: gate } });
+    expect(
+      records.filter((entry) => entry.kind === "tool-result"),
+    ).toMatchObject([
+      { output: { noteIds: ["n1"] } },
+      { output: { noteIds: [] } },
+      ...(stopOnEmpty ? [] : [{ output: { noteIds: ["n2"] } }]),
+    ]);
+  },
+);
+
+test("the first submission may hand off empty without a solution claim", async () => {
   const tool = defineTool({
     name: gatedTool.name,
-    description: "Save new work while continuing the original task",
+    description: "Save notes or hand off",
     input: z.strictObject({
       solution: z.boolean(),
       notes: z.array(z.string()),
     }),
     replay: "safe",
-    async run({ notes }) {
-      const noteIds = notes.map((_, index) => `n${saved.length + index + 1}`);
-      saved.push(...notes);
-      return { noteIds };
+    async run() {
+      return { noteIds: [] };
     },
   });
-  const replies = [
-    gateReply(1, 1000, false),
-    gateReply(2, 1500, false),
-    gateReply(3, 2000, true),
-  ];
-  for (const [index, reply] of replies.entries()) {
-    const call = reply.content.find((block) => block.type === "toolCall");
-    if (call?.type !== "toolCall") throw new Error("missing fixture tool call");
-    call.arguments = {
-      solution: index === 2,
-      notes: index === 1 ? [] : [`Result ${index + 1}`],
-    };
-  }
-  const gate = {
-    ...submissionGate,
-    continuationPrompt:
-      "Begin another substantial research attempt using the saved work.",
-  };
+  const reply = gateReply(1, 1000, false);
+  const call = reply.content.find((block) => block.type === "toolCall");
+  if (call?.type !== "toolCall") throw new Error("missing fixture tool call");
+  call.arguments = { solution: false, notes: [] };
   const { result, requests, records } = await gatedRun(
-    replies,
+    [reply],
     true,
     2,
     tool,
     undefined,
-    gate,
+    { ...submissionGate, emptyArgument: "notes" },
   );
   expect(result.state).toBe("succeeded");
-  expect(requests).toHaveLength(3);
-  expect(saved).toEqual(["Result 1", "Result 3"]);
-  const continued = requests[2]!.context.messages;
-  expect(JSON.stringify(continued)).toContain("retained-1");
-  expect(JSON.stringify(continued)).toContain("Result 1");
-  const feedback = continued.findLast(
-    (message) => message.role === "toolResult",
-  );
-  expect(feedback).toMatchObject({ isError: false });
-  expect(JSON.stringify(feedback)).toContain('\\"noteIds\\":[]');
-  expect(JSON.stringify(feedback)).toContain(gate.continuationPrompt);
-  expect(
-    records.find(
-      (entry) => entry.kind === "call" && entry.label === "submission-gate",
-    ),
-  ).toMatchObject({ request: { submissionGate: gate } });
-  expect(records.filter((entry) => entry.kind === "tool-result")).toMatchObject(
-    [
-      { output: { noteIds: ["n1"] } },
-      { output: { noteIds: [] } },
-      { output: { noteIds: ["n2"] } },
-    ],
-  );
+  expect(requests).toHaveLength(1);
+  expect(records.filter((entry) => entry.kind === "tool-call")).toMatchObject([
+    { input: { solution: false, notes: [] } },
+  ]);
 });
 
 test("the application continuation prompt reaches native steering but yields to finalization", async () => {

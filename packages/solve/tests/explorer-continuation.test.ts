@@ -43,6 +43,7 @@ test("Explorer continuation defaults off and only its enabled schema requires a 
   expect(off.submissionGate).toBeUndefined();
   expect(on.submissionGate).toEqual({
     completeArgument: "solution",
+    emptyArgument: "notes",
     contextBudgetTokens: 400_000,
     continuationPrompt: expect.stringContaining(
       "Begin another substantial research attempt",
@@ -118,6 +119,7 @@ test("only enabled Explorer calls receive the gate; a solution claim still goes 
     expect(result.kind).toBe("turn-limit");
     expect(drive.calls[0]?.submissionGate).toEqual({
       completeArgument: "solution",
+      emptyArgument: "notes",
       contextBudgetTokens: 400_000,
       continuationPrompt: explorerCall(input, true).submissionGate!
         .continuationPrompt,
@@ -195,6 +197,106 @@ test("explicitly disabled Explorer omits the kernel gate", async () => {
     campaign.close();
   }
 });
+
+test.each([false, true])(
+  "an empty handoff returns to the coordinator and a fresh Explorer with saved notes: %s",
+  async (saveFirst) => {
+    const config = workflowConfiguration({
+      task,
+      settings: {
+        ...roleSettings(),
+        maxExplorerTurns: 2,
+        explorerContinuation: true,
+      },
+    });
+    const campaign = createCampaign(campaignPath(), applicationId, config);
+    const guidance =
+      "Try a counting argument instead of the failed construction.";
+    const nextId = saveFirst ? "n2" : "n1";
+    const drive = dependencies([
+      {
+        onStarted: async (tools) => {
+          if (saveFirst)
+            await tools[0]!.execute({ notes: [note], solution: false });
+        },
+        submission: { notes: [], solution: false },
+      },
+      {
+        submission: {
+          filings: saveFirst
+            ? [{ note: "n1", summary: "Earlier partial work." }]
+            : [],
+          explorerGuidance: guidance,
+          support: saveFirst ? ["n1"] : [],
+          verify: [],
+        },
+      },
+      {
+        submission: {
+          notes: [
+            {
+              text: "A new counting argument with a remaining gap.",
+              support: saveFirst ? ["n1"] : [],
+            },
+          ],
+          solution: true,
+        },
+      },
+      {
+        submission: {
+          filings: [
+            { note: nextId, summary: "A counting argument with a gap." },
+          ],
+          explorerGuidance: "Resolve the remaining gap.",
+          support: [],
+          verify: [],
+        },
+      },
+    ]);
+    try {
+      const result = await runWorkflow(
+        campaign,
+        createPiRoles(campaign, config.settings, drive),
+      );
+      expect(result.kind).toBe("turn-limit");
+      if (result.kind !== "turn-limit") throw new Error("expected turn limit");
+      expect(result.turns).toBe(2);
+      expect(drive.calls.map((call) => call.role)).toEqual([
+        "explorer",
+        "coordinator",
+        "explorer",
+        "coordinator",
+      ]);
+      expect(drive.calls[1]!.prompt).toContain(
+        "ended with an empty submission",
+      );
+      expect(drive.calls[1]!.prompt).toContain(
+        "Choose a different promising approach",
+      );
+      expect(drive.calls[2]!.prompt).toContain(guidance);
+      expect(drive.calls[2]!.prompt).toContain(task.problem);
+      expect(drive.calls[2]!.prompt).toContain(task.completionCriteria);
+      expect(drive.calls[3]!.prompt).not.toContain(
+        "ended with an empty submission",
+      );
+      if (saveFirst) {
+        expect(drive.calls[1]!.prompt).toContain(note.text);
+        expect(drive.calls[2]!.prompt).toContain(note.text);
+      }
+      expect(result.notes.map((note) => note.id)).toEqual(
+        saveFirst ? ["n1", "n2"] : ["n1"],
+      );
+      const before = campaign.records();
+      await runWorkflow(
+        campaign,
+        createPiRoles(campaign, config.settings, dependencies([])),
+      );
+      expect(campaign.records()).toEqual(before);
+    } finally {
+      campaign.close();
+    }
+  },
+);
 
 test.each([
   { explorerContinuation: false },
@@ -395,6 +497,7 @@ test("every saved submission reaches the coordinator, including early proofs bef
     });
     expect(drive.calls[1]!.prompt).toContain(first.text);
     expect(drive.calls[1]!.prompt).toContain(improved.text);
+    expect(drive.calls[1]!.prompt).toContain("ended with an empty submission");
     const before = campaign.records();
     await runWorkflow(
       campaign,

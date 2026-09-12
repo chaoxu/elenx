@@ -65,6 +65,7 @@ export const piReasoning = z.enum(reasoningLevels);
 
 const piSubmissionGate = z.strictObject({
   completeArgument: z.string().regex(/\S/u),
+  emptyArgument: z.string().regex(/\S/u).optional(),
   reserveTokens: z.number().int().positive().optional(),
   contextBudgetTokens: z.number().int().positive().optional(),
   continuationPrompt: z.string().regex(/\S/u).optional(),
@@ -1180,14 +1181,18 @@ async function runPiBody(
                       );
                     if (isError) return { terminate: recorded };
                     const state = contextState(context);
-                    const complete =
-                      typeof args === "object" &&
-                      args !== null &&
-                      (args as Record<string, unknown>)[
-                        gate.completeArgument
-                      ] === true;
+                    const submitted =
+                      typeof args === "object" && args !== null
+                        ? (args as Record<string, unknown>)
+                        : {};
+                    const empty =
+                      gate.emptyArgument === undefined
+                        ? undefined
+                        : submitted[gate.emptyArgument];
                     const terminate =
-                      complete || state.tokens >= state.threshold;
+                      submitted[gate.completeArgument] === true ||
+                      (Array.isArray(empty) && empty.length === 0) ||
+                      state.tokens >= state.threshold;
                     return {
                       terminate,
                       content: [
