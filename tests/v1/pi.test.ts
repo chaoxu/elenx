@@ -356,6 +356,60 @@ test("submission gate saves every partial in the same context before the near-li
   ).toBe(true);
 });
 
+test("an empty gated submission receives replanning feedback and retains earlier reasoning and work", async () => {
+  const saved: string[] = [];
+  const tool = defineTool({
+    name: gatedTool.name,
+    description: "Save new work while continuing the original task",
+    input: z.strictObject({
+      solution: z.boolean(),
+      notes: z.array(z.string()),
+    }),
+    replay: "safe",
+    async run({ notes }) {
+      const noteIds = notes.map((_, index) => `n${saved.length + index + 1}`);
+      saved.push(...notes);
+      return { noteIds };
+    },
+  });
+  const replies = [
+    gateReply(1, 1000, false),
+    gateReply(2, 1500, false),
+    gateReply(3, 2000, true),
+  ];
+  for (const [index, reply] of replies.entries()) {
+    const call = reply.content.find((block) => block.type === "toolCall");
+    if (call?.type !== "toolCall") throw new Error("missing fixture tool call");
+    call.arguments = {
+      solution: index === 2,
+      notes: index === 1 ? [] : [`Result ${index + 1}`],
+    };
+  }
+  const { result, requests, records } = await gatedRun(replies, true, 2, tool);
+  expect(result.state).toBe("succeeded");
+  expect(requests).toHaveLength(3);
+  expect(saved).toEqual(["Result 1", "Result 3"]);
+  const continued = requests[2]!.context.messages;
+  expect(JSON.stringify(continued)).toContain("retained-1");
+  expect(JSON.stringify(continued)).toContain("Result 1");
+  const feedback = continued.findLast(
+    (message) => message.role === "toolResult",
+  );
+  expect(feedback).toMatchObject({ isError: false });
+  expect(JSON.stringify(feedback)).toContain('\\"noteIds\\":[]');
+  expect(JSON.stringify(feedback)).toContain("Reassess the current approach");
+  expect(JSON.stringify(feedback)).toContain(
+    "choose another promising approach",
+  );
+  expect(records.filter((entry) => entry.kind === "tool-result")).toMatchObject(
+    [
+      { output: { noteIds: ["n1"] } },
+      { output: { noteIds: [] } },
+      { output: { noteIds: ["n2"] } },
+    ],
+  );
+});
+
 test.each([
   [378_000, "toolUse", 1_520, 16_384, 379_520],
   [379_600, "stop", 16_304, 16_384, 379_700],

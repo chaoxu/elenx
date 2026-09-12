@@ -101,13 +101,13 @@ function coordinatorNotes(prompt: string): Note[] {
 
 test("init creates only a workflow declaration without resolving test-only providers", async () => {
   const { path, request } = await setup();
-  expect(workflowSchemaVersion).toBe(32);
+  expect(workflowSchemaVersion).toBe(33);
   const before = records(path);
   expect(before).toHaveLength(1);
   expect(before[0]).toMatchObject({
     kind: "campaign",
     application: "elenx-solve",
-    config: { schemaVersion: 32, task },
+    config: { schemaVersion: 33, task },
   });
   await init(request);
   expect(records(path)).toEqual(before);
