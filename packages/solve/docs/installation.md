@@ -1,11 +1,11 @@
 # Install the solver
 
-Elenx requires Bun 1.3.13 or newer. Release `v0.9.4` includes the `elenx` kernel at version 0.9.4 and `elenx-solve` at version 0.35.0. Install both packages in a project directory:
+Elenx requires Bun 1.3.13 or newer. Release `v0.10.0` includes the `elenx` kernel at version 0.10.0 and `elenx-solve` at version 0.36.0. Install both packages in a project directory:
 
 ```sh
 mkdir elenx-project
 cd elenx-project
-bun add --minimum-release-age 86400 https://github.com/chaoxu/elenx/releases/download/v0.9.4/elenx-0.9.4.tgz https://github.com/chaoxu/elenx/releases/download/v0.9.4/elenx-solve-0.35.0.tgz
+bun add --minimum-release-age 86400 https://github.com/chaoxu/elenx/releases/download/v0.10.0/elenx-0.10.0.tgz https://github.com/chaoxu/elenx/releases/download/v0.10.0/elenx-solve-0.36.0.tgz
 bun pm trust cozo-node
 bun run elenx-solve contract
 ```
@@ -57,4 +57,4 @@ Submit guidance while a campaign is active or paused for delivery to a future Ex
 
 ## Existing campaigns
 
-The current source uses workflow schema 36 and execution-contract schema 9. It supports optional Explorer continuation, externally verified notes, and acceptance of a supplied complete proof after all four checks with zero Explorer turns. Released Solver 0.35.0 uses workflow schema 24 and execution-contract schema 8; keep that published-release provenance unchanged. The kernel schema and CLI run arguments remain unchanged. Campaigns from earlier workflow schemas need their matching implementation. Preserve a campaign together with its task, settings, and package revision.
+Release Elenx 0.10.0 and Solver 0.36.0 use workflow schema 36 and execution-contract schema 9. They support optional Explorer continuation, externally verified notes, and acceptance of a supplied complete proof after all four checks with zero Explorer turns. The published Elenx 0.9.4 and Solver 0.35.0 packages use workflow schema 24 and execution-contract schema 8; keep that published-release provenance unchanged. The kernel schema and CLI run arguments remain unchanged. Campaigns from earlier workflow schemas need their matching implementation. Preserve a campaign together with its task, settings, and package revision.

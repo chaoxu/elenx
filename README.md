@@ -50,12 +50,12 @@ bun packages/solve/solve.ts run task.json campaign.db settings.json
 
 ## Install
 
-For the packaged solver, follow [installation and provider setup](packages/solve/docs/installation.md). Release `v0.9.4` includes kernel 0.9.4 and solver 0.35.0, with OpenAI API and Codex subscription examples.
+For the packaged solver, follow [installation and provider setup](packages/solve/docs/installation.md). Release `v0.10.0` includes kernel 0.10.0 and solver 0.36.0, with OpenAI API and Codex subscription examples.
 
 The v1 kernel requires Bun 1.3.13 or newer. Applications define tool schemas with Zod:
 
 ```sh
-bun add --minimum-release-age 86400 github:chaoxu/elenx#v0.9.4 zod@4.5.4
+bun add --minimum-release-age 86400 github:chaoxu/elenx#v0.10.0 zod@4.5.4
 ```
 
 Elenx exposes Pi types directly. Keep TypeScript's `skipLibCheck` enabled while Pi's provider SDK declarations require it.
@@ -74,7 +74,7 @@ The API and campaign schema are experimental. Campaigns are accepted only when t
 | How do the solver roles and replay behave? | [`packages/solve/docs/role-runner.md`](packages/solve/docs/role-runner.md) |
 | How do I build an application? | [`docs/application-author.md`](docs/application-author.md) |
 | How do I install packages and configure a provider? | [`packages/solve/docs/installation.md`](packages/solve/docs/installation.md) |
-| What changed in this release? | [`docs/releases/v0.9.4.md`](docs/releases/v0.9.4.md) |
+| What changed in this release? | [`docs/releases/v0.10.0.md`](docs/releases/v0.10.0.md) |
 
 The deterministic verifier example is [`examples/v1/scripted-verifier.ts`](examples/v1/scripted-verifier.ts). [`examples/v1/pi-smoke.ts`](examples/v1/pi-smoke.ts) exercises the LLM-verdict path with a real Pi model.
 

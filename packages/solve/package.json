@@ -1,6 +1,6 @@
 {
   "name": "elenx-solve",
-  "version": "0.35.0",
+  "version": "0.36.0",
   "license": "MIT",
   "type": "module",
   "packageManager": "bun@1.3.14",
@@ -36,7 +36,7 @@
     "zod": "4.5.4"
   },
   "peerDependencies": {
-    "elenx": "^0.9.3"
+    "elenx": "^0.10.0"
   },
   "peerDependenciesMeta": {
     "elenx": {
