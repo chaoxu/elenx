@@ -14,25 +14,35 @@ The install command uses Bun's one-day release-age filter to avoid partially pub
 
 ## Choose a provider
 
-With an OpenAI API account, configure `OPENAI_API_KEY` in your environment or the OpenAI credential through Pi. Use the included profile:
-
-```sh
-bun run elenx-solve run node_modules/elenx-solve/examples/task-even-sum.json campaign.db node_modules/elenx-solve/examples/settings-openai.json
-```
-
 With an OpenAI Codex subscription, use Pi's `/login` command to authenticate the **OpenAI Codex** provider:
 
 ```sh
 bunx --package @earendil-works/pi-coding-agent@0.85.1 pi
 ```
 
-After logging in and exiting Pi, run the small setup example. This profile uses Luna with low reasoning for every role:
+Elenx uses Pi's saved credential, which is separate from Codex CLI login. After logging in and exiting Pi, run the small setup example. This profile uses the public Codex endpoint at `https://chatgpt.com/backend-api` and Luna with low reasoning for every role:
 
 ```sh
 bun run elenx-solve run node_modules/elenx-solve/examples/task-even-sum.json campaign.db node_modules/elenx-solve/examples/settings-openai-codex.json
 ```
 
+With an OpenAI API account, configure `OPENAI_API_KEY` in your environment or the OpenAI credential through Pi. This profile uses `https://api.openai.com/v1`:
+
+```sh
+bun run elenx-solve run node_modules/elenx-solve/examples/task-even-sum.json campaign.db node_modules/elenx-solve/examples/settings-openai.json
+```
+
 These profiles use public provider endpoints and Pi credentials. They require no Fleet services, private model registry, or lab certificate. The source verifier in both examples runs through Pi without web search. Use a new campaign path when changing profiles, since each campaign fixes its settings.
+
+For a private deployment, set `ELENX_MODELS_PATH` to the absolute path of a valid Pi `models.json` containing the provider override. Elenx reads a custom model registry only through that explicit setting. `OPENAI_BASE_URL` does not override Pi's model endpoints.
+
+## Diagnose provider failures
+
+`No credential for provider(s): openai-codex` requires Pi login for **OpenAI Codex**. An `openai` credential error requires an OpenAI API credential or selection of the Codex subscription profile.
+
+When `run` returns `call-failure`, its JSON `reason` contains the provider error, including the HTTP status and response message when available. Configuration errors appear on standard error. Current source checkouts also expose saved provider errors in `inspect` under `calls[].error`. Released Solver 0.35.0 shows only the kernel call state there, so retain the original `run` output.
+
+When reporting a failure, include the exact command, package version or Git revision, provider/model, and full error with credentials removed. Use the HTTP status and message to distinguish authentication, model access, quota, and connection failures.
 
 ## Inspect and guide
 

@@ -1,5 +1,6 @@
 import { Database, SQLiteError } from "bun:sqlite";
-import { realpathSync } from "node:fs";
+import { constants, realpathSync } from "node:fs";
+import { access } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join } from "node:path";
 
 import type { ModelRuntime } from "@earendil-works/pi-coding-agent";
@@ -13,6 +14,8 @@ export type SolveModels = Pick<
 export async function createModelRuntime(
   options: Parameters<typeof ModelRuntime.create>[0],
 ): Promise<ModelRuntime> {
+  const modelsPath = options?.modelsPath;
+  if (typeof modelsPath === "string") await access(modelsPath, constants.R_OK);
   // Pi 0.85.1 has no public runtime subpath. Keep its pinned layout here so
   // model setup does not load the coding-agent CLI and terminal UI.
   const url = new URL(
@@ -22,7 +25,12 @@ export async function createModelRuntime(
   const { ModelRuntime: Runtime } = (await import(url.href)) as {
     ModelRuntime: typeof ModelRuntime;
   };
-  return Runtime.create(options);
+  const runtime = await Runtime.create(options);
+  if (typeof modelsPath === "string") {
+    const error = runtime.getError();
+    if (error !== undefined) throw new Error(error);
+  }
+  return runtime;
 }
 
 export function codexCommand(environment: NodeJS.ProcessEnv): string {

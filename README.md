@@ -10,16 +10,24 @@ The kernel enforces identity, durability, crash semantics, and accounting contra
 
 ## Try the solver
 
-From a checkout, install dependencies with Bun 1.3.13 or newer. Configure `OPENAI_API_KEY` in your environment or the corresponding credential through Pi, then run the included task:
+From a checkout, install dependencies with Bun 1.3.13 or newer. With a Codex subscription, authenticate through Pi:
 
 ```sh
 bun install --frozen-lockfile
-bun packages/solve/solve.ts run packages/solve/examples/task-even-sum.json campaign.db packages/solve/examples/settings-openai.json
+bunx --package @earendil-works/pi-coding-agent@0.85.1 pi
+```
+
+In Pi, enter `/login`, choose **OpenAI Codex**, complete login, and exit. Elenx uses Pi's saved credential, which is separate from Codex CLI login. Then run the included task:
+
+```sh
+bun packages/solve/solve.ts run packages/solve/examples/task-even-sum.json campaign.db packages/solve/examples/settings-openai-codex.json
 bun packages/solve/solve.ts inspect campaign.db
 bun packages/solve/solve.ts export campaign.db
 ```
 
-The example uses OpenAI directly and requires no Fleet services. Model calls use your provider account. Settings select the model for each role and cap Explorer turns. Repeat the same `run` command after an interruption to continue. A completed campaign returns its recorded result.
+This profile uses the public Codex endpoint at `https://chatgpt.com/backend-api` and Luna with low reasoning for every role. Private endpoints require an explicit model registry. For an OpenAI API account, use `settings-openai.json` with `OPENAI_API_KEY` as described in [provider setup](packages/solve/docs/installation.md#choose-a-provider).
+
+Settings select the model for each role and cap Explorer turns. Repeat the same `run` command after an interruption to continue. A completed campaign returns its recorded result.
 
 While a campaign is running or paused, another process can submit guidance:
 

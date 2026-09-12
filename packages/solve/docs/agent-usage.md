@@ -6,10 +6,10 @@ The examples below run from the repository root with Bun. [Installation](install
 
 ## Start and inspect
 
-Create a task containing `problem` and `completionCriteria`, and select model profiles in a settings file. The included OpenAI settings use `OPENAI_API_KEY` or Pi's configured OpenAI credential. Custom providers can use an absolute model-registry path through `ELENX_MODELS_PATH`.
+Create a task containing `problem` and `completionCriteria`, and select model profiles in a settings file. The example below uses the public Codex endpoint with Pi's **OpenAI Codex** login. [Provider setup](installation.md#choose-a-provider) also covers OpenAI API credentials and explicit private registries through `ELENX_MODELS_PATH`.
 
 ```sh
-bun packages/solve/solve.ts run packages/solve/examples/task-even-sum.json campaign.db packages/solve/examples/settings-openai.json
+bun packages/solve/solve.ts run packages/solve/examples/task-even-sum.json campaign.db packages/solve/examples/settings-openai-codex.json
 ```
 
 `run` prints phase updates on standard error and a JSON execution report on standard output when it returns. Supervise long-running commands with your application's existing process manager. Another process can read the campaign during execution:
