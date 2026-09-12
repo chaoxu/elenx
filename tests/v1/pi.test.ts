@@ -325,9 +325,13 @@ test("submission gate saves every partial in the same context before the near-li
   expect(result.state).toBe("succeeded");
   expect(requests).toHaveLength(3);
   expect(requests[2]!.maxTokens).toBeLessThan(model.maxTokens);
-  expect(JSON.stringify(requests[1]!.context.messages)).toContain(
-    "Submission saved.",
-  );
+  expect(requests[1]!.context.messages.slice(-2)).toMatchObject([
+    { role: "toolResult", isError: false },
+    {
+      role: "user",
+      content: expect.stringContaining("Continue substantive work"),
+    },
+  ]);
   const first = requests[1]!.context.messages.find(
     (message) => message.role === "assistant",
   );
@@ -417,7 +421,19 @@ test.each([false, true])(
     );
     expect(feedback).toMatchObject({ isError: false });
     expect(JSON.stringify(feedback)).toContain("n1");
-    expect(JSON.stringify(feedback)).toContain(gate.continuationPrompt);
+    expect(JSON.stringify(feedback)).not.toContain(gate.continuationPrompt);
+    expect(continued.slice(-2)).toMatchObject([
+      { role: "toolResult", isError: false },
+      { role: "user", content: gate.continuationPrompt },
+    ]);
+    if (!stopOnEmpty)
+      expect(requests[2]!.context.messages.slice(-2)).toMatchObject([
+        {
+          role: "toolResult",
+          content: [{ type: "text", text: '{"noteIds":[]}' }],
+        },
+        { role: "user", content: gate.continuationPrompt },
+      ]);
     expect(
       records.find(
         (entry) => entry.kind === "call" && entry.label === "submission-gate",
@@ -461,6 +477,46 @@ test("the first submission may hand off empty without a solution claim", async (
   expect(result.state).toBe("succeeded");
   expect(requests).toHaveLength(1);
   expect(records.filter((entry) => entry.kind === "tool-call")).toMatchObject([
+    { input: { solution: false, notes: [] } },
+  ]);
+});
+
+test("empty submissions receive user continuation until the context threshold", async () => {
+  const tool = defineTool({
+    name: gatedTool.name,
+    description: "Save partial notes",
+    input: z.strictObject({
+      solution: z.boolean(),
+      notes: z.array(z.string()),
+    }),
+    replay: "safe",
+    async run() {
+      return { noteIds: [] };
+    },
+  });
+  const replies = [gateReply(1, 1000, false), gateReply(2, 4000, false)];
+  for (const reply of replies) {
+    const call = reply.content.find((block) => block.type === "toolCall");
+    if (call?.type !== "toolCall") throw new Error("missing fixture tool call");
+    call.arguments = { solution: false, notes: [] };
+  }
+  const prompt = "Keep trying, you can do it.";
+  const { result, requests, records } = await gatedRun(
+    replies,
+    true,
+    2,
+    tool,
+    undefined,
+    { ...submissionGate, continuationPrompt: prompt },
+  );
+  expect(result.state).toBe("succeeded");
+  expect(requests).toHaveLength(2);
+  expect(requests[1]!.context.messages.slice(-2)).toMatchObject([
+    { role: "toolResult", content: [{ type: "text", text: '{"noteIds":[]}' }] },
+    { role: "user", content: prompt },
+  ]);
+  expect(records.filter((entry) => entry.kind === "tool-call")).toMatchObject([
+    { input: { solution: false, notes: [] } },
     { input: { solution: false, notes: [] } },
   ]);
 });
@@ -809,9 +865,22 @@ test("the submission gate preserves the consecutive transient-error recovery bud
     rawStopReason: "incomplete.max_messages",
     errorMessage: "retryable provider failure",
   }));
-  const { result, requests, records } = await gatedRun(replies);
+  const prompt = "Keep trying, you can do it.";
+  const { result, requests, records } = await gatedRun(
+    replies,
+    true,
+    2,
+    gatedTool,
+    undefined,
+    { ...submissionGate, continuationPrompt: prompt },
+  );
   expect(result.state).toBe("failed");
   expect(requests).toHaveLength(3);
+  for (const request of requests.slice(1))
+    expect(request.context.messages.at(-1)).toMatchObject({
+      role: "user",
+      content: prompt,
+    });
   expect(records.filter((entry) => entry.kind === "tool-call")).toHaveLength(0);
 });
 

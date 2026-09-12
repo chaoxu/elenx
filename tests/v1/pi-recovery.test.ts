@@ -346,6 +346,7 @@ describe.each([platformModel, codexModel])(
                 submissionGate: {
                   completeArgument: "solution",
                   reserveTokens: 2000,
+                  continuationPrompt: "Keep trying, you can do it.",
                 },
               }
             : {}),
@@ -354,7 +355,22 @@ describe.each([platformModel, codexModel])(
         expect(adapter.sent).toHaveLength(11);
         expect(input(adapter.sent.at(-1))).toEqual([
           ...input(adapter.sent[0]),
-          ...checkpoints,
+          ...checkpoints.flatMap((checkpoint) =>
+            gated
+              ? [
+                  checkpoint,
+                  {
+                    role: "user",
+                    content: [
+                      {
+                        type: "input_text",
+                        text: "Keep trying, you can do it.",
+                      },
+                    ],
+                  },
+                ]
+              : [checkpoint],
+          ),
         ]);
         expect(executed).toEqual([7]);
         expect(derivePiSpend(store.records()).summary.requestErrors).toBe(10);

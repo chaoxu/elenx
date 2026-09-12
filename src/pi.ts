@@ -643,7 +643,7 @@ function submissionFeedback(
     gate.continuationPrompt ??
     "The original task remains unresolved. Treat saved work as intermediate progress. Reassess the current approach using what you have learned: identify the unresolved obstacle, then work through it or choose another promising approach. Continue substantive work in this context. Save new results, concrete gaps, or failed approaches with their reasons when useful.";
   return state.tokens < state.threshold
-    ? `${occupancy} ${continuation}`
+    ? continuation
     : `${occupancy} Finalize now. Set ${gate.completeArgument} truthfully: true only if the task is complete, otherwise false.`;
 }
 
@@ -1168,7 +1168,6 @@ async function runPiBody(
                     toolCall,
                     args,
                     context,
-                    result,
                     isError,
                   }) => {
                     const recorded = campaign
@@ -1193,18 +1192,15 @@ async function runPiBody(
                       submitted[gate.completeArgument] === true ||
                       (Array.isArray(empty) && empty.length === 0) ||
                       state.tokens >= state.threshold;
-                    return {
-                      terminate,
-                      content: [
-                        ...result.content,
+                    if (!terminate)
+                      steering = [
                         {
-                          type: "text" as const,
-                          text: terminate
-                            ? "Submission saved. Handing off now."
-                            : `Submission saved. ${submissionFeedback(gate, state)}`,
+                          role: "user",
+                          content: submissionFeedback(gate, state),
+                          timestamp: Date.now(),
                         },
-                      ],
-                    };
+                      ];
+                    return { terminate };
                   },
                   getSteeringMessages: async () => {
                     const messages = steering;
@@ -1281,10 +1277,14 @@ async function runPiBody(
           lengthContinuations += 1;
         }
         const prior = messages;
-        messages = [
-          ...prior,
-          ...(await loop(retry ? undefined : lengthContinuation, prior)),
-        ];
+        const direction =
+          gate !== undefined &&
+          final.rawStopReason === "incomplete.max_messages"
+            ? submissionFeedback(gate, contextState(agentContext(prior)))
+            : retry
+              ? undefined
+              : lengthContinuation;
+        messages = [...prior, ...(await loop(direction, prior))];
       }
       const outcome = result(
         messages,

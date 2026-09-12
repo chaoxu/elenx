@@ -43,11 +43,8 @@ test("Explorer continuation defaults off and only its enabled schema requires a 
   expect(off.submissionGate).toBeUndefined();
   expect(on.submissionGate).toEqual({
     completeArgument: "solution",
-    emptyArgument: "notes",
     contextBudgetTokens: 400_000,
-    continuationPrompt: expect.stringContaining(
-      "Begin another substantial research attempt",
-    ),
+    continuationPrompt: "Keep trying, you can do it.",
   });
   expect(ordinary.schema.safeParse({ notes: [note] }).success).toBe(true);
   expect(
@@ -119,7 +116,6 @@ test("only enabled Explorer calls receive the gate; a solution claim still goes 
     expect(result.kind).toBe("turn-limit");
     expect(drive.calls[0]?.submissionGate).toEqual({
       completeArgument: "solution",
-      emptyArgument: "notes",
       contextBudgetTokens: 400_000,
       continuationPrompt: explorerCall(input, true).submissionGate!
         .continuationPrompt,
@@ -199,7 +195,7 @@ test("explicitly disabled Explorer omits the kernel gate", async () => {
 });
 
 test.each([false, true])(
-  "an empty handoff returns to the coordinator and a fresh Explorer with saved notes: %s",
+  "an empty context-limit handoff returns to the coordinator and a fresh Explorer with saved notes: %s",
   async (saveFirst) => {
     const config = workflowConfiguration({
       task,

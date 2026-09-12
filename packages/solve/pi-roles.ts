@@ -212,7 +212,7 @@ export function explorerCall(
       "Do not use web search or external tools.",
       ...(continuation
         ? [
-            "Continue mathematical work in this same context while there is room. Saving intermediate notes leaves the original problem unresolved. After a partial submission, reassess the current approach using what you have learned: identify the unresolved obstacle, then work through it or choose another promising approach. Resume mathematical work after replanning; a separate planning submission is not required. Call submit_notes to save new results, concrete gaps, or failed approaches with their reasons when useful, one tool call per response. Every valid submission appends notes and returns their assigned noteIds; later submissions may use those notes as support. Submit only new notes, never copy earlier submissions. To revise an earlier note, write a new note explaining the correction and its limitations. All saved notes reach the coordinator at handoff. Set solution=true only when a note claims a complete solution to the original task; this ends the call early and does not bypass mathematical verification. Otherwise set solution=false and continue from the existing work until the tool feedback requests handoff near the context limit. If you have no new notes to submit, submit notes=[] with solution=false: the first empty submission ends this Explorer turn and hands all saved work to the coordinator to choose a new direction. Never claim a solution merely to end the call.",
+            "Continue mathematical work in this same context while there is room. Saving intermediate notes leaves the original problem unresolved. After a partial submission, reassess the current approach using what you have learned: identify the unresolved obstacle, then work through it or choose another promising approach. Resume mathematical work after replanning; a separate planning submission is not required. Call submit_notes to save new results, concrete gaps, or failed approaches with their reasons when useful, one tool call per response. Every valid submission appends notes and returns their assigned noteIds; later submissions may use those notes as support. Submit only new notes, never copy earlier submissions. To revise an earlier note, write a new note explaining the correction and its limitations. All saved notes reach the coordinator at handoff. Set solution=true only when a note claims a complete solution to the original task; this ends the call early and does not bypass mathematical verification. Otherwise set solution=false and continue from the existing work when the next user message asks you to keep trying. If you have no new notes to submit, submit notes=[] with solution=false. An empty submission also receives another user message while context space remains. Finalize when the user message requests handoff near the context limit. Never claim a solution merely to end the call.",
           ]
         : ["Call submit_notes exactly once."]),
     ].join(" "),
@@ -233,10 +233,8 @@ export function explorerCall(
     submissionGate: continuation
       ? {
           completeArgument: "solution",
-          emptyArgument: "notes",
           contextBudgetTokens,
-          continuationPrompt:
-            "Your previous submissions have already been saved. Begin another substantial research attempt toward the original completion criteria, building on useful earlier work. Choose the most promising unresolved route yourself and work through it. Return work that is new relative to the saved notes: a derivation, a stronger result, or a precise attempted lemma together with the argument establishing where it succeeds or fails. A plan or a recap alone does not complete this research attempt. If a route fails, use the failure to choose and investigate another promising route before answering. Report uncertainty and failed attempts honestly; do not invent a resolution.",
+          continuationPrompt: "Keep trying, you can do it.",
         }
       : undefined,
   };
