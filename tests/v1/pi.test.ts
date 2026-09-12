@@ -31,6 +31,7 @@ import {
   piStoredResult,
   piTelemetry,
   runPi,
+  type PiSubmissionGate,
 } from "../../src/pi";
 
 type PiModels = Pick<Models, "streamSimple">;
@@ -282,6 +283,7 @@ async function gatedRun(
   maxRecoveries = 2,
   tool = gatedTool,
   cancelOnRequest?: AbortController,
+  gate: PiSubmissionGate = submissionGate,
 ) {
   const requests: { context: Context; maxTokens: number | undefined }[] = [];
   const wire = models(replies, (context, options) => {
@@ -306,7 +308,7 @@ async function gatedRun(
       ...(cancelOnRequest === undefined
         ? {}
         : { signal: cancelOnRequest.signal }),
-      ...(enabled ? { submissionGate } : {}),
+      ...(enabled ? { submissionGate: gate } : {}),
     });
     return { result, requests, records: [...c.records()] };
   } finally {
@@ -356,7 +358,7 @@ test("submission gate saves every partial in the same context before the near-li
   ).toBe(true);
 });
 
-test("an empty gated submission receives replanning feedback and retains earlier reasoning and work", async () => {
+test("an empty gated submission receives the frozen application prompt and retains earlier reasoning and work", async () => {
   const saved: string[] = [];
   const tool = defineTool({
     name: gatedTool.name,
@@ -385,7 +387,19 @@ test("an empty gated submission receives replanning feedback and retains earlier
       notes: index === 1 ? [] : [`Result ${index + 1}`],
     };
   }
-  const { result, requests, records } = await gatedRun(replies, true, 2, tool);
+  const gate = {
+    ...submissionGate,
+    continuationPrompt:
+      "Begin another substantial research attempt using the saved work.",
+  };
+  const { result, requests, records } = await gatedRun(
+    replies,
+    true,
+    2,
+    tool,
+    undefined,
+    gate,
+  );
   expect(result.state).toBe("succeeded");
   expect(requests).toHaveLength(3);
   expect(saved).toEqual(["Result 1", "Result 3"]);
@@ -397,10 +411,12 @@ test("an empty gated submission receives replanning feedback and retains earlier
   );
   expect(feedback).toMatchObject({ isError: false });
   expect(JSON.stringify(feedback)).toContain('\\"noteIds\\":[]');
-  expect(JSON.stringify(feedback)).toContain("Reassess the current approach");
-  expect(JSON.stringify(feedback)).toContain(
-    "choose another promising approach",
-  );
+  expect(JSON.stringify(feedback)).toContain(gate.continuationPrompt);
+  expect(
+    records.find(
+      (entry) => entry.kind === "call" && entry.label === "submission-gate",
+    ),
+  ).toMatchObject({ request: { submissionGate: gate } });
   expect(records.filter((entry) => entry.kind === "tool-result")).toMatchObject(
     [
       { output: { noteIds: ["n1"] } },
@@ -408,6 +424,32 @@ test("an empty gated submission receives replanning feedback and retains earlier
       { output: { noteIds: ["n2"] } },
     ],
   );
+});
+
+test("the application continuation prompt reaches native steering but yields to finalization", async () => {
+  const gate = {
+    ...submissionGate,
+    continuationPrompt: "Investigate another route.",
+  };
+  const { result, requests } = await gatedRun(
+    [
+      gateReply(1, 1000, false, "length"),
+      gateReply(2, 4000, false, "stop"),
+      gateReply(3, 4000, false),
+    ],
+    true,
+    2,
+    gatedTool,
+    undefined,
+    gate,
+  );
+  expect(result.state).toBe("succeeded");
+  expect(JSON.stringify(requests[1]!.context.messages.at(-1))).toContain(
+    gate.continuationPrompt,
+  );
+  const finalization = JSON.stringify(requests[2]!.context.messages.at(-1));
+  expect(finalization).toContain("Finalize now.");
+  expect(finalization).not.toContain(gate.continuationPrompt);
 });
 
 test.each([
@@ -550,7 +592,7 @@ test("a gated schema rejection stays in context for correction before committing
     input: z
       .strictObject({ solution: z.boolean(), text: z.string() })
       .refine((value) => value.text !== "Result 1", {
-        message: "the text names n4 but its support does not",
+        message: "submission fails the application schema",
       }),
   };
   const { result, requests, records } = await gatedRun(
@@ -562,7 +604,7 @@ test("a gated schema rejection stays in context for correction before committing
   expect(result.state).toBe("succeeded");
   expect(requests).toHaveLength(2);
   expect(JSON.stringify(requests[1]!.context.messages)).toContain(
-    "the text names n4 but its support does not",
+    "submission fails the application schema",
   );
   expect(records.filter((entry) => entry.kind === "tool-call")).toMatchObject([
     { input: { solution: true, text: "Result 2" } },

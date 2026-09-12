@@ -44,6 +44,9 @@ test("Explorer continuation defaults off and only its enabled schema requires a 
   expect(on.submissionGate).toEqual({
     completeArgument: "solution",
     contextBudgetTokens: 400_000,
+    continuationPrompt: expect.stringContaining(
+      "Begin another substantial research attempt",
+    ),
   });
   expect(ordinary.schema.safeParse({ notes: [note] }).success).toBe(true);
   expect(
@@ -116,6 +119,8 @@ test("only enabled Explorer calls receive the gate; a solution claim still goes 
     expect(drive.calls[0]?.submissionGate).toEqual({
       completeArgument: "solution",
       contextBudgetTokens: 400_000,
+      continuationPrompt: explorerCall(input, true).submissionGate!
+        .continuationPrompt,
     });
     expect(
       drive.calls.slice(1).every((call) => call.submissionGate === undefined),
@@ -149,6 +154,16 @@ test("only enabled Explorer calls receive the gate; a solution claim still goes 
     altered.submissionGate = {
       ...drive.calls[0]!.submissionGate,
       reserveTokens: 1024,
+    };
+    expect(
+      sameRequest(
+        altered,
+        explorerCall({ ...input, explorerGuidance: "" }, true),
+      ),
+    ).toBe(false);
+    altered.submissionGate = {
+      ...drive.calls[0]!.submissionGate,
+      continuationPrompt: "Different research assignment.",
     };
     expect(
       sameRequest(
@@ -309,10 +324,12 @@ test("every saved submission reaches the coordinator, including early proofs bef
         ).rejects.toThrow("support must name");
         await expect(
           tools[0]!.execute({
-            notes: [{ text: "Uses n1 but omits its support.", support: [] }],
+            notes: [
+              { text: "Invalid repeated support.", support: ["n1", "n1"] },
+            ],
             solution: false,
           }),
-        ).rejects.toThrow("the text names n1");
+        ).rejects.toThrow("support must name");
         expect(
           await tools[0]!.execute({ notes: [improved], solution: false }),
         ).toEqual({ noteIds: ["n3"] });

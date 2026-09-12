@@ -669,7 +669,7 @@ test("explorer notes name only live earlier notes as support", () => {
     schema.safeParse({
       notes: [{ text: "By the case analysis of n1, P.", support: [] }],
     }).success,
-  ).toBe(false);
+  ).toBe(true); // Mathematical verification judges omitted dependencies.
   expect(
     schema.safeParse({
       notes: [{ text: "This replaces the dead n2.", support: ["n1"] }],
@@ -690,13 +690,27 @@ test("explorer notes name only live earlier notes as support", () => {
         { text: "Uses the case from n3.", support: [] },
       ],
     }).success,
-  ).toBe(false);
+  ).toBe(true);
   expect(
     schema.safeParse({
       notes: [{ text: "Let $n_1$ be the count; see (n1).", support: ["n1"] }],
     }).success,
   ).toBe(true);
 });
+
+test.each(["n2^{-q}", "n4^{-L}", "n8^(-L)"])(
+  "Explorer validation does not read %s as a support ID",
+  (expression) => {
+    const notes = Array.from({ length: 8 }, (_, index) => ({
+      id: `n${index + 1}`,
+      dead: false,
+    }));
+    const submitted = {
+      notes: [{ text: `The bound is ${expression}.`, support: [] }],
+    };
+    expect(explorerResultFor(notes).parse(submitted)).toEqual(submitted);
+  },
+);
 
 test("coordination files every note without a summary and lists live notes over verified or earlier-listed support", () => {
   const schema = coordinatorResultFor([

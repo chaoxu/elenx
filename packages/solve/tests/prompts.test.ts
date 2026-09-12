@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 
 import type { EntryId } from "elenx";
+import type { PiSubmissionGate } from "elenx/pi";
 
 import {
   coordinatorCall,
@@ -303,7 +304,12 @@ test("prompt bytes are frozen with the workflow schema version", async () => {
     notes: [second],
     support: [note],
   };
-  const calls: { label: string; system: string; prompt: string }[] = [
+  const calls: {
+    label: string;
+    system: string;
+    prompt: string;
+    submissionGate?: PiSubmissionGate | undefined;
+  }[] = [
     explorerCall({
       task,
       explorerGuidance: "Extend P. Test the degenerate instances first.",
@@ -351,6 +357,8 @@ test("prompt bytes are frozen with the workflow schema version", async () => {
   const digest = createHash("sha256");
   for (const call of calls) {
     digest.update(`${call.label}\n${call.system}\n${call.prompt}\n`);
+    if (call.submissionGate?.continuationPrompt !== undefined)
+      digest.update(`${call.submissionGate.continuationPrompt}\n`);
   }
   const offline = await sourceCall(
     {
@@ -370,8 +378,8 @@ test("prompt bytes are frozen with the workflow schema version", async () => {
   // Changing any role prompt changes the bytes the workflow fold matches
   // against journals, so bump workflowSchemaVersion and update this digest
   // in the same change.
-  expect(workflowSchemaVersion).toBe(33);
+  expect(workflowSchemaVersion).toBe(34);
   expect(digest.digest("hex")).toBe(
-    "091fbaed43d1a06b56ec1fe95757c0519a4ff80a3f79f8422c6dab35db410825",
+    "e356ddee3d7b6388cb0e3e4d78946b42ea2e2b5bcb64326a47945b863e4e6729",
   );
 });

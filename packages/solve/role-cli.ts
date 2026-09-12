@@ -319,13 +319,6 @@ export async function submitNotes(
             throw new Error(
               "submitted support must name distinct existing notes that are not dead",
             );
-          const omitted = [
-            ...new Set(note.text.match(/\bn[1-9][0-9]*\b/gu) ?? []),
-          ].filter((id) => live.has(id) && !note.support.includes(id));
-          if (omitted.length)
-            throw new Error(
-              `the submitted text names ${omitted.join(", ")} but its support does not`,
-            );
         }
       },
     );

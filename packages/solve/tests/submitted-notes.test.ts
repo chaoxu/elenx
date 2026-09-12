@@ -101,13 +101,13 @@ function coordinatorNotes(prompt: string): Note[] {
 
 test("init creates only a workflow declaration without resolving test-only providers", async () => {
   const { path, request } = await setup();
-  expect(workflowSchemaVersion).toBe(33);
+  expect(workflowSchemaVersion).toBe(34);
   const before = records(path);
   expect(before).toHaveLength(1);
   expect(before[0]).toMatchObject({
     kind: "campaign",
     application: "elenx-solve",
-    config: { schemaVersion: 33, task },
+    config: { schemaVersion: 34, task },
   });
   await init(request);
   expect(records(path)).toEqual(before);
@@ -429,6 +429,32 @@ for (const result of ["PASS", "FAIL"] as const) {
     );
   });
 }
+
+test("caller submissions validate declared support without scanning mathematical notation", async () => {
+  const { path, request } = await setup();
+  const ids = Array.from({ length: 8 }, (_, index) => `n${index + 1}`);
+  await run(
+    request,
+    dependencies([
+      { submission: { notes: ids.map(() => partial) } },
+      coordinate(ids),
+    ]),
+  );
+  const notes = ["n2^{-q}", "n4^{-L}", "n8^(-L)", "Provenance: n1"].map(
+    (text) => ({ text, support: [] }),
+  );
+  await submitNotes(path, { notes }, "notation");
+  expect((await inspect(path, true)).submissions).toMatchObject([
+    { id: "notation", notes },
+  ]);
+  const before = records(path);
+  for (const support of [["n99"], ["n1", "n1"]]) {
+    await expect(
+      submitNotes(path, { notes: [{ text: "a", support }] }),
+    ).rejects.toThrow();
+    expect(records(path)).toEqual(before);
+  }
+});
 
 test("same-id submissions are idempotent and invalid fields never append journal entries", async () => {
   const { path } = await setup();

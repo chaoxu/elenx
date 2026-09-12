@@ -67,6 +67,7 @@ const piSubmissionGate = z.strictObject({
   completeArgument: z.string().regex(/\S/u),
   reserveTokens: z.number().int().positive().optional(),
   contextBudgetTokens: z.number().int().positive().optional(),
+  continuationPrompt: z.string().regex(/\S/u).optional(),
 });
 export type PiSubmissionGate = z.output<typeof piSubmissionGate>;
 
@@ -637,8 +638,11 @@ function submissionFeedback(
   state: ReturnType<typeof submissionContext>,
 ): string {
   const occupancy = `Estimated context occupancy: ${state.tokens} tokens; submission threshold: ${state.threshold} tokens.`;
+  const continuation =
+    gate.continuationPrompt ??
+    "The original task remains unresolved. Treat saved work as intermediate progress. Reassess the current approach using what you have learned: identify the unresolved obstacle, then work through it or choose another promising approach. Continue substantive work in this context. Save new results, concrete gaps, or failed approaches with their reasons when useful.";
   return state.tokens < state.threshold
-    ? `${occupancy} The original task remains unresolved. Treat saved work as intermediate progress. Reassess the current approach using what you have learned: identify the unresolved obstacle, then work through it or choose another promising approach. Continue substantive work in this context. Save new results, concrete gaps, or failed approaches with their reasons when useful.`
+    ? `${occupancy} ${continuation}`
     : `${occupancy} Finalize now. Set ${gate.completeArgument} truthfully: true only if the task is complete, otherwise false.`;
 }
 
