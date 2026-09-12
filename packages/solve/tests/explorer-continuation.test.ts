@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { createCampaign } from "elenx";
+import { createCampaign, openCampaign } from "elenx";
 import { z } from "zod";
 
 import {
@@ -8,7 +8,7 @@ import {
   sameRequest,
   solveSettings,
 } from "../pi-roles";
-import { inspectCampaign } from "../role-cli";
+import { guideCampaign, inspectCampaign, submitNotes } from "../role-cli";
 import { init, run } from "../runner";
 import { applicationId } from "../roles";
 import {
@@ -253,5 +253,238 @@ test("a custom Explorer context budget reaches execution and journal replay", as
     );
   } finally {
     campaign.close();
+  }
+});
+
+test("every saved submission reaches the coordinator, including early proofs before an empty handoff", async () => {
+  const path = campaignPath();
+  const config = workflowConfiguration({
+    task,
+    settings: {
+      ...roleSettings(),
+      explorerContinuation: true,
+      maxExplorerTurns: 1,
+    },
+  });
+  const campaign = createCampaign(path, applicationId, config);
+  const first = {
+    text: "An early detailed lemma, including its complete argument.",
+    support: [],
+  };
+  const second = {
+    text: "A failed route, with its obstruction explained.",
+    support: [],
+  };
+  const improved = {
+    text: "Using n1, a stronger partial result; the main problem remains unresolved.",
+    support: ["n1"],
+  };
+  const external = { text: "An external application of n1.", support: ["n1"] };
+  const drive = dependencies([
+    {
+      onStarted: async (tools) => {
+        expect(
+          await tools[0]!.execute({ notes: [first, second], solution: false }),
+        ).toEqual({ noteIds: ["n1", "n2"] });
+        const inspection: any = await inspectCampaign(path);
+        expect(
+          inspection.notes.map((note: any) => [
+            note.id,
+            note.text,
+            note.verified,
+          ]),
+        ).toEqual([
+          ["n1", first.text, false],
+          ["n2", second.text, false],
+        ]);
+        expect(inspection.calls[0].submission.notes).toEqual([first, second]);
+        await submitNotes(path, { notes: [external] }, "during-explorer");
+        await expect(
+          tools[0]!.execute({
+            notes: [
+              { text: "An invalid forward dependency.", support: ["n4"] },
+            ],
+            solution: false,
+          }),
+        ).rejects.toThrow("support must name");
+        await expect(
+          tools[0]!.execute({
+            notes: [{ text: "Uses n1 but omits its support.", support: [] }],
+            solution: false,
+          }),
+        ).rejects.toThrow("the text names n1");
+        expect(
+          await tools[0]!.execute({ notes: [improved], solution: false }),
+        ).toEqual({ noteIds: ["n3"] });
+        // Reconcile an earlier interrupted receipt after another submission.
+        // Repeating the tool body must neither allocate IDs nor lose n3.
+        const before = campaign.records();
+        const firstCall = before.find((entry) => entry.kind === "tool-call");
+        if (firstCall?.kind !== "tool-call")
+          throw new Error("missing saved submission");
+        expect(
+          await drive.calls[0]!.tools![0]!.run(firstCall.input, {
+            call: firstCall.call,
+            toolCall: firstCall.seq,
+            signal: new AbortController().signal,
+          }),
+        ).toEqual({ noteIds: ["n1", "n2"] });
+        expect(campaign.records()).toEqual(before);
+        expect(
+          drive.calls[0]!.tools![0]!.input.safeParse({
+            notes: [{ text: "A later argument using n3.", support: ["n3"] }],
+            solution: false,
+          }).success,
+        ).toBe(true);
+      },
+      submission: { notes: [], solution: false },
+    },
+    {
+      submission: {
+        filings: ["n1", "n2", "n3", "n4"].map((note) => ({
+          note,
+          summary: "Partial work.",
+        })),
+        explorerGuidance: "Continue.",
+        support: [],
+        verify: [],
+      },
+    },
+  ]);
+  try {
+    const result = await runWorkflow(
+      campaign,
+      createPiRoles(campaign, config.settings, drive),
+    );
+    expect(result.kind).toBe("turn-limit");
+    const inspection: any = await inspectCampaign(path, {
+      includeSubmissions: true,
+    });
+    expect(inspection.calls[0].submission).toEqual({
+      notes: [first, second, improved],
+      solution: false,
+    });
+    expect(
+      inspection.notes.map((note: any) => [note.id, note.text, note.support]),
+    ).toEqual([
+      ["n1", first.text, []],
+      ["n2", second.text, []],
+      ["n3", improved.text, ["n1"]],
+      ["n4", external.text, ["n1"]],
+    ]);
+    expect(inspection.submissions[0]).toMatchObject({
+      noteIds: ["n4"],
+      pending: false,
+    });
+    expect(drive.calls[1]!.prompt).toContain(first.text);
+    expect(drive.calls[1]!.prompt).toContain(improved.text);
+    const before = campaign.records();
+    await runWorkflow(
+      campaign,
+      createPiRoles(campaign, config.settings, dependencies([])),
+    );
+    expect(campaign.records()).toEqual(before);
+  } finally {
+    campaign.close();
+  }
+});
+
+test("saved notes survive a lost receipt and a failed Explorer call, retaining IDs on a fresh retry", async () => {
+  const path = campaignPath();
+  const config = workflowConfiguration({
+    task,
+    settings: {
+      ...roleSettings(),
+      explorerContinuation: true,
+      maxExplorerTurns: 1,
+    },
+  });
+  const first = {
+    text: "A durable partial proof from the interrupted call.",
+    support: [],
+  };
+  const next = {
+    text: "Using n1, the remaining case follows.",
+    support: ["n1"],
+  };
+  const campaign = createCampaign(path, applicationId, config);
+  const initial = dependencies([
+    {
+      state: "failed",
+      error: "transport failed after saving notes",
+      onStarted: async (tools) => {
+        expect(
+          await tools[0]!.execute({ notes: [first], solution: false }),
+        ).toEqual({ noteIds: ["n1"] });
+        const records = campaign.records();
+        const at = records.findIndex((entry) => entry.kind === "tool-call");
+        const savedBeforeReceipt = await deriveWorkflow(
+          records.slice(0, at + 1),
+        );
+        expect(savedBeforeReceipt.notes).toMatchObject([
+          { id: "n1", text: first.text, verified: false },
+        ]);
+        await guideCampaign(
+          path,
+          "Advice submitted during this Explorer must wait.",
+          "later-advice",
+        );
+      },
+    },
+  ]);
+  try {
+    await expect(
+      runWorkflow(campaign, createPiRoles(campaign, config.settings, initial)),
+    ).rejects.toThrow("transport failed");
+    const inspection: any = await inspectCampaign(path);
+    expect(inspection.calls[0]).toMatchObject({
+      outcome: "failed",
+      submission: { notes: [first] },
+    });
+    expect(inspection.notes).toMatchObject([{ id: "n1", text: first.text }]);
+  } finally {
+    campaign.close();
+  }
+  const reopened = openCampaign(path);
+  const rest = dependencies([
+    {
+      onStarted: async (tools) => {
+        expect(
+          await tools[0]!.execute({ notes: [next], solution: false }),
+        ).toEqual({ noteIds: ["n2"] });
+      },
+      submission: { notes: [], solution: true },
+    },
+    {
+      submission: {
+        filings: ["n1", "n2"].map((note) => ({
+          note,
+          summary: "A claimed result.",
+        })),
+        explorerGuidance: "Continue.",
+        support: [],
+        verify: [],
+      },
+    },
+  ]);
+  try {
+    const result = await runWorkflow(
+      reopened,
+      createPiRoles(reopened, config.settings, rest),
+    );
+    expect(result).toMatchObject({
+      kind: "turn-limit",
+      turns: 1,
+      notes: [
+        { id: "n1", text: first.text },
+        { id: "n2", text: next.text },
+      ],
+    });
+    expect(rest.calls[0]!.prompt).toContain(first.text);
+    expect(rest.calls[0]!.prompt).toContain("Your first note is n2.");
+    expect(rest.calls[0]!.prompt).not.toContain("Advice submitted during");
+    expect((await deriveWorkflow(reopened.records())).phase).toEqual(result);
+  } finally {
+    reopened.close();
   }
 });

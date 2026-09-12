@@ -39,6 +39,7 @@ import {
   sourceVerdicts,
   statement,
   succeededSubmission,
+  savedExplorerSubmission,
   submittedNotes,
   verdicts,
   verifierFromLabel,
@@ -127,14 +128,17 @@ function visibleSubmission(
         ? undefined
         : schema.parse(submission.input);
     }
-    const submission = succeededSubmission(records, call.seq, roleTools[role]);
+    const continuation =
+      role === "explorer" &&
+      piRequest.parse(call.request).submissionGate !== undefined;
+    const submission = continuation
+      ? savedExplorerSubmission(records, call.seq)
+      : succeededSubmission(records, call.seq, roleTools[role]);
     if (submission === undefined) return undefined;
     if (role === "explorer") {
-      return (
-        piRequest.parse(call.request).submissionGate !== undefined
-          ? explorerContinuationResult
-          : explorerResult
-      ).parse(submission.input);
+      return (continuation ? explorerContinuationResult : explorerResult).parse(
+        submission.input,
+      );
     }
     if (role === "coordinator") {
       return jsonSnapshot(coordinatorResult.parse(submission.input));

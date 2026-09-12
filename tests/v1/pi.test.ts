@@ -314,7 +314,7 @@ async function gatedRun(
   }
 }
 
-test("submission gate keeps an early partial in context and commits only the near-limit submission", async () => {
+test("submission gate saves every partial in the same context before the near-limit handoff", async () => {
   const { result, requests, records } = await gatedRun([
     gateReply(1, 1000, false),
     gateReply(2, 3200, false),
@@ -324,7 +324,7 @@ test("submission gate keeps an early partial in context and commits only the nea
   expect(requests).toHaveLength(3);
   expect(requests[2]!.maxTokens).toBeLessThan(model.maxTokens);
   expect(JSON.stringify(requests[1]!.context.messages)).toContain(
-    "Submission declined.",
+    "Submission saved.",
   );
   const first = requests[1]!.context.messages.find(
     (message) => message.role === "assistant",
@@ -339,12 +339,13 @@ test("submission gate keeps an early partial in context and commits only the nea
     requests[1]!.context.messages.some(
       (message) => message.role === "toolResult" && message.isError,
     ),
-  ).toBe(true);
+  ).toBe(false);
   const submissions = records.filter((entry) => entry.kind === "tool-call");
-  expect(submissions).toHaveLength(1);
-  expect(submissions[0]).toMatchObject({
-    input: { solution: false, text: "Result 3" },
-  });
+  expect(submissions).toMatchObject([
+    { input: { solution: false, text: "Result 1" } },
+    { input: { solution: false, text: "Result 2" } },
+    { input: { solution: false, text: "Result 3" } },
+  ]);
   expect(
     records.find(
       (entry) => entry.kind === "call" && entry.label === "submission-gate",
@@ -400,7 +401,7 @@ test.each([
       const records = c.records();
       expect(
         records.filter((entry) => entry.kind === "tool-call"),
-      ).toHaveLength(1);
+      ).toHaveLength(stop === "toolUse" ? 2 : 1);
       expect(
         records.find(
           (entry) =>
@@ -580,7 +581,9 @@ test("gated exploration can exceed the ordinary 32 inner turns", async () => {
   const { result, requests, records } = await gatedRun(replies);
   expect(result.state).toBe("succeeded");
   expect(requests).toHaveLength(34);
-  expect(records.filter((entry) => entry.kind === "tool-call")).toHaveLength(1);
+  expect(records.filter((entry) => entry.kind === "tool-call")).toHaveLength(
+    34,
+  );
 });
 
 test("gated length continuation uses context instead of the ordinary eight-continuation cap", async () => {
@@ -627,7 +630,7 @@ test.each(["stop", "length"] as const)(
   },
 );
 
-test("successful responses reset the consecutive provider-error budget even when partial submissions are declined", async () => {
+test("successful partial submissions reset the consecutive provider-error budget", async () => {
   const failure = {
     ...assistant([], "error"),
     errorMessage: "upstream_error: Codex upstream request failed",

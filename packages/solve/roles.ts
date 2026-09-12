@@ -4,6 +4,7 @@ import {
   type EntryId,
   type Json,
 } from "elenx";
+import { piRequest } from "elenx/pi";
 import { z } from "zod";
 
 import { byId, supportClosure } from "./support";
@@ -170,6 +171,7 @@ export const explorerResult = z.strictObject({
     .min(1),
 });
 export const explorerContinuationResult = explorerResult.extend({
+  notes: z.array(explorerResult.shape.notes.element),
   solution: z.boolean(),
 });
 export type ExplorerResult = z.output<typeof explorerResult>;
@@ -625,6 +627,36 @@ export function returnedOutput(
     : undefined;
 }
 
+/** Validated Explorer tool inputs are durable, even if the receipt or outer
+ * call-result was interrupted. Numbering follows their journal order. */
+export function savedExplorerSubmission(
+  records: readonly Entry[],
+  call: EntryId,
+): { readonly settled: EntryId; readonly input: Json } | undefined {
+  const submissions = records.flatMap((entry) =>
+    entry.kind === "tool-call" &&
+    entry.call === call &&
+    entry.tool === roleTools.explorer
+      ? [
+          {
+            seq: entry.seq,
+            value: explorerContinuationResult.parse(entry.input),
+          },
+        ]
+      : [],
+  );
+  const last = submissions.at(-1);
+  return last === undefined
+    ? undefined
+    : {
+        settled: last.seq,
+        input: {
+          notes: submissions.flatMap(({ value }) => value.notes),
+          solution: last.value.solution,
+        },
+      };
+}
+
 export function succeededSubmission(
   records: readonly Entry[],
   call: EntryId,
@@ -640,6 +672,21 @@ export function succeededSubmission(
     return undefined;
   }
   try {
+    const owner = records.find(
+      (entry) => entry.kind === "call" && entry.seq === call,
+    );
+    const request =
+      owner?.kind === "call" ? piRequest.safeParse(owner.request) : undefined;
+    if (
+      tool === roleTools.explorer &&
+      request?.success &&
+      request.data.submissionGate !== undefined
+    ) {
+      const saved = savedExplorerSubmission(records, call);
+      return saved === undefined
+        ? undefined
+        : { settled: returned.settled, input: saved.input };
+    }
     return {
       settled: returned.settled,
       input: returnedToolSubmission(records, call, tool).input,

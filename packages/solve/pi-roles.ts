@@ -7,6 +7,7 @@ import {
   type Entry,
   type EntryId,
   type Json,
+  type Tool,
 } from "elenx";
 import { piReasoning, piRequest, runPi, type PiSubmissionGate } from "elenx/pi";
 import { z } from "zod";
@@ -42,6 +43,7 @@ import {
   sourceVerdictsFor,
   statement as statementSchema,
   succeededSubmission,
+  explorerContinuationResult,
   verdictsFor,
   verifierInput,
   verifierLabels,
@@ -210,7 +212,7 @@ export function explorerCall(
       "Do not use web search or external tools.",
       ...(continuation
         ? [
-            "Continue mathematical work in this same context while there is room. Submit early only when a note claims a complete solution to the original task, setting solution=true. This claim does not bypass mathematical verification. Otherwise keep exploring and set solution=false when submitting partial notes near the context limit. If an early partial submission is declined, continue from the existing work and follow the tool feedback before submitting again. Never claim a solution merely to end the call.",
+            "Continue mathematical work in this same context while there is room. Call submit_notes to save new notes as they become useful, one tool call per response. Every valid submission appends notes and returns their assigned noteIds; later submissions may use those notes as support. Submit only new notes, never copy earlier submissions. To revise an earlier note, write a new note explaining the correction and its limitations. All saved notes reach the coordinator at handoff. Set solution=true only when a note claims a complete solution to the original task; this ends the call early and does not bypass mathematical verification. Otherwise set solution=false and continue from the existing work until the tool feedback requests handoff near the context limit. At handoff, notes may be empty if all your work is already saved. Never claim a solution merely to end the call.",
           ]
         : ["Call submit_notes exactly once."]),
     ].join(" "),
@@ -486,20 +488,23 @@ async function runCall<S extends z.ZodType>(
   roleCall: RoleCall<S>,
   dependencies: PiRoleDependencies,
   candidate?: EntryId,
+  submissionTool?: Tool,
 ): Promise<{ readonly call: EntryId; readonly value: z.output<S> }> {
   const model = selectModel(dependencies.models, {
     provider: profile.provider,
     modelId: profile.model,
   });
-  const submitTool = defineTool({
-    name: roleCall.tool,
-    description: roleCall.description,
-    input: roleCall.schema,
-    replay: "safe",
-    async run() {
-      return null;
-    },
-  });
+  const submitTool =
+    submissionTool ??
+    defineTool({
+      name: roleCall.tool,
+      description: roleCall.description,
+      input: roleCall.schema,
+      replay: "safe",
+      async run() {
+        return null;
+      },
+    });
   const result = await (dependencies.run ?? runPi)(campaign, {
     models: dependencies.models,
     model,
@@ -548,13 +553,55 @@ export function createPiRoles(
   const profiles = solveSettings.parse(settingsValue);
   return {
     async explorer(inputValue) {
+      const input = explorerInput.parse(inputValue);
       const roleCall = explorerCall(
-        explorerInput.parse(inputValue),
+        input,
         profiles.explorerContinuation === true,
         profiles.explorerContextBudgetTokens,
       );
+      const known: Pick<Note, "id" | "dead">[] = [...input.notes];
+      const submissionTool =
+        profiles.explorerContinuation === true
+          ? defineTool({
+              name: roleCall.tool,
+              description: roleCall.description,
+              input: explorerResultFor(known, true),
+              replay: "safe",
+              async run(_value, { call, toolCall }) {
+                // The audited tool-call is the saved write. Reconcile its receipt
+                // from that durable identity, including a repeated run() after it.
+                const saved: Pick<Note, "id" | "dead">[] = [];
+                let noteIds: string[] | undefined;
+                for (const entry of campaign.records()) {
+                  if (
+                    entry.kind !== "tool-call" ||
+                    entry.call !== call ||
+                    entry.tool !== roleCall.tool
+                  )
+                    continue;
+                  const value = explorerContinuationResult.parse(entry.input);
+                  const ids = value.notes.map((_, position) =>
+                    noteIdAfter(input.notes.length + saved.length, position),
+                  );
+                  if (entry.seq === toolCall) noteIds = ids;
+                  saved.push(...ids.map((id) => ({ id, dead: false })));
+                }
+                if (noteIds === undefined)
+                  throw new Error("missing saved Explorer submission");
+                known.splice(input.notes.length, known.length, ...saved);
+                return { noteIds };
+              },
+            })
+          : undefined;
       return (
-        await runCall(campaign, profiles.explorer, roleCall, dependencies)
+        await runCall(
+          campaign,
+          profiles.explorer,
+          roleCall,
+          dependencies,
+          undefined,
+          submissionTool,
+        )
       ).value;
     },
     async coordinator(inputValue) {

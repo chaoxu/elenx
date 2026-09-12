@@ -638,7 +638,7 @@ function submissionFeedback(
 ): string {
   const occupancy = `Estimated context occupancy: ${state.tokens} tokens; submission threshold: ${state.threshold} tokens.`;
   return state.tokens < state.threshold
-    ? `Submission declined. ${occupancy} Continue working toward the original task from the current progress without restarting. Submit when you can truthfully set ${gate.completeArgument}=true, or when the threshold is reached.`
+    ? `${occupancy} Continue working toward the original task from the current progress without restarting. Save new work as it becomes useful. The call ends when you truthfully set ${gate.completeArgument}=true, or submit after the threshold is reached.`
     : `${occupancy} Finalize now. Set ${gate.completeArgument} truthfully: true only if the task is complete, otherwise false.`;
 }
 
@@ -1086,7 +1086,10 @@ async function runPiBody(
           ? {}
           : {
               tools: tools.map((tool) =>
-                piTool(tool, exact.stopAfterToolResult === true),
+                piTool(
+                  tool,
+                  exact.stopAfterToolResult === true && gate === undefined,
+                ),
               ),
             }),
       });
@@ -1150,35 +1153,50 @@ async function runPiBody(
                         block: true,
                         terminate: true,
                         reason:
-                          "A gated call permits exactly one admitted terminal submission.",
+                          "A gated response permits exactly one submission tool call.",
                       };
                     }
-                    const state = contextState(entry.context);
-                    const complete =
-                      typeof entry.args === "object" &&
-                      entry.args !== null &&
-                      (entry.args as Record<string, unknown>)[
-                        gate.completeArgument
-                      ] === true;
-                    if (complete || state.tokens >= state.threshold) {
-                      return undefined;
-                    }
-                    return {
-                      block: true,
-                      reason: submissionFeedback(gate, state),
-                    };
+                    return undefined;
                   },
                   // Schema rejection before the tool-call record is safe to correct.
-                  afterToolCall: async ({ toolCall }) => ({
-                    terminate: campaign
+                  afterToolCall: async ({
+                    toolCall,
+                    args,
+                    context,
+                    result,
+                    isError,
+                  }) => {
+                    const recorded = campaign
                       .records()
                       .some(
                         (entry) =>
                           entry.kind === "tool-call" &&
                           entry.call === call &&
                           entry.source === toolCall.id,
-                      ),
-                  }),
+                      );
+                    if (isError) return { terminate: recorded };
+                    const state = contextState(context);
+                    const complete =
+                      typeof args === "object" &&
+                      args !== null &&
+                      (args as Record<string, unknown>)[
+                        gate.completeArgument
+                      ] === true;
+                    const terminate =
+                      complete || state.tokens >= state.threshold;
+                    return {
+                      terminate,
+                      content: [
+                        ...result.content,
+                        {
+                          type: "text" as const,
+                          text: terminate
+                            ? "Submission saved. Handing off now."
+                            : `Submission saved. ${submissionFeedback(gate, state)}`,
+                        },
+                      ],
+                    };
+                  },
                   getSteeringMessages: async () => {
                     const messages = steering;
                     steering = [];

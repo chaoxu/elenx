@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import type { Campaign, Json } from "elenx";
+import type { AuditedTool, Campaign, Json } from "elenx";
 import type { PiResult, PiRunOptions } from "elenx/pi";
 
 import type { SolveSettings } from "../pi-roles";
@@ -27,7 +27,7 @@ const model = {
 
 export interface Reply {
   /** A test boundary after the request is journaled and before its result. */
-  readonly onStarted?: () => Promise<void>;
+  readonly onStarted?: (tools: readonly AuditedTool[]) => Promise<void>;
   readonly submission?: Json;
   readonly state?: "succeeded" | "failed" | "cancelled";
   readonly error?: string;
@@ -162,7 +162,7 @@ async function respond(
       ...(options.tools === undefined ? {} : { tools: options.tools }),
     },
     async ({ tools }) => {
-      if (reply.onStarted !== undefined) await reply.onStarted();
+      if (reply.onStarted !== undefined) await reply.onStarted(tools);
       if (reply.submission !== undefined) {
         await tools[0]!.execute(reply.submission);
       }

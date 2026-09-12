@@ -26,6 +26,7 @@ import {
   noteIdAfter,
   pick,
   succeededSubmission,
+  savedExplorerSubmission,
   task,
   verificationComplete,
   verifierInput,
@@ -40,7 +41,7 @@ import {
   type VerifierInput,
 } from "./roles";
 
-export const workflowSchemaVersion = 31;
+export const workflowSchemaVersion = 32;
 export const workflowConfig = z.strictObject({
   kind: z.literal("workflow"),
   schemaVersion: z.literal(workflowSchemaVersion),
@@ -228,51 +229,77 @@ export async function deriveWorkflow(
       // next explorer writes notes, which may be joined by pending submissions.
       let included = await includeSubmitted(cursor);
       if (!included) {
-        const known = await projection.at(cursor);
-        const explorerRequest = explorerInput.parse({
-          task: config.task,
-          explorerGuidance: explorerGuidance(records, cursor, guidance),
-          notes: known.map(({ text, ...rest }) => rest),
-          support: [
-            ...new Set([
-              ...support,
-              ...(await supportClosure(
-                support.map((id) => pick(known, id)),
-                known,
-              )),
-            ]),
-          ]
-            .sort(byId)
-            .map((id) => pick(known, id)),
-        });
-        const explored = settledCall(
-          records,
-          cursor,
-          explorerCall(
+        let after = cursor;
+        let known = await projection.at(cursor);
+        const selected = [...support];
+        // Advice stays frozen for the turn. A fresh call after interruption
+        // also receives every note already saved by this turn, in full.
+        const advice = explorerGuidance(records, cursor, guidance);
+        for (;;) {
+          const explorerRequest = explorerInput.parse({
+            task: config.task,
+            explorerGuidance: advice,
+            notes: known.map(({ text, ...rest }) => rest),
+            support: [
+              ...new Set([
+                ...selected,
+                ...(await supportClosure(
+                  selected.map((id) => pick(known, id)),
+                  known,
+                )),
+              ]),
+            ]
+              .sort(byId)
+              .map((id) => pick(known, id)),
+          });
+          const roleCall = explorerCall(
             explorerRequest,
             config.settings.explorerContinuation === true,
             config.settings.explorerContextBudgetTokens,
-          ),
-        );
-        if (explored === undefined) {
-          return {
-            config,
-            noteSubmissions,
-            notes: known,
-            phase: { kind: "explorer", input: explorerRequest },
-            explorerAfter: cursor,
-            notesAfter: cursor,
-          };
+          );
+          const call = firstCall(
+            records,
+            after,
+            roleCall.role,
+            roleCall.label,
+            roleCall,
+          );
+          if (call === undefined) {
+            return {
+              config,
+              noteSubmissions,
+              notes: known,
+              phase: { kind: "explorer", input: explorerRequest },
+              explorerAfter: cursor,
+              notesAfter: cursor,
+            };
+          }
+          const completed = succeededSubmission(
+            records,
+            call.seq,
+            roleCall.tool,
+          );
+          const saved =
+            config.settings.explorerContinuation === true
+              ? savedExplorerSubmission(records, call.seq)
+              : completed;
+          if (saved !== undefined) {
+            const value = roleCall.schema.parse(saved.input);
+            const notes = value.notes.map((entry, position) => ({
+              id: noteIdAfter(known.length, position),
+              ...entry,
+            }));
+            if (notes.length > 0) await projection.add(notes, saved.settled);
+            selected.push(...notes.map(({ id }) => id));
+            known = await projection.at(saved.settled);
+          }
+          if (completed !== undefined) {
+            cursor = completed.settled;
+            turns += 1;
+            break;
+          }
+          after = call.seq;
         }
-        cursor = explored.settled;
-        turns += 1;
-        await projection.add(
-          explored.value.notes.map((entry, position) => ({
-            id: noteIdAfter(known.length, position),
-            ...entry,
-          })),
-          cursor,
-        );
         included = await includeSubmitted(cursor);
       }
       const coordinatorRequest = coordinatorInput.parse({
